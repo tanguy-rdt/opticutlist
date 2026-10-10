@@ -85,6 +85,8 @@
 
 @layer components {
   .panel { @apply rounded-xl border border-line bg-surface; }
+  .home-card { @apply rounded-2xl border border-line bg-surface shadow-sm; }
+  .home-icon { @apply inline-flex h-12 w-12 items-center justify-center rounded-xl bg-subtle text-accent; }
   .button { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold transition-colors hover:bg-subtle; }
   .button-primary { @apply border-transparent bg-accent text-on-accent hover:bg-accent-hover; }
   .button-danger { @apply text-danger hover:bg-danger-surface; }

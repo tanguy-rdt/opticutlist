@@ -15,7 +15,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
       { path: '/', name: 'home', component: HomeView },
       { path: '/materials', name: 'materials', component: MaterialsView },
       { path: '/parts', name: 'parts', component: PartsView },
-      { path: '/suppliers', name: 'suppliers', component: SuppliersView },
+      { path: '/catalog', alias: '/suppliers', name: 'suppliers', component: SuppliersView },
       { path: '/projects', name: 'projects', component: ProjectsView },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
     ],

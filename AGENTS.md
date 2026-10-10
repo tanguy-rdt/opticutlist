@@ -83,6 +83,8 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Catalog products never create owned stock. Check existing stock purchase provenance before deleting a product, without implementing purchasing or stock consumption in catalog UI.
 - Supplier product forms offer existing Material selection and inline creation using only `Material.name` and `Material.category`, validated by `materialSchema` and saved through the existing repository. Select the saved record and retain the entire product draft on success or failure.
 - Materials is for selecting existing catalog materials, not global material creation/editing/deletion. Selection remains transient until project-specific persistence is explicitly requested; do not introduce projects or database changes for this workflow.
+- Global navigation separates Home and Catalog from the future active-project workspace. Show Parts, Materials and cutting-tool navigation only for a genuinely opened project; never invent an active project or project persistence in a UI task. Keep pre-project saved libraries accessible through a secondary compatibility entry, not global navigation.
+- Home actions reuse existing workflows. If project creation/import is unavailable, show disabled actions with accessible explanations. Catalog remains accessible without a project, and existing deep links and records must remain usable.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD

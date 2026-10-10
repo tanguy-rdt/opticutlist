@@ -145,7 +145,7 @@ onMounted(load)
         <p class="eyebrow">
           Purchasable panels
         </p><h1 class="text-3xl font-semibold tracking-tight">
-          Suppliers
+          Catalog
         </h1><p class="max-w-2xl text-muted">
           Manage suppliers and their panel catalogs. Catalog products describe what you can buy; adding them does not create owned stock.
         </p>

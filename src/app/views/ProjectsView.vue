@@ -4,30 +4,53 @@ import { RouterLink } from 'vue-router'
 
 <template>
   <section class="space-y-6">
-    <div class="space-y-2">
+    <div class="max-w-2xl space-y-3">
       <p class="eyebrow">
-        Coming later
+        Existing workshop data
       </p>
       <h1 class="text-3xl font-semibold tracking-tight">
-        Projects
+        Saved parts and materials
       </h1>
-      <p class="text-muted">
-        A place to organize parts and plan your next build.
+      <p class="leading-relaxed text-muted">
+        Your existing libraries are still accessible here. Project creation is not available yet;
+        these records are not attached to a project.
       </p>
     </div>
-    <div class="panel max-w-2xl space-y-4 p-8">
-      <h2 class="text-xl font-semibold">
-        Prepare your material library
-      </h2>
-      <p class="text-muted">
-        Project management is not available yet. You can already add the materials you work with.
-      </p>
-      <RouterLink
-        to="/materials"
-        class="button button-primary"
-      >
-        Manage materials
-      </RouterLink>
+    <div class="grid gap-5 md:grid-cols-2">
+      <article class="panel flex flex-col items-start gap-4 p-6">
+        <h2 class="text-xl font-semibold">
+          Parts library
+        </h2>
+        <p class="text-muted">
+          View and edit your saved dimensions, quantities and cutting constraints.
+        </p>
+        <RouterLink
+          to="/parts"
+          class="button mt-auto"
+        >
+          Open saved parts <span aria-hidden="true">→</span>
+        </RouterLink>
+      </article>
+      <article class="panel flex flex-col items-start gap-4 p-6">
+        <h2 class="text-xl font-semibold">
+          Material selection
+        </h2>
+        <p class="text-muted">
+          Choose from existing catalog materials. Selections remain temporary.
+        </p>
+        <RouterLink
+          to="/materials"
+          class="button mt-auto"
+        >
+          Select existing materials <span aria-hidden="true">→</span>
+        </RouterLink>
+      </article>
     </div>
+    <RouterLink
+      to="/"
+      class="button"
+    >
+      <span aria-hidden="true">←</span> Return home
+    </RouterLink>
   </section>
 </template>
