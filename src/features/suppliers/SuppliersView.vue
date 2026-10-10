@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
-import { RouterLink } from 'vue-router'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
@@ -317,7 +316,7 @@ onMounted(load)
         </h2><button
           type="button"
           class="button"
-          :disabled="disabled || suppliers.length === 0 || materials.length === 0"
+          :disabled="disabled || suppliers.length === 0"
           @click="editProduct(null)"
         >
           + New product
@@ -327,12 +326,7 @@ onMounted(load)
         v-if="materials.length === 0"
         class="text-sm text-muted"
       >
-        Add a material before creating products. <RouterLink
-          to="/materials"
-          class="text-accent underline underline-offset-4"
-        >
-          Open Materials
-        </RouterLink>
+        Create a material directly in the product form below to start your catalog.
       </p>
       <p
         v-if="products.length === 0"
@@ -352,7 +346,7 @@ onMounted(load)
             v-if="suppliers.some((supplier) => supplier.id === group.id)"
             type="button"
             class="button"
-            :disabled="disabled || materials.length === 0"
+            :disabled="disabled"
             :aria-label="`Add product for ${group.name}`"
             @click="editProduct(null, group.id)"
           >
@@ -486,6 +480,8 @@ onMounted(load)
       :materials="materials"
       :disabled="disabled"
       @save="saveProduct"
+      @material-created="materials = [...materials, $event]"
+      @material-busy="busy = $event"
       @cancel="editProduct(null)"
     />
   </section>

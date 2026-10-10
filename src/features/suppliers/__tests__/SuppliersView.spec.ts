@@ -70,6 +70,143 @@ async function submit(wrapper: VueWrapper, entity: 'supplier' | 'product') {
 afterEach(() => { for (const wrapper of wrappers) wrapper.unmount(); wrappers.length = 0; vi.restoreAllMocks() })
 
 describe('SuppliersView', () => {
+  it.each(['create', 'edit'] as const)('creates a material inline and preserves every product field during %s', async (mode) => {
+    const repositories = setup()
+    if (mode === 'edit') repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    repositories.materials.create.mockImplementation((record) => Promise.resolve({ ok: true, value: materialSchema.parse(record) }))
+    const wrapper = render(repositories)
+    await flushPromises()
+    if (mode === 'edit') await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click')
+    expect(document.activeElement).toBe(wrapper.get('#inline-material-name').element)
+    await wrapper.get('#inline-material-name').setValue(' MDF ')
+    await wrapper.get('#inline-material-category').setValue(' Fiberboard ')
+    await button(wrapper, 'Create and select material').trigger('click')
+    await flushPromises()
+    const created = materialSchema.parse(repositories.materials.create.mock.calls[0]?.[0])
+    expect(created.name).toBe('MDF')
+    expect(created.category).toBe('Fiberboard')
+    expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(created.id)
+    expect(wrapper.text()).toContain('Material created and selected.')
+    expect(document.activeElement).toBe(wrapper.get('#product-material').element)
+    for (const [field, value] of [
+      ['name', product.name], ['supplier', product.supplierId], ['lengthMm', String(product.lengthMm)],
+      ['widthMm', String(product.widthMm)], ['thicknessMm', String(product.thicknessMm)], ['price', String(product.price)],
+      ['currency', product.currency], ['grain', product.grainDirection], ['availability', product.availability], ['url', product.productUrl ?? ''],
+    ]) {
+      expect(wrapper.get<HTMLInputElement | HTMLSelectElement>(`#product-${field ?? ''}`).element.value).toBe(value)
+    }
+    await submit(wrapper, 'product')
+    if (mode === 'edit') expect(repositories.supplierProducts.update).toHaveBeenCalledExactlyOnceWith(product.id, { ...product, materialId: created.id })
+    else {
+      const saved = supplierProductSchema.parse(repositories.supplierProducts.create.mock.calls[0]?.[0])
+      expect(saved).toEqual({ ...product, id: saved.id, materialId: created.id })
+    }
+  })
+
+  it('validates only the required Material fields before writing', async () => {
+    const repositories = setup()
+    const wrapper = render(repositories)
+    await flushPromises()
+    await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click')
+    await wrapper.get('#inline-material-name').setValue('   ')
+    await button(wrapper, 'Create and select material').trigger('click')
+    expect(wrapper.get('#inline-material-name').attributes('aria-invalid')).toBe('true')
+    expect(wrapper.get('#inline-material-category').attributes('aria-invalid')).toBe('true')
+    expect(wrapper.get('#inline-material-fields').findAll('input')).toHaveLength(2)
+    expect(document.activeElement).toBe(wrapper.get('#inline-material-name').element)
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+    expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe(product.name)
+    expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(material.id)
+  })
+
+  it.each(['storageFailure', 'duplicateId', 'invalidRecord'] as const)('keeps both drafts after inline %s and supports retry', async (kind) => {
+    const repositories = setup()
+    const error = kind === 'storageFailure' ? failure.error : kind === 'duplicateId' ? { kind, id: material.id } : { kind, issues: [{ path: ['name'], message: 'Invalid material' }] }
+    repositories.materials.create.mockResolvedValueOnce({ ok: false, error })
+    const wrapper = render(repositories)
+    await flushPromises()
+    await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click')
+    await wrapper.get('#inline-material-name').setValue('New material')
+    await wrapper.get('#inline-material-category').setValue('Plywood')
+    await button(wrapper, 'Create and select material').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#inline-material-fields [role="alert"]').text()).not.toBe('')
+    expect(wrapper.get<HTMLInputElement>('#inline-material-name').element.value).toBe('New material')
+    expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe(product.name)
+    expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(material.id)
+    expect(repositories.supplierProducts.create).not.toHaveBeenCalled()
+    await button(wrapper, 'Create and select material').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Material created and selected.')
+    expect(repositories.materials.create).toHaveBeenCalledTimes(2)
+  })
+
+  it('cancels inline creation without changing the existing selection or draft', async () => {
+    const repositories = setup()
+    const wrapper = render(repositories)
+    await flushPromises()
+    await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click')
+    await wrapper.get('#inline-material-name').setValue('Unsaved')
+    await button(wrapper, 'Cancel material').trigger('click')
+    expect(wrapper.find('#inline-material-fields').exists()).toBe(false)
+    expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(material.id)
+    expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe(product.name)
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+  })
+
+  it('blocks duplicate material writes and product submission while saving inline', async () => {
+    const repositories = setup()
+    let resolve: ((result: PersistenceResult<typeof material>) => void) | undefined
+    repositories.materials.create.mockReturnValue(new Promise((done) => { resolve = done }))
+    const wrapper = render(repositories)
+    await flushPromises()
+    await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click')
+    await wrapper.get('#inline-material-name').setValue('MDF')
+    await wrapper.get('#inline-material-category').setValue('Fiberboard')
+    await button(wrapper, 'Create and select material').trigger('click')
+    expect(wrapper.get('#inline-material-fields').attributes('disabled')).toBeDefined()
+    await submit(wrapper, 'product')
+    await button(wrapper, 'Saving material…').trigger('click')
+    expect(repositories.materials.create).toHaveBeenCalledTimes(1)
+    expect(repositories.supplierProducts.create).not.toHaveBeenCalled()
+    resolve?.({ ok: true, value: material })
+    await flushPromises()
+  })
+
+  it('persists an inline material and its product through the existing repositories', async () => {
+    const indexedDB = new IDBFactory()
+    const first = createLocalPersistence('inline-material-persistence', { indexedDB, IDBKeyRange })
+    const second = createLocalPersistence('inline-material-persistence', { indexedDB, IDBKeyRange })
+    try {
+      await first.suppliers.create(supplier)
+      const wrapper = render(createCatalogRepositories(first))
+      await vi.waitFor(() => { expect(wrapper.get('#product-name').attributes('disabled')).toBeUndefined() })
+      await wrapper.get('#product-name').setValue(product.name)
+      await wrapper.get('#product-supplier').setValue(supplier.id)
+      for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
+      await button(wrapper, '+ New material').trigger('click')
+      await wrapper.get('#inline-material-name').setValue(material.name)
+      await wrapper.get('#inline-material-category').setValue(material.category)
+      await button(wrapper, 'Create and select material').trigger('click')
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Material created and selected.') })
+      const selectedId = wrapper.get<HTMLSelectElement>('#product-material').element.value
+      await submit(wrapper, 'product')
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Product created.') })
+      wrapper.unmount()
+      first.close()
+      const storedMaterials = await second.materials.list()
+      const storedProducts = await second.supplierProducts.list()
+      expect(storedMaterials).toMatchObject({ ok: true, value: [{ id: selectedId, name: material.name, category: material.category }] })
+      expect(storedProducts).toMatchObject({ ok: true, value: [{ materialId: selectedId, thicknessMm: product.thicknessMm }] })
+      expect(await second.stockItems.list()).toEqual({ ok: true, value: [] })
+    } finally { first.close(); second.close() }
+  })
   it('shows loading and empty supplier/product states', async () => {
     const repositories = setup()
     let resolve: ((result: PersistenceResult<readonly typeof supplier[]>) => void) | undefined
@@ -309,12 +446,12 @@ describe('SuppliersView', () => {
     expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe('')
   })
 
-  it('links to Materials and prevents product writes without materials', async () => {
+  it('offers inline creation and prevents product writes until a material exists', async () => {
     const repositories = setup()
     repositories.materials.list.mockResolvedValue({ ok: true, value: [] })
     const wrapper = render(repositories)
     await flushPromises()
-    expect(wrapper.get('a[href="/materials"]').text()).toBe('Open Materials')
+    expect(wrapper.text()).toContain('Create a material directly in the product form')
     expect(button(wrapper, 'Create product').attributes('disabled')).toBeDefined()
   })
 

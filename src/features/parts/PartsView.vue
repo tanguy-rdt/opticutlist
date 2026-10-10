@@ -162,10 +162,10 @@ onMounted(load)
     >
       Add a material before creating or editing parts.
       <RouterLink
-        to="/materials"
+        to="/suppliers"
         class="font-medium text-accent underline underline-offset-4"
       >
-        Open Materials
+        Open supplier catalog
       </RouterLink>
     </p>
     <div

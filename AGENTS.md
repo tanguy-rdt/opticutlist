@@ -81,6 +81,8 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Parts forms require an explicit selection from existing materials. Show missing material references and preserve failed drafts rather than silently replacing selections.
 - Supplier catalog UI uses the guarded application repositories from `createCatalogRepositories`. Product saves check supplier/material references in the same transaction as the write. Supplier, product and material deletion checks run atomically with deletion; never cascade or bypass a reference conflict.
 - Catalog products never create owned stock. Check existing stock purchase provenance before deleting a product, without implementing purchasing or stock consumption in catalog UI.
+- Supplier product forms offer existing Material selection and inline creation using only `Material.name` and `Material.category`, validated by `materialSchema` and saved through the existing repository. Select the saved record and retain the entire product draft on success or failure.
+- Materials is for selecting existing catalog materials, not global material creation/editing/deletion. Selection remains transient until project-specific persistence is explicitly requested; do not introduce projects or database changes for this workflow.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD

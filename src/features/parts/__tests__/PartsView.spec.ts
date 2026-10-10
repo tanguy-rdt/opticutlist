@@ -176,7 +176,7 @@ describe('PartsView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     expect(wrapper.text()).toContain('Add a material before creating or editing parts')
-    expect(wrapper.get('a').attributes('href')).toBe('/materials')
+    expect(wrapper.get('a').attributes('href')).toBe('/suppliers')
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
     await submit(wrapper)
     expect(repositories.parts.create).not.toHaveBeenCalled()

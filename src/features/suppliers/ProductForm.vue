@@ -1,13 +1,65 @@
 <script setup lang="ts">
 import { nextTick, reactive, ref, shallowRef } from 'vue'
-import type { Material } from '../../domain/model/material'
+import { materialSchema, type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import { grainDirectionSchema } from '../../domain/model/orientation'
 import { supplierProductSchema, productAvailabilitySchema, type SupplierProduct } from '../../domain/model/supplier-product'
 import FormField from '../../shared/ui/FormField.vue'
+import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
+import { useMaterialRepository } from '../materials/material-repository'
 
 const props = defineProps<{ product: SupplierProduct | null; suppliers: readonly Supplier[]; materials: readonly Material[]; initialSupplierId: string; disabled: boolean }>()
-const emit = defineEmits<{ save: [product: SupplierProduct]; cancel: [] }>()
+const emit = defineEmits<{ save: [product: SupplierProduct]; cancel: []; materialCreated: [material: Material]; materialBusy: [busy: boolean] }>()
+const materialRepository = useMaterialRepository()
+const creatingMaterial = ref(false)
+const materialBusy = ref(false)
+const materialName = ref('')
+const materialCategory = ref('')
+const materialNameError = ref('')
+const materialCategoryError = ref('')
+const materialStorageError = ref('')
+const materialNotice = ref('')
+const materialNameInput = ref<HTMLInputElement | null>(null)
+async function showMaterialForm(): Promise<void> {
+  if (props.disabled || materialBusy.value) return
+  creatingMaterial.value = true
+  await nextTick()
+  materialNameInput.value?.focus()
+}
+async function closeMaterialForm(): Promise<void> {
+  if (props.disabled || materialBusy.value) return
+  creatingMaterial.value = false
+  await nextTick()
+  form.value?.querySelector<HTMLSelectElement>('#product-material')?.focus()
+}
+async function createMaterial(): Promise<void> {
+  if (props.disabled || materialBusy.value) return
+  materialStorageError.value = ''
+  materialNotice.value = ''
+  const parsed = materialSchema.safeParse({ id: crypto.randomUUID(), name: materialName.value, category: materialCategory.value })
+  materialNameError.value = parsed.success ? '' : parsed.error.issues.find((issue) => issue.path[0] === 'name')?.message ?? ''
+  materialCategoryError.value = parsed.success ? '' : parsed.error.issues.find((issue) => issue.path[0] === 'category')?.message ?? ''
+  if (!parsed.success) {
+    await nextTick()
+    form.value?.querySelector<HTMLInputElement>('#inline-material-fields [aria-invalid="true"]')?.focus()
+    return
+  }
+  materialBusy.value = true
+  emit('materialBusy', true)
+  const result = await materialRepository.create(parsed.data)
+  materialBusy.value = false
+  emit('materialBusy', false)
+  if (result.ok) {
+    emit('materialCreated', result.value)
+    materialId.value = result.value.id
+    creatingMaterial.value = false
+    materialName.value = ''
+    materialCategory.value = ''
+    materialNotice.value = 'Material created and selected.'
+    await nextTick()
+    form.value?.querySelector<HTMLSelectElement>('#product-material')?.focus()
+  } else materialStorageError.value = persistenceErrorMessage(result.error, 'Material')
+}
 const form = ref<HTMLFormElement | null>(null)
 const name = ref(props.product?.name ?? '')
 const supplierId = ref<string>(props.product?.supplierId ?? props.initialSupplierId)
@@ -26,7 +78,7 @@ function numberInput(value: number | string): number | undefined { return typeof
 function focusName(): void { form.value?.querySelector<HTMLInputElement>('input')?.focus() }
 defineExpose({ focusName })
 async function submit(): Promise<void> {
-  if (props.disabled || props.suppliers.length === 0 || props.materials.length === 0) return
+  if (props.disabled || materialBusy.value || creatingMaterial.value || props.suppliers.length === 0 || props.materials.length === 0) return
   const result = supplierProductSchema.safeParse({
     id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: supplierId.value, materialId: materialId.value,
     lengthMm: numberInput(numbers.lengthMm), widthMm: numberInput(numbers.widthMm), thicknessMm: numberInput(numbers.thicknessMm), price: numberInput(numbers.price),
@@ -154,6 +206,94 @@ async function submit(): Promise<void> {
           </template>
         </FormField>
       </div>
+      <div class="space-y-3">
+        <button
+          type="button"
+          class="button"
+          :disabled="disabled || materialBusy"
+          :aria-expanded="creatingMaterial"
+          aria-controls="inline-material-fields"
+          @click="showMaterialForm"
+        >
+          + New material
+        </button>
+        <fieldset
+          v-if="creatingMaterial"
+          id="inline-material-fields"
+          class="space-y-4 rounded-lg border border-line bg-subtle p-4"
+          :disabled="disabled || materialBusy"
+        >
+          <legend class="px-1 font-semibold">
+            New catalog material
+          </legend>
+          <div class="grid gap-4 md:grid-cols-2">
+            <FormField
+              id="inline-material-name"
+              label="Name"
+              required
+              :error="materialNameError"
+            >
+              <template #default="{ controlAttrs }">
+                <input
+                  ref="materialNameInput"
+                  v-model="materialName"
+                  v-bind="controlAttrs"
+                  class="field"
+                  maxlength="200"
+                  autocomplete="off"
+                  @keydown.enter.prevent="createMaterial"
+                >
+              </template>
+            </FormField>
+            <FormField
+              id="inline-material-category"
+              label="Category"
+              required
+              :error="materialCategoryError"
+            >
+              <template #default="{ controlAttrs }">
+                <input
+                  v-model="materialCategory"
+                  v-bind="controlAttrs"
+                  class="field"
+                  maxlength="200"
+                  autocomplete="off"
+                  @keydown.enter.prevent="createMaterial"
+                >
+              </template>
+            </FormField>
+          </div>
+          <p
+            v-if="materialStorageError"
+            role="alert"
+            class="text-sm text-danger"
+          >
+            {{ materialStorageError }}
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="button button-primary"
+              @click="createMaterial"
+            >
+              {{ materialBusy ? 'Saving material…' : 'Create and select material' }}
+            </button><button
+              type="button"
+              class="button"
+              @click="closeMaterialForm"
+            >
+              Cancel material
+            </button>
+          </div>
+        </fieldset>
+        <p
+          v-if="materialNotice"
+          role="status"
+          class="text-sm text-success"
+        >
+          {{ materialNotice }}
+        </p>
+      </div>
       <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <FormField
           v-for="field in numericFields"
@@ -262,7 +402,7 @@ async function submit(): Promise<void> {
         <button
           type="submit"
           class="button button-primary"
-          :disabled="disabled || suppliers.length === 0 || materials.length === 0"
+          :disabled="disabled || materialBusy || creatingMaterial || suppliers.length === 0 || materials.length === 0"
         >
           {{ product ? 'Save product' : 'Create product' }}
         </button>

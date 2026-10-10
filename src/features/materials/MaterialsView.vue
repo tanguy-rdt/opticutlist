@@ -1,118 +1,29 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, shallowRef } from 'vue'
-
-import { materialSchema, type Material } from '../../domain/model/material'
-import FormField from '../../shared/ui/FormField.vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
+import { RouterLink } from 'vue-router'
+import type { Material } from '../../domain/model/material'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useMaterialRepository } from './material-repository'
 
 const repository = useMaterialRepository()
 const materials = shallowRef<readonly Material[]>([])
+const selectedIds = ref<readonly Material['id'][]>([])
+const selectedMaterials = computed(() => materials.value.filter((material) => selectedIds.value.includes(material.id)))
 const loading = ref(true)
-const busy = ref(false)
 const loadError = ref('')
-const operationError = ref('')
-const notice = ref('')
-const editing = shallowRef<Material | null>(null)
-const name = ref('')
-const category = ref('')
-const nameError = ref('')
-const categoryError = ref('')
-const nameInput = ref<HTMLInputElement | null>(null)
-const categoryInput = ref<HTMLInputElement | null>(null)
-
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
   const result = await repository.list()
   if (result.ok) materials.value = result.value
-  else {
-    materials.value = []
-    loadError.value = persistenceErrorMessage(result.error, 'Material')
-  }
+  else { materials.value = []; loadError.value = persistenceErrorMessage(result.error, 'Material') }
   loading.value = false
 }
-
-function clearErrors(): void {
-  nameError.value = ''
-  categoryError.value = ''
-  operationError.value = ''
+function toggle(material: Material): void {
+  selectedIds.value = selectedIds.value.includes(material.id)
+    ? selectedIds.value.filter((id) => id !== material.id)
+    : [...selectedIds.value, material.id]
 }
-
-function resetForm(): void {
-  editing.value = null
-  name.value = ''
-  category.value = ''
-  clearErrors()
-}
-
-async function startNew(): Promise<void> {
-  resetForm()
-  notice.value = ''
-  await nextTick()
-  nameInput.value?.focus()
-}
-
-async function edit(material: Material): Promise<void> {
-  editing.value = material
-  name.value = material.name
-  category.value = material.category
-  clearErrors()
-  notice.value = ''
-  await nextTick()
-  nameInput.value?.focus()
-}
-
-async function save(): Promise<void> {
-  if (busy.value || loading.value) return
-  clearErrors()
-  notice.value = ''
-  const parsed = materialSchema.safeParse({ id: editing.value?.id ?? crypto.randomUUID(), name: name.value, category: category.value })
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) {
-      if (issue.path[0] === 'name') nameError.value = issue.message
-      if (issue.path[0] === 'category') categoryError.value = issue.message
-    }
-    await nextTick()
-    if (nameError.value) nameInput.value?.focus()
-    else categoryInput.value?.focus()
-    return
-  }
-  busy.value = true
-  const wasEditing = editing.value !== null
-  const result = editing.value === null
-    ? await repository.create(parsed.data)
-    : await repository.update(editing.value.id, parsed.data)
-  if (result.ok) {
-    resetForm()
-    notice.value = wasEditing ? 'Material updated.' : 'Material created.'
-    await load()
-  } else operationError.value = persistenceErrorMessage(result.error, 'Material')
-  busy.value = false
-  await nextTick()
-  nameInput.value?.focus()
-}
-
-async function remove(material: Material): Promise<void> {
-  if (busy.value || loading.value) return
-  if (!window.confirm(`Delete “${material.name}”? This cannot be undone.`)) return
-  busy.value = true
-  operationError.value = ''
-  notice.value = ''
-  const result = await repository.delete(material.id)
-  if (result.ok) {
-    if (editing.value?.id === material.id) resetForm()
-    notice.value = 'Material deleted.'
-    await load()
-  } else operationError.value = persistenceErrorMessage(result.error, 'Material')
-  busy.value = false
-  // Restore focus after the deleted row and its action disappear.
-  if (result.ok) {
-    await nextTick()
-    nameInput.value?.focus()
-  }
-}
-
 onMounted(load)
 </script>
 
@@ -127,33 +38,10 @@ onMounted(load)
           Materials
         </h1>
         <p class="max-w-2xl text-muted">
-          The materials you work with, organized by name and category.
+          Select existing catalog materials for use. These choices are temporary; project-specific saving is not available yet.
         </p>
       </div>
-      <button
-        type="button"
-        class="button button-primary"
-        :disabled="busy || loading"
-        @click="startNew"
-      >
-        + New material
-      </button>
     </div>
-
-    <p
-      v-if="notice"
-      role="status"
-      class="rounded-lg border border-success bg-success-surface px-4 py-3 text-sm text-success"
-    >
-      {{ notice }}
-    </p>
-    <p
-      v-if="operationError"
-      role="alert"
-      class="rounded-lg border border-danger bg-danger-surface px-4 py-3 text-sm text-danger"
-    >
-      {{ operationError }}
-    </p>
 
     <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <div
@@ -170,7 +58,7 @@ onMounted(load)
           <button
             type="button"
             class="button"
-            :disabled="loading || busy"
+            :disabled="loading"
             @click="load"
           >
             Refresh
@@ -196,7 +84,7 @@ onMounted(load)
           <button
             type="button"
             class="button"
-            :disabled="busy"
+            :disabled="loading"
             @click="load"
           >
             Try again
@@ -207,19 +95,17 @@ onMounted(load)
           class="space-y-3 px-6 py-14 text-center"
         >
           <h3 class="text-lg font-semibold">
-            Your library starts here
+            No catalog materials yet
           </h3>
           <p class="mx-auto max-w-sm text-sm leading-relaxed text-muted">
-            Add your first material using the form. Give it a clear name, such as “Birch plywood BB/BB”, and a category like “Plywood”.
+            Create materials in a supplier product's Material field. This page selects existing catalog materials.
           </p>
-          <button
-            type="button"
-            class="button mt-2"
-            :disabled="busy"
-            @click="startNew"
+          <RouterLink
+            to="/suppliers"
+            class="button"
           >
-            Add your first material
-          </button>
+            Open supplier catalog
+          </RouterLink>
         </div>
         <div
           v-else
@@ -247,7 +133,7 @@ onMounted(load)
                   scope="col"
                   class="px-5 py-3 text-right font-semibold"
                 >
-                  Actions
+                  Use
                 </th>
               </tr>
             </thead>
@@ -267,26 +153,14 @@ onMounted(load)
                   {{ material.category }}
                 </td>
                 <td class="px-5 py-4">
-                  <div class="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      class="button"
-                      :disabled="busy || loading"
-                      :aria-label="`Edit ${material.name}`"
-                      @click="edit(material)"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      class="button button-danger"
-                      :disabled="busy || loading"
-                      :aria-label="`Delete ${material.name}`"
-                      @click="remove(material)"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  <input
+                    type="checkbox"
+                    class="h-5 w-5 accent-accent"
+                    :checked="selectedIds.includes(material.id)"
+                    :disabled="loading"
+                    :aria-label="`Use ${material.name}`"
+                    @change="toggle(material)"
+                  >
                 </td>
               </tr>
             </tbody>
@@ -295,88 +169,36 @@ onMounted(load)
       </div>
 
       <aside
-        class="panel p-6"
-        aria-labelledby="material-form-title"
+        class="panel space-y-4 p-6"
+        aria-labelledby="material-selection-title"
       >
-        <div class="mb-6 space-y-2">
-          <p class="eyebrow">
-            {{ editing ? 'Update your library' : 'Add to your library' }}
-          </p>
-          <h2
-            id="material-form-title"
-            class="text-xl font-semibold"
-          >
-            {{ editing ? 'Edit material' : 'New material' }}
-          </h2>
-          <p class="text-sm leading-relaxed text-muted">
-            Describe the material itself. Panel dimensions belong to parts, products, and stock.
-          </p>
-        </div>
-        <form
-          novalidate
-          class="space-y-5"
-          :aria-busy="busy"
-          @submit.prevent="save"
+        <h2
+          id="material-selection-title"
+          class="text-xl font-semibold"
         >
-          <FormField
-            id="material-name"
-            label="Name"
-            required
-            :error="nameError"
+          Selected materials
+        </h2>
+        <p
+          v-if="selectedMaterials.length === 0"
+          class="text-sm text-muted"
+        >
+          Choose materials from the catalog table.
+        </p>
+        <ul
+          v-else
+          class="space-y-2"
+        >
+          <li
+            v-for="material in selectedMaterials"
+            :key="material.id"
+            class="text-sm [overflow-wrap:anywhere]"
           >
-            <template #default="{ controlAttrs }">
-              <input
-                ref="nameInput"
-                v-model="name"
-                v-bind="controlAttrs"
-                class="field"
-                name="name"
-                maxlength="200"
-                autocomplete="off"
-                :disabled="busy || loading"
-                placeholder="e.g. Birch plywood BB/BB"
-              >
-            </template>
-          </FormField>
-          <FormField
-            id="material-category"
-            label="Category"
-            required
-            :error="categoryError"
-          >
-            <template #default="{ controlAttrs }">
-              <input
-                ref="categoryInput"
-                v-model="category"
-                v-bind="controlAttrs"
-                class="field"
-                name="category"
-                maxlength="200"
-                autocomplete="off"
-                :disabled="busy || loading"
-                placeholder="e.g. Plywood"
-              >
-            </template>
-          </FormField>
-          <div class="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              class="button button-primary flex-1"
-              :disabled="busy || loading"
-            >
-              {{ busy ? 'Please wait…' : (editing ? 'Save changes' : 'Create material') }}
-            </button>
-            <button
-              v-if="editing"
-              type="button"
-              class="button"
-              :disabled="busy || loading"
-              @click="startNew"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+            {{ material.name }} · {{ material.category }}
+          </li>
+        </ul>
+        <p class="text-sm text-muted">
+          Selections stay on this page only. Catalog records are not changed.
+        </p>
       </aside>
     </div>
   </section>
