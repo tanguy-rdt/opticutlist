@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest'
 
 import { isOptimizationResponse, isOptimizeRequest, isRequestId } from '../optimization-protocol'
 
-const input = { panel: {}, parts: [], settings: {} }
+import { validPartInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
+import { partSchema } from '../../../domain/model/part'
+import { supplierProductSchema } from '../../../domain/model/supplier-product'
+import { optimizePanel } from '../../../domain/optimizer/optimize-panel'
+
+const input = {
+  panel: supplierProductSchema.parse(validSupplierProductInput),
+  parts: [partSchema.parse(validPartInput)],
+  settings: { kerfMm: 3.2, edgeMarginMm: 10 },
+}
+const selection = optimizePanel(input)
 
 describe('isRequestId', () => {
   it.each([1, 2, Number.MAX_SAFE_INTEGER])('accepts %d', (id) => {
@@ -21,6 +31,9 @@ describe('isOptimizeRequest', () => {
 
   it.each([
     null,
+    { type: 'optimize', requestId: 1, input: { ...input, panel: { ...input.panel, thicknessMm: undefined } } },
+    { type: 'optimize', requestId: 1, input: { ...input, parts: [{ ...input.parts[0], quantity: 0 }] } },
+    { type: 'optimize', requestId: 1, input: { ...input, settings: { kerfMm: Number.NaN, edgeMarginMm: 10 } } },
     'optimize',
     {},
     { type: 'optimise', requestId: 1, input },
@@ -37,8 +50,8 @@ describe('isOptimizeRequest', () => {
 
 describe('isOptimizationResponse', () => {
   it.each([
-    { type: 'result', requestId: 3, selection: { ok: true } },
-    { type: 'result', requestId: 3, selection: { ok: false } },
+    { type: 'result', requestId: 3, selection },
+    { type: 'result', requestId: 3, selection: { ok: false, error: { kind: 'noUsableArea' } } },
     { type: 'error', requestId: 3, error: { kind: 'optimizerError', message: 'boom' } },
     { type: 'error', requestId: null, error: { kind: 'invalidRequest', message: 'bad' } },
   ])('accepts %o', (data) => {
@@ -47,6 +60,8 @@ describe('isOptimizationResponse', () => {
 
   it.each([
     null,
+    { type: 'result', requestId: 3, selection: { ok: true } },
+    { type: 'result', requestId: 3, selection: { ok: false } },
     { type: 'result', requestId: 3 },
     { type: 'result', requestId: null, selection: { ok: true } },
     { type: 'result', requestId: 3, selection: { ok: 'yes' } },

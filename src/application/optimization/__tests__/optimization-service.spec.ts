@@ -119,6 +119,53 @@ describe('createOptimizationService', () => {
   })
 
   describe('independent validation', () => {
+    it('validates against a snapshot even if the caller changes its input', async () => {
+      const { service, current } = setup()
+      const mutable = structuredClone(input)
+      const outcome = service.optimize(mutable)
+      mutable.parts.push(mutable.parts[0] ?? partSchema.parse(validPartInput))
+      mutable.panel.thicknessMm = 25
+      mutable.settings.edgeMarginMm = 700
+      current().respondWithHandler()
+
+      await expect(outcome).resolves.toMatchObject({ status: 'completed', selection })
+    })
+
+    it.each([
+      { ok: true },
+      { ok: false },
+      ...(selection.ok ? [
+        { ...selection, plan: { ...selection.plan, tree: null } },
+        { ...selection, plan: { ...selection.plan, tree: { kind: 'unknown', region: selection.plan.tree.region } } },
+        { ...selection, plan: { ...selection.plan, tree: { kind: 'cut', region: selection.plan.tree.region } } },
+      ] : []),
+    ])('settles malformed results and releases the worker: %o', async (malformed) => {
+      const { service, current } = setup()
+      const outcome = service.optimize(input)
+      current().respond({ type: 'result', requestId: 1, selection: malformed })
+
+      await expect(outcome).resolves.toMatchObject({ status: 'failed', error: { kind: 'invalidResponse' } })
+      expect(current().terminated).toBe(true)
+      expect(current().onmessage).toBeNull()
+      expect(current().onerror).toBeNull()
+      expect(current().onmessageerror).toBeNull()
+      const next = service.optimize(input)
+      current().respondWithHandler()
+      await expect(next).resolves.toMatchObject({ status: 'completed', requestId: 2 })
+    })
+
+    it('settles validation exceptions as failures and releases the worker', async () => {
+      const { service, current } = setup()
+      const part = partSchema.parse(validPartInput)
+      const outcome = service.optimize({ ...input, parts: [part, part] })
+      current().respond(result(1))
+
+      await expect(outcome).resolves.toMatchObject({
+        status: 'failed', error: { kind: 'invalidResponse', message: 'Duplicate part ID part-side-panel in cutting tree context' },
+      })
+      expect(current().terminated).toBe(true)
+    })
+
     it('rejects a received plan that fails re-validation on the main thread', async () => {
       const { service, current } = setup()
       const outcome = service.optimize(input)
@@ -226,14 +273,14 @@ describe('createOptimizationService', () => {
       })
     })
 
-    it('fails and discards the worker when the request cannot be posted', async () => {
-      const { service, current } = setup()
+    it('fails before creating a worker when the input cannot be cloned', async () => {
+      const { service, workers } = setup()
       // Functions cannot be structured-cloned, so posting this input throws a DataCloneError.
       const uncloneable = { ...input, settings: Object.assign({ ...input.settings }, { extra: () => 0 }) }
       const outcome = service.optimize(uncloneable)
 
       await expect(outcome).resolves.toMatchObject({ status: 'failed', error: { kind: 'workerError' } })
-      expect(current().terminated).toBe(true)
+      expect(workers).toHaveLength(0)
     })
   })
 

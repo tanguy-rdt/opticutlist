@@ -140,7 +140,7 @@ Exact region equality makes the leaves tile the usable area minus kerfs, so no g
 
 ### Implemented Single-Panel Optimizer
 
-`src/domain/optimizer/` optimizes **one panel** with a few deterministic guillotine strategies and selects the best validated plan. It is pure TypeScript: no worker, UI or persistence. The Web Worker will wrap it later.
+`src/domain/optimizer/` optimizes **one panel** with a few deterministic guillotine strategies and selects the best validated plan. It is pure TypeScript: no worker, UI or persistence. The application service executes it through the Web Worker described below.
 
 - **Entry point** (`optimize-panel.ts`): `optimizePanel({ panel, parts, settings })` runs every strategy and returns `{ ok: true, strategy, plan, comparison }`. It takes a supplier product or stock item, schema-validated parts with unique IDs (duplicates throw) and `CuttingSettings`.
   - Otherwise it returns `{ ok: false, error }` with `noUsableArea`, or `noValidCandidate` when every candidate was rejected (the comparison is included).
@@ -176,7 +176,7 @@ Optimization runs off the main thread. The domain optimizer stays pure; the work
 - **Protocol** (`src/application/optimization/optimization-protocol.ts`): plain, structured-cloneable messages.
   - Request: `OptimizeRequest { type: 'optimize', requestId, input }`.
   - Responses: `{ type: 'result', requestId, selection }` when the optimizer ran (`selection` may be a domain failure such as `noUsableArea`), or `{ type: 'error', requestId | null, error }` with `optimizerError` (the optimizer threw) or `invalidRequest`.
-  - Envelope type guards (`isOptimizeRequest`, `isOptimizationResponse`) replace unsafe casts at the boundary.
+  - Boundary type guards (`isOptimizeRequest`, `isOptimizationResponse`) replace unsafe casts. Requests check the required panel/part fields with the existing domain schemas and validate settings before optimization; catalog and stock metadata remain intact. Responses check result envelopes and tree structure before geometric validation, so missing nodes and unknown node kinds become structured failures.
 - **Worker** (`src/workers/optimization/`):
   - `optimization.worker.ts` is the entry point.
   - `handleOptimizationRequest` delegates to `optimizePanel` and turns exceptions into error responses; it never throws.
@@ -185,7 +185,7 @@ Optimization runs off the main thread. The domain optimizer stays pure; the work
   - `optimize(input)` assigns a unique, increasing `requestId` and resolves (never rejects for expected outcomes) to `completed`, `cancelled` (`cancelled | superseded | disposed`) or `failed` (`optimizerError | invalidRequest | workerError | invalidResponse | invalidPlan`).
   - At most one request is in flight. A new request supersedes the previous one. Cancellation, supersession, worker crashes, unreadable messages and disposal **terminate** the worker, because a running computation cannot be interrupted. The worker is recreated lazily for the next request; an idle worker is reused.
   - Stale results are never applied: responses whose `requestId` is not in flight, and messages or errors from a replaced worker, are ignored. Handlers are detached on termination.
-  - Every received plan is re-validated with `validateCuttingTree` on the main thread before it is reported as `completed`. A plan that fails becomes `failed` with `invalidPlan`, so invalid plans never cross into the UI.
+  - The service snapshots input before posting it and validates against that snapshot, so caller mutations cannot change the in-flight validation context. Every received plan is re-validated with `validateCuttingTree` on the main thread before it is reported as `completed`. Malformed responses or validation exceptions fail the request and release the worker instead of leaving a pending promise. A plan that fails becomes `failed` with `invalidPlan`, so invalid plans never cross into the UI.
 
 Dependency direction: `workers → application → domain`. The UI will use the service; it must not talk to the worker directly.
 

@@ -108,7 +108,13 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
 
     const { selection } = data
     if (selection.ok) {
-      const validation = validateCuttingTree(selection.plan.tree, current.input)
+      let validation
+      try {
+        validation = validateCuttingTree(selection.plan.tree, current.input)
+      } catch (error) {
+        failWorker(source, { kind: 'invalidResponse', message: error instanceof Error ? error.message : String(error) })
+        return
+      }
       if (!validation.valid) {
         settle({ status: 'failed', requestId: current.requestId, error: { kind: 'invalidPlan', issues: validation.issues } })
         return
@@ -158,7 +164,9 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
       return new Promise<OptimizationOutcome>((resolve) => {
         pending = { requestId, input, resolve }
         try {
-          ensureWorker().postMessage({ type: 'optimize', requestId, input })
+          const snapshot = structuredClone(input)
+          pending = { requestId, input: snapshot, resolve }
+          ensureWorker().postMessage({ type: 'optimize', requestId, input: snapshot })
         } catch (error) {
           destroyWorker()
           settle({

@@ -1,3 +1,6 @@
+import { cuttingSettingsSchema } from '../../domain/model/cutting-settings'
+import { partSchema } from '../../domain/model/part'
+import { PLACEMENT_STRATEGIES } from '../../domain/optimizer/plan-with-strategy'
 import type { OptimizePanelSelection } from '../../domain/optimizer/optimize-panel'
 import type { OptimizePanelInput } from '../../domain/optimizer/plan-with-strategy'
 
@@ -32,20 +35,48 @@ export function isRequestId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
 
-/**
- * Checks the message envelope. The payload is produced by this application from schema-validated domain
- * values and is not re-parsed here; the optimizer still rejects out-of-range numbers.
- */
+/** Check the optimizer's required fields without stripping catalog or stock metadata. */
+function isPanelSpec(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const fields = partSchema.shape
+  return fields.materialId.safeParse(value.materialId).success &&
+    fields.lengthMm.safeParse(value.lengthMm).success &&
+    fields.widthMm.safeParse(value.widthMm).success &&
+    fields.thicknessMm.safeParse(value.thicknessMm).success &&
+    fields.grainDirection.safeParse(value.grainDirection).success
+}
+
 export function isOptimizeRequest(data: unknown): data is OptimizeRequest {
-  return (
-    isRecord(data) &&
-    data.type === 'optimize' &&
-    isRequestId(data.requestId) &&
-    isRecord(data.input) &&
-    isRecord(data.input.panel) &&
-    Array.isArray(data.input.parts) &&
-    isRecord(data.input.settings)
-  )
+  if (!isRecord(data) || data.type !== 'optimize' || !isRequestId(data.requestId) || !isRecord(data.input)) {
+    return false
+  }
+  const { panel, parts, settings } = data.input
+  return isPanelSpec(panel) && Array.isArray(parts) && parts.every((part: unknown) =>
+    isRecord(part) && isPanelSpec(part) && partSchema.shape.id.safeParse(part.id).success &&
+    partSchema.shape.quantity.safeParse(part.quantity).success && partSchema.shape.rotation.safeParse(part.rotation).success,
+  ) && cuttingSettingsSchema.safeParse(settings).success
+}
+
+/** Check tree structure before calling the geometric validator, including cyclic cloned data. */
+function hasTreeStructure(root: unknown): boolean {
+  const remaining: unknown[] = [root]
+  const visited = new Set<unknown>()
+  while (remaining.length > 0) {
+    const node = remaining.pop()
+    if (visited.has(node)) continue
+    visited.add(node)
+    if (!isRecord(node) || !isRecord(node.region)) return false
+    const region = node.region
+    if (!['xMm', 'yMm', 'lengthMm', 'widthMm'].every((key) => typeof region[key] === 'number')) return false
+    if (node.kind === 'cut') {
+      if (!isRecord(node.cut) || (node.cut.axis !== 'length' && node.cut.axis !== 'width') || typeof node.cut.offsetMm !== 'number') return false
+      remaining.push(node.first, node.second)
+    } else if (node.kind === 'part') {
+      if (!partSchema.shape.id.safeParse(node.partId).success || typeof node.copyIndex !== 'number' ||
+        (node.orientation !== 'normal' && node.orientation !== 'rotated')) return false
+    } else if (node.kind !== 'waste') return false
+  }
+  return true
 }
 
 /** Checks the message envelope; plans in successful results are re-validated by the service. */
@@ -54,7 +85,15 @@ export function isOptimizationResponse(data: unknown): data is OptimizationRespo
     return false
   }
   if (data.type === 'result') {
-    return isRequestId(data.requestId) && isRecord(data.selection) && typeof data.selection.ok === 'boolean'
+    if (!isRequestId(data.requestId) || !isRecord(data.selection)) return false
+    const selection = data.selection
+    if (selection.ok === false) {
+      return isRecord(selection.error) && (selection.error.kind === 'noUsableArea' ||
+        (selection.error.kind === 'noValidCandidate' && Array.isArray(selection.error.comparison)))
+    }
+    return selection.ok === true && PLACEMENT_STRATEGIES.some((strategy) => strategy === selection.strategy) &&
+      Array.isArray(selection.comparison) && isRecord(selection.plan) && hasTreeStructure(selection.plan.tree) &&
+      Array.isArray(selection.plan.placements) && Array.isArray(selection.plan.unplaced) && isRecord(selection.plan.metrics)
   }
   return (
     data.type === 'error' &&

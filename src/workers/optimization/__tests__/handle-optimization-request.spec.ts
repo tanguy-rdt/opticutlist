@@ -43,10 +43,23 @@ describe('handleOptimizationRequest', () => {
     })
   })
 
-  it('converts out-of-range geometry into structured errors', () => {
+  it('rejects non-finite settings before optimization', () => {
     const response = handleOptimizationRequest({ type: 'optimize', requestId: 4, input: { ...input, settings: { kerfMm: Number.NaN, edgeMarginMm: 10 } } })
 
+    expect(response).toMatchObject({ type: 'error', requestId: 4, error: { kind: 'invalidRequest' } })
+  })
+
+  it('converts finite but out-of-range geometry into structured errors', () => {
+    const response = handleOptimizationRequest({ type: 'optimize', requestId: 4, input: { ...input, settings: { kerfMm: Number.MAX_VALUE, edgeMarginMm: 10 } } })
+
     expect(response).toMatchObject({ type: 'error', requestId: 4, error: { kind: 'optimizerError' } })
+  })
+
+  it.each(['lengthMm', 'widthMm', 'thicknessMm'])('rejects a panel missing mandatory %s', (field) => {
+    const panel = { ...input.panel, [field]: undefined }
+    expect(handleOptimizationRequest({ type: 'optimize', requestId: 5, input: { ...input, panel } })).toMatchObject({
+      type: 'error', requestId: 5, error: { kind: 'invalidRequest' },
+    })
   })
 
   it('rejects malformed messages and keeps a readable request ID', () => {
