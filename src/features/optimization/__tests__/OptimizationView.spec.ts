@@ -19,6 +19,8 @@ import { supplierProductRepositoryKey, supplierRepositoryKey } from '../../suppl
 import OptimizationView from '../OptimizationView.vue'
 import { optimizationServiceFactoryKey } from '../optimization-service'
 
+vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
+
 class FakeWorker implements OptimizationWorkerPort {
   onmessage: OptimizationWorkerPort['onmessage'] = null
   onerror: OptimizationWorkerPort['onerror'] = null
@@ -102,9 +104,19 @@ describe('Project single-panel optimization', () => {
     expect(wrapper.text()).toContain('Validated single-panel plan')
     expect(wrapper.text()).toContain('2 copies placed · 0 copies unplaced')
     expect(wrapper.text()).toContain('largestAreaFirst')
+    expect(wrapper.text()).toContain('Cutting layout')
+    expect(wrapper.find('[aria-label="Cutting plan canvas"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Panel utilization')
     expect(wrapper.text()).toContain('Waste area')
     expect(wrapper.get('table').text()).toContain('720 × 560 × 18')
+    const inputSnapshot = structuredClone(worker.request.input)
+    const copy = wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value')
+    await wrapper.get('#cutting-viewer-part').setValue(copy)
+    const zoom = wrapper.findAll('button').find(button => button.text() === 'Zoom in')
+    if (zoom === undefined) throw new Error('Missing zoom control')
+    await zoom.trigger('click')
+    expect(wrapper.get('aside dl').text()).toContain('Side panel / 1')
+    expect(worker.request.input).toEqual(inputSnapshot)
     expect(await persistence.stockItems.list()).toEqual(stock)
     expect(await service.projects.get(project.id)).toEqual(savedProject)
   })

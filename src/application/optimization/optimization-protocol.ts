@@ -58,7 +58,7 @@ export function isOptimizeRequest(data: unknown): data is OptimizeRequest {
 }
 
 /** Check tree structure before calling the geometric validator, including cyclic cloned data. */
-function hasTreeStructure(root: unknown): boolean {
+export function hasTreeStructure(root: unknown): boolean {
   const remaining: unknown[] = [root]
   const visited = new Set<unknown>()
   while (remaining.length > 0) {

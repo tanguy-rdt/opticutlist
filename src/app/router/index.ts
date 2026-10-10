@@ -2,7 +2,6 @@ import { createRouter, createWebHashHistory, type Router, type RouterHistory } f
 
 import ProjectPartsView from '../../features/projects/ProjectPartsView.vue'
 import ProjectWorkspace from '../../features/projects/ProjectWorkspace.vue'
-import OptimizationView from '../../features/optimization/OptimizationView.vue'
 import SuppliersView from '../../features/suppliers/SuppliersView.vue'
 import MaterialsView from '../../features/materials/MaterialsView.vue'
 import ProjectsView from '../views/ProjectsView.vue'
@@ -23,7 +22,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
         { path: '', redirect: to => ({ name: 'project-parts', params: to.params }) },
         { path: 'parts', name: 'project-parts', component: ProjectPartsView },
         { path: 'materials', name: 'project-materials', component: MaterialsView },
-        { path: 'optimization', name: 'project-optimization', component: OptimizationView },
+        { path: 'optimization', name: 'project-optimization', component: () => import('../../features/optimization/OptimizationView.vue') },
       ] },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
     ],

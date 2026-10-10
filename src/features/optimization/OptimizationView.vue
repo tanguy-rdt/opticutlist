@@ -8,6 +8,7 @@ import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { OptimizePanelSelection } from '../../domain/optimizer/optimize-panel'
 import type { UnplacedReason } from '../../domain/optimizer/plan-with-strategy'
 import FormField from '../../shared/ui/FormField.vue'
+import CuttingPlanViewer from './CuttingPlanViewer.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useMaterialRepository } from '../materials/material-repository'
 import { useProjectId, useProjectService } from '../projects/project-service'
@@ -389,6 +390,12 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
         <p role="status">
           {{ result.selection.plan.placements.length }} copies placed · {{ unplacedCount }} copies unplaced{{ unplacedCount ? '. Additional panels or different inputs are needed.' : '.' }}
         </p>
+        <CuttingPlanViewer
+          :plan="result.selection.plan"
+          :panel="result.panel"
+          :parts="result.parts"
+          :settings="result.settings"
+        />
         <dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt class="text-sm text-muted">

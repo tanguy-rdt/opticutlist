@@ -15,8 +15,8 @@ export type PartOrientationSpec = Pick<Part, 'grainDirection' | 'rotation'>
 const ALL_ORIENTATIONS: readonly Orientation[] = ['normal', 'rotated']
 
 /** Grain axis of the placed part, expressed in panel axes. */
-function grainInPanelAxes(partGrain: 'length' | 'width', orientation: Orientation): 'length' | 'width' {
-  if (orientation === 'normal') {
+export function grainInPanelAxes(partGrain: GrainDirection, orientation: Orientation): GrainDirection {
+  if (partGrain === 'none' || orientation === 'normal') {
     return partGrain
   }
   return partGrain === 'length' ? 'width' : 'length'
