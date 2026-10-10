@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, type Router, type RouterHistory } from 'vue-router'
 
+import PartsView from '../../features/parts/PartsView.vue'
 import MaterialsView from '../../features/materials/MaterialsView.vue'
 import ProjectsView from '../views/ProjectsView.vue'
 import HomeView from '../views/HomeView.vue'
@@ -12,6 +13,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
     routes: [
       { path: '/', name: 'home', component: HomeView },
       { path: '/materials', name: 'materials', component: MaterialsView },
+      { path: '/parts', name: 'parts', component: PartsView },
       { path: '/projects', name: 'projects', component: ProjectsView },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
     ],

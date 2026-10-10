@@ -70,6 +70,12 @@ function focusContent(): void {
           Materials
         </RouterLink>
         <RouterLink
+          to="/parts"
+          class="nav-link"
+        >
+          Parts
+        </RouterLink>
+        <RouterLink
           to="/projects"
           class="nav-link"
         >

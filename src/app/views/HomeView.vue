@@ -12,7 +12,7 @@ import { RouterLink } from 'vue-router'
         Welcome to OptiCutList
       </h1>
       <p class="max-w-2xl leading-relaxed text-muted">
-        Good cuts start with an organized workshop. Build your material library, then use it to plan rectangular panel cuts.
+        Good cuts start with an organized workshop. Build your material and part libraries, ready for planning rectangular panel cuts.
       </p>
     </div>
     <div class="grid gap-6 md:grid-cols-2">
@@ -32,23 +32,23 @@ import { RouterLink } from 'vue-router'
         </RouterLink>
       </article>
       <article class="panel flex flex-col items-start gap-4 p-6 md:p-8">
-        <span class="eyebrow">Coming later</span>
+        <span class="eyebrow">Next step</span>
         <h2 class="text-xl font-semibold">
-          From project to cutting plan
+          Your part library
         </h2>
         <p class="max-w-prose text-muted">
-          Projects, parts, and cutting plans will bring your workshop workflow together. For now, start with your material library.
+          Define finished dimensions, quantities, materials, grain direction, and rotation restrictions for the parts you need.
         </p>
         <RouterLink
-          to="/projects"
+          to="/parts"
           class="button mt-auto"
         >
-          View project roadmap <span aria-hidden="true">→</span>
+          Manage parts <span aria-hidden="true">→</span>
         </RouterLink>
       </article>
     </div>
     <p class="text-sm text-muted">
-      Your material library stays in this browser. No account required.
+      Your material and part libraries stay in this browser. No account required.
     </p>
   </section>
 </template>

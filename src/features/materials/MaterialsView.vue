@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, shallowRef } from 'vue'
 
-import type { PersistenceError } from '../../application/persistence/repositories'
 import { materialSchema, type Material } from '../../domain/model/material'
+import FormField from '../../shared/ui/FormField.vue'
+import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useMaterialRepository } from './material-repository'
 
 const repository = useMaterialRepository()
@@ -20,15 +21,6 @@ const categoryError = ref('')
 const nameInput = ref<HTMLInputElement | null>(null)
 const categoryInput = ref<HTMLInputElement | null>(null)
 
-function errorMessage(error: PersistenceError): string {
-  switch (error.kind) {
-    case 'invalidRecord': return 'Material data is invalid. No records were changed.'
-    case 'duplicateId': return 'A material with this ID already exists. Start a new material and try again.'
-    case 'notFound': return 'This material no longer exists. Refresh the library and try again.'
-    case 'storageFailure': return 'Could not access local storage. Try again. Your browser may be blocking storage or out of space.'
-  }
-}
-
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
@@ -36,7 +28,7 @@ async function load(): Promise<void> {
   if (result.ok) materials.value = result.value
   else {
     materials.value = []
-    loadError.value = errorMessage(result.error)
+    loadError.value = persistenceErrorMessage(result.error, 'Material')
   }
   loading.value = false
 }
@@ -95,7 +87,7 @@ async function save(): Promise<void> {
     resetForm()
     notice.value = wasEditing ? 'Material updated.' : 'Material created.'
     await load()
-  } else operationError.value = errorMessage(result.error)
+  } else operationError.value = persistenceErrorMessage(result.error, 'Material')
   busy.value = false
   await nextTick()
   nameInput.value?.focus()
@@ -112,7 +104,7 @@ async function remove(material: Material): Promise<void> {
     if (editing.value?.id === material.id) resetForm()
     notice.value = 'Material deleted.'
     await load()
-  } else operationError.value = errorMessage(result.error)
+  } else operationError.value = persistenceErrorMessage(result.error, 'Material')
   busy.value = false
   // Restore focus after the deleted row and its action disappear.
   if (result.ok) {
@@ -326,60 +318,46 @@ onMounted(load)
           :aria-busy="busy"
           @submit.prevent="save"
         >
-          <div class="space-y-2">
-            <label
-              for="material-name"
-              class="block text-sm font-semibold"
-            >Name <span class="font-normal text-muted">(required)</span></label>
-            <input
-              id="material-name"
-              ref="nameInput"
-              v-model="name"
-              class="field"
-              name="name"
-              maxlength="200"
-              required
-              autocomplete="off"
-              :disabled="busy || loading"
-              :aria-invalid="Boolean(nameError)"
-              aria-describedby="material-name-error"
-              placeholder="e.g. Birch plywood BB/BB"
-            >
-            <p
-              id="material-name-error"
-              :role="nameError ? 'alert' : undefined"
-              class="text-sm text-danger"
-            >
-              {{ nameError }}
-            </p>
-          </div>
-          <div class="space-y-2">
-            <label
-              for="material-category"
-              class="block text-sm font-semibold"
-            >Category <span class="font-normal text-muted">(required)</span></label>
-            <input
-              id="material-category"
-              ref="categoryInput"
-              v-model="category"
-              class="field"
-              name="category"
-              maxlength="200"
-              required
-              autocomplete="off"
-              :disabled="busy || loading"
-              :aria-invalid="Boolean(categoryError)"
-              aria-describedby="material-category-error"
-              placeholder="e.g. Plywood"
-            >
-            <p
-              id="material-category-error"
-              :role="categoryError ? 'alert' : undefined"
-              class="text-sm text-danger"
-            >
-              {{ categoryError }}
-            </p>
-          </div>
+          <FormField
+            id="material-name"
+            label="Name"
+            required
+            :error="nameError"
+          >
+            <template #default="{ controlAttrs }">
+              <input
+                ref="nameInput"
+                v-model="name"
+                v-bind="controlAttrs"
+                class="field"
+                name="name"
+                maxlength="200"
+                autocomplete="off"
+                :disabled="busy || loading"
+                placeholder="e.g. Birch plywood BB/BB"
+              >
+            </template>
+          </FormField>
+          <FormField
+            id="material-category"
+            label="Category"
+            required
+            :error="categoryError"
+          >
+            <template #default="{ controlAttrs }">
+              <input
+                ref="categoryInput"
+                v-model="category"
+                v-bind="controlAttrs"
+                class="field"
+                name="category"
+                maxlength="200"
+                autocomplete="off"
+                :disabled="busy || loading"
+                placeholder="e.g. Plywood"
+              >
+            </template>
+          </FormField>
           <div class="flex flex-wrap gap-2">
             <button
               type="submit"

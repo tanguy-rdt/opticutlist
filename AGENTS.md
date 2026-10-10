@@ -77,6 +77,8 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Vue features receive repositories through typed injection keys provided by the bootstrap; never create database connections in components.
 - Use semantic theme tokens from `src/app/styles.css` for UI colors. Theme preferences may use localStorage; persistent business records remain exclusively in IndexedDB.
 - Component tests inject repository ports; persistence integration tests use isolated fake-indexeddb factories. Confirm deletions and associate field validation errors with their inputs.
+- Entity forms validate complete records with their existing domain schemas. Keep empty numeric inputs empty until validation; never substitute zero or omit mandatory thickness. Use the shared `FormField` for labels, required indicators and linked errors.
+- Parts forms require an explicit selection from existing materials. Show missing material references and preserve failed drafts rather than silently replacing selections.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD
@@ -141,7 +143,7 @@ Rules:
 - If all checks pass, create a local Conventional Commit only.
 - Include relevant AGENTS.md and ARCHITECTURE.md updates in the same commit.
 - Never commit when checks fail.
-- Never run `git push`, including force-push.
+- Never run `git push`, including force-push, for any task. Completed work stays in local commits only.
 - Never amend existing commits or rewrite Git history.
 - Never include secrets, credentials or unrelated changes.
 - Report the commit message and hash in the final summary.
