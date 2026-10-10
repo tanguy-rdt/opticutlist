@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, and a single-panel optimizer comparing several deterministic strategies (see below). No UI, persistence, Web Worker, multi-panel or cost optimization exist yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, a single-panel optimizer comparing several deterministic strategies, and Web Worker execution through an application service (see below). No UI, persistence, multi-panel or cost optimization exist yet.
 
 ### Suggested Directory Layout
 
@@ -168,6 +168,26 @@ Exact region equality makes the leaves tile the usable area minus kerfs, so no g
 - **Metrics** (`computeAreaMetrics`): areas are computed in integer µm² and reported in mm². They are relative to the whole panel, so waste includes margins, kerf and waste leaves. `utilizationPercent = used / panel × 100`.
 
 Because a cut must leave a strictly positive second region, a part that would leave a sliver narrower than or equal to the kerf is not placed. This follows the current cut-tree rule.
+
+### Implemented Optimization Worker
+
+Optimization runs off the main thread. The domain optimizer stays pure; the worker only adapts messages.
+
+- **Protocol** (`src/application/optimization/optimization-protocol.ts`): plain, structured-cloneable messages.
+  - Request: `OptimizeRequest { type: 'optimize', requestId, input }`.
+  - Responses: `{ type: 'result', requestId, selection }` when the optimizer ran (`selection` may be a domain failure such as `noUsableArea`), or `{ type: 'error', requestId | null, error }` with `optimizerError` (the optimizer threw) or `invalidRequest`.
+  - Envelope type guards (`isOptimizeRequest`, `isOptimizationResponse`) replace unsafe casts at the boundary.
+- **Worker** (`src/workers/optimization/`):
+  - `optimization.worker.ts` is the entry point.
+  - `handleOptimizationRequest` delegates to `optimizePanel` and turns exceptions into error responses; it never throws.
+  - `createOptimizationWorker()` uses Vite's native `new Worker(new URL('./optimization.worker.ts', import.meta.url), { type: 'module' })`. `vite.config.ts` sets `worker.format: 'es'`, and the chunk respects the GitHub Pages base path.
+- **Application service** (`src/application/optimization/optimization-service.ts`): `createOptimizationService(createWorker)` depends only on the minimal `OptimizationWorkerPort` (a real `Worker` satisfies it; tests inject a fake).
+  - `optimize(input)` assigns a unique, increasing `requestId` and resolves (never rejects for expected outcomes) to `completed`, `cancelled` (`cancelled | superseded | disposed`) or `failed` (`optimizerError | invalidRequest | workerError | invalidResponse | invalidPlan`).
+  - At most one request is in flight. A new request supersedes the previous one. Cancellation, supersession, worker crashes, unreadable messages and disposal **terminate** the worker, because a running computation cannot be interrupted. The worker is recreated lazily for the next request; an idle worker is reused.
+  - Stale results are never applied: responses whose `requestId` is not in flight, and messages or errors from a replaced worker, are ignored. Handlers are detached on termination.
+  - Every received plan is re-validated with `validateCuttingTree` on the main thread before it is reported as `completed`. A plan that fails becomes `failed` with `invalidPlan`, so invalid plans never cross into the UI.
+
+Dependency direction: `workers → application → domain`. The UI will use the service; it must not talk to the worker directly.
 
 ## Guillotine Optimization
 

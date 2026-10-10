@@ -61,6 +61,10 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Randomized tests use a seeded generator so failures are reproducible.
 - New placement strategies are added to `PLACEMENT_STRATEGIES` in `plan-with-strategy.ts`. They reuse the shared splitting and validation, and must not change the selection ranking in `optimize-panel.ts` without updating `ARCHITECTURE.md`.
 - Keep `largestAreaFirst` byte-for-byte stable; its exact-tree tests are the optimizer's regression baseline.
+- The optimization worker is a thin adapter: never put optimization or validation logic in `src/workers/`. Delegate to the domain.
+- Worker messages must be plain, structured-cloneable data defined in `optimization-protocol.ts`. Check incoming messages with its type guards rather than casting `MessageEvent.data`.
+- UI code uses `createOptimizationService`, never a `Worker` directly. Inject a fake `OptimizationWorkerPort` in tests (jsdom has no workers).
+- The service resolves typed outcomes instead of rejecting, and re-validates every received plan. Keep both properties when extending it.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD
