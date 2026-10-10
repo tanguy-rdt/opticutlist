@@ -1,4 +1,6 @@
 import { createApp } from 'vue'
+import { createCatalogRepositories } from './application/catalog/catalog-repositories'
+import { supplierRepositoryKey, supplierProductRepositoryKey } from './features/suppliers/catalog-repositories'
 
 import { partRepositoryKey } from './features/parts/part-repository'
 import { materialRepositoryKey } from './features/materials/material-repository'
@@ -11,7 +13,10 @@ import './app/styles.css'
 
 const app = createApp(App)
 const persistence = createLocalPersistence()
-app.provide(materialRepositoryKey, persistence.materials)
+const catalog = createCatalogRepositories(persistence)
+app.provide(materialRepositoryKey, catalog.materials)
+app.provide(supplierRepositoryKey, catalog.suppliers)
+app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
 app.provide(partRepositoryKey, persistence.parts)
 app.onUnmount(() => { persistence.close() })
 

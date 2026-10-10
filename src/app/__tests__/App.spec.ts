@@ -9,6 +9,8 @@ import { materialRepositoryKey } from '../../features/materials/material-reposit
 import { partRepositoryKey } from '../../features/parts/part-repository'
 import { createLocalPersistence } from '../../infrastructure/persistence/local-database'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
+import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../features/suppliers/catalog-repositories'
+import { createCatalogRepositories } from '../../application/catalog/catalog-repositories'
 
 const wrappers: VueWrapper[] = []
 afterEach(() => {
@@ -72,5 +74,26 @@ describe('App shell', () => {
       wrapper.unmount()
       persistence.close()
     }
+  })
+
+  it('opens Suppliers from the main navigation', async () => {
+    const persistence = createLocalPersistence('supplier-navigation-test', { indexedDB: new IDBFactory(), IDBKeyRange })
+    const catalog = createCatalogRepositories(persistence)
+    const router = createAppRouter(createMemoryHistory())
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(App, {
+      global: {
+        plugins: [createAppPinia(), router],
+        provide: { [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers, [supplierProductRepositoryKey]: catalog.supplierProducts },
+      },
+    })
+    wrappers.push(wrapper)
+    try {
+      await wrapper.get('nav a[href="/suppliers"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('h1').text()).toBe('Suppliers')
+      expect(wrapper.get('nav a[href="/suppliers"]').attributes('aria-current')).toBe('page')
+    } finally { wrapper.unmount(); persistence.close() }
   })
 })

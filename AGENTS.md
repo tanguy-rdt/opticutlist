@@ -79,6 +79,8 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Component tests inject repository ports; persistence integration tests use isolated fake-indexeddb factories. Confirm deletions and associate field validation errors with their inputs.
 - Entity forms validate complete records with their existing domain schemas. Keep empty numeric inputs empty until validation; never substitute zero or omit mandatory thickness. Use the shared `FormField` for labels, required indicators and linked errors.
 - Parts forms require an explicit selection from existing materials. Show missing material references and preserve failed drafts rather than silently replacing selections.
+- Supplier catalog UI uses the guarded application repositories from `createCatalogRepositories`. Product saves check supplier/material references in the same transaction as the write. Supplier, product and material deletion checks run atomically with deletion; never cascade or bypass a reference conflict.
+- Catalog products never create owned stock. Check existing stock purchase provenance before deleting a product, without implementing purchasing or stock consumption in catalog UI.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD

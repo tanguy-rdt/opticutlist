@@ -9,6 +9,7 @@ export type PersistenceError =
   | { readonly kind: 'duplicateId'; readonly id: string }
   | { readonly kind: 'notFound'; readonly id: string }
   | { readonly kind: 'storageFailure'; readonly message: string }
+  | { readonly kind: 'referenceConflict'; readonly message: string }
 
 export type PersistenceResult<T> =
   | { readonly ok: true; readonly value: T }
