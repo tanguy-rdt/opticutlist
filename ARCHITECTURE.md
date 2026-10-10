@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, a single-panel optimizer comparing several deterministic strategies, and Web Worker execution through an application service (see below). Local persistence for the five initial entities is implemented through application repository ports and a Dexie adapter. No business UI, multi-panel or cost optimization exists yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and overview, placeholder and not-found views (`views/`). `src/features/materials/` implements the first functional entity-management page. `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, a single-panel optimizer comparing several deterministic strategies, and Web Worker execution through an application service (see below). Local persistence for the five initial entities is implemented through application repository ports and a Dexie adapter. Material creation, editing, deletion and theme selection are available. Parts, suppliers, inventory and optimization interfaces, multi-panel and cost optimization are not implemented.
 
 ### Suggested Directory Layout
 
@@ -275,3 +275,12 @@ OptiCutList must have a modern, clean and consistent interface.
 - Prefer restrained colors, clear typography and consistent spacing.
 - Avoid hardcoded colors that only work in one theme.
 - Keep the interface practical for data-heavy woodworking workflows.
+
+### Implemented Interface and Theme
+
+- The shell has an accessible header, Overview/Materials/Projects navigation, a hash-safe skip link and a storage reminder. `/materials` is the functional library; `/projects` is a placeholder. Existing hash history and isolated router/Pinia factories remain in use.
+- `src/main.ts` is the composition root: it creates one local persistence connection, provides the material repository through `materialRepositoryKey`, and closes the connection on app unmount. Vue features consume the application repository port; no component imports Dexie or creates its own database.
+- `MaterialsView.vue` holds only a temporary list snapshot, form drafts and interaction state. It reads on mount/refresh and rereads after each committed write. Names and categories are validated with `materialSchema`; new IDs use `crypto.randomUUID()` and become branded through schema parsing, while edits retain their existing IDs. Deletes require native browser confirmation. Loading, empty, validation and persistence failures are explicit; failed writes retain the draft, and a successful write followed by a failed refresh is reported distinctly.
+- `ThemeSelector.vue` defaults to System, resolves the OS preference with `matchMedia`, responds to system changes, and detaches its listener on unmount. The only localStorage entry is the validated UI preference `opticutlist.theme` (`light`, `dark`, `system`). Storage failures do not prevent theme changes. No business data is persisted in Pinia or localStorage.
+- `src/app/styles.css` maps reusable semantic colors to Tailwind v4 tokens for both themes, including text, surfaces, actions, errors, input borders and focus outlines. Desktop places the material form beside the library; tablet stacks the two. Labels, linked field errors, live feedback, native confirmation and focus restoration support keyboard and assistive-technology use.
+- Component tests inject repository ports and check theme persistence/system changes, validation, CRUD, confirmation, retry and error states. An isolated fake-indexeddb integration test verifies persistence across page remounts.

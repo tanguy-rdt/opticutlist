@@ -9,7 +9,7 @@ import { RouterLink } from 'vue-router'
     </h1>
     <RouterLink
       to="/"
-      class="text-amber-800 underline"
+      class="text-accent underline"
     >
       Back to home
     </RouterLink>

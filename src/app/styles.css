@@ -1,1 +1,97 @@
 @import 'tailwindcss';
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-control-line: var(--control-line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-danger-surface: var(--danger-surface);
+  --color-success: var(--success);
+  --color-success-surface: var(--success-surface);
+}
+
+:root {
+  color-scheme: light;
+  --canvas: #f5f6f3;
+  --surface: #ffffff;
+  --subtle: #eaf0e9;
+  --ink: #1e2925;
+  --muted: #526059;
+  --line: #ccd5ce;
+  --control-line: #7c8b80;
+  --accent: #286348;
+  --accent-hover: #1e4e37;
+  --on-accent: #ffffff;
+  --danger: #a12727;
+  --danger-surface: #fff0ef;
+  --success: #246044;
+  --success-surface: #e8f4ea;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --canvas: #141c19;
+    --surface: #1d2823;
+    --subtle: #2b3931;
+    --ink: #edf3ee;
+    --muted: #b7c6bb;
+    --line: #4a5d50;
+    --control-line: #7d9787;
+    --accent: #9cd6ac;
+    --accent-hover: #b5e6c0;
+    --on-accent: #142b1b;
+    --danger: #ffb4ac;
+    --danger-surface: #3b2423;
+    --success: #a3dbb2;
+    --success-surface: #23392c;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #141c19;
+  --surface: #1d2823;
+  --subtle: #2b3931;
+  --ink: #edf3ee;
+  --muted: #b7c6bb;
+  --line: #4a5d50;
+  --control-line: #7d9787;
+  --accent: #9cd6ac;
+  --accent-hover: #b5e6c0;
+  --on-accent: #142b1b;
+  --danger: #ffb4ac;
+  --danger-surface: #3b2423;
+  --success: #a3dbb2;
+  --success-surface: #23392c;
+}
+
+@layer base {
+  body { @apply m-0 bg-canvas text-ink antialiased; }
+  button, select { @apply cursor-pointer; }
+  button:disabled { @apply cursor-not-allowed opacity-60; }
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  .panel { @apply rounded-xl border border-line bg-surface; }
+  .button { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold transition-colors hover:bg-subtle; }
+  .button-primary { @apply border-transparent bg-accent text-on-accent hover:bg-accent-hover; }
+  .button-danger { @apply text-danger hover:bg-danger-surface; }
+  .field { @apply block min-h-11 w-full rounded-lg border border-control-line bg-surface px-3 py-2 text-ink; }
+  .field::placeholder { @apply text-muted opacity-100; }
+  .field[aria-invalid='true'] { @apply border-danger; }
+  .nav-link { @apply rounded-lg px-4 py-2.5 text-sm font-medium text-muted hover:bg-subtle hover:text-ink; }
+  .nav-link.router-link-exact-active { @apply bg-subtle text-accent; }
+  .eyebrow { @apply text-xs font-semibold tracking-widest text-muted uppercase; }
+}

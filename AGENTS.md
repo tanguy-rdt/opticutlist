@@ -69,6 +69,9 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Validate records on both database reads and writes with existing strict domain schemas. Never omit corrupt records from lists or upsert through `create`/`update`.
 - Multi-record writes use the persistence transaction callback, only its scoped repositories, and await every operation. Any failed operation aborts all changes; do not await network requests or timers inside transactions.
 - Database schema versions are immutable once shipped. Append versions and transactional migrations; never delete/recreate a database to recover from an upgrade failure. Use isolated fake-indexeddb factories for persistence tests.
+- Vue features receive repositories through typed injection keys provided by the bootstrap; never create database connections in components.
+- Use semantic theme tokens from `src/app/styles.css` for UI colors. Theme preferences may use localStorage; persistent business records remain exclusively in IndexedDB.
+- Component tests inject repository ports; persistence integration tests use isolated fake-indexeddb factories. Confirm deletions and associate field validation errors with their inputs.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD
