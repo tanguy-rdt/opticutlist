@@ -50,6 +50,9 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Domain models are Zod schemas with inferred types (`z.infer`); do not declare a parallel interface by hand. Use `z.strictObject` so unknown keys fail instead of being stripped.
 - Use the branded ID types from `src/domain/model/ids.ts`; obtain IDs only by parsing through their schema.
 - Zod is the only third-party runtime dependency allowed in `src/domain/`.
+- Computed, non-persisted domain values (e.g. geometry `Rect`, fit results) may be plain TypeScript types.
+- Geometry arithmetic and comparisons go through the micrometre helpers in `src/domain/geometry/units.ts`. Never add, subtract or compare raw millimeter floats, and never introduce ad-hoc epsilons.
+- Geometry functions throw `RangeError` for out-of-range numeric input rather than clamping. Expected business outcomes (e.g. "does not fit") are returned as typed issues, never thrown.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD

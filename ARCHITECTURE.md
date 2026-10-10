@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models and compatibility checks (see below). No UI, persistence or optimizer exists yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks and panel geometry/cutting constraints (see below). No UI, persistence, placement heuristics or optimizer exist yet.
 
 ### Suggested Directory Layout
 
@@ -99,6 +99,23 @@ Supplier products are purchasable catalog entries; stock items are actually owne
 All object schemas are strict: unknown keys are rejected, never silently stripped. Names are trimmed and must be non-empty (≤ 200 chars).
 
 `src/domain/compatibility.ts` provides reusable placement prerequisites for anything with `{ materialId, thicknessMm }`: `hasSameMaterial`, `hasSameThickness` (exact `===`, no tolerance), `getCompatibilityIssues` (lists every mismatch, for validator reporting) and `isCompatible`. Geometry, grain and rotation checks are out of scope there.
+
+- **CuttingSettings** (`model/cutting-settings.ts`): `kerfMm` and `edgeMarginMm`, both finite and ≥ 0. A single uniform margin applies to all four panel edges.
+
+### Implemented Geometry and Cutting Constraints
+
+`src/domain/geometry/` is pure, deterministic TypeScript used by both the future optimizer and the independent validator. It has no knowledge of placement heuristics, plans, UI or persistence.
+
+- **Resolution** (`units.ts`): millimeter values are rounded to integer micrometres (0.001 mm) before arithmetic, so sums, differences and comparisons are exact. For example, `100.1 − 3.2` gives exactly `96.9` instead of `96.89999999999999`. Values that are not finite, exceed the safe-integer range, or round to zero where a positive extent is required throw a `RangeError`; they are never silently clamped.
+- **Coordinates** (`rect.ts`): `Rect` is `{ xMm, yMm, lengthMm, widthMm }` on a panel face; x runs along the panel length, y along its width. The panel thickness applies to every region on it.
+- **Boundary rules:**
+  - The usable area is the panel minus `edgeMarginMm` on each edge. It must be strictly positive on both axes, otherwise it is `null`. The margin includes the trim cut, so no kerf is added at panel edges.
+  - Fit is inclusive: a size exactly equal to the area fits.
+  - `splitRect` performs one guillotine cut at `offsetMm`, where 0 < offset < extent. `first` is `[start, offset)`, the kerf is `[offset, offset + kerf)` and `second` is the rest. `second` is `null` when the kerf consumes everything beyond the cut. Kerf only applies between pieces.
+- **Orientation** (`part-orientation.ts`): `normal` puts the part length along the panel length; `rotated` turns the part 90°. Candidates are always ordered `normal`, then `rotated`. `rotation: 'forbidden'` allows only `normal`. Grain constrains orientation only when **both** the part and the panel have grain; the part grain must then run parallel to the panel grain. Rotated dimensions swap length and width and preserve thickness.
+- **Part fit** (`part-fit.ts`): `checkPartFit(part, panel, settings)` checks one copy of a part on an empty supplier product or stock item. It returns the usable area and the fitting orientations, or every issue in a fixed order: `materialMismatch`, `thicknessMismatch`, `noUsableArea`, `grainRequiresRotation` (grain needs a forbidden rotation), `exceedsUsableArea` (lists the orientations tried).
+
+Computed geometry values (`Rect`, `Orientation`, results) are plain TypeScript types. They become Zod schemas once they cross a persistence or import boundary.
 
 ## Guillotine Optimization
 
