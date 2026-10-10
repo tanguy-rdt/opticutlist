@@ -9,6 +9,11 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Read `AGENTS.md` and `ARCHITECTURE.md` before making changes.
 - Inspect existing code and configuration before editing.
 - Work only on the requested scope; stop after reporting results.
+- Prefer existing tools and dependencies.
+- Never install system software, browsers or browser binaries without the user's explicit approval.
+- Never run Playwright browser installation commands without the user's explicit approval.
+- Installing or updating npm dependencies required by an approved task is allowed; explain every new dependency in the final report. This does not authorize installing system software, browsers or browser binaries.
+- If a task requires additional system software, stop and ask for permission before proceeding.
 - Prefer simple, readable, maintainable code and strict TypeScript.
 - Avoid `any`, unsafe casts, hidden global state, unnecessary dependencies and premature abstractions.
 - No backend, authentication, cloud storage, monorepo or microservices unless explicitly approved.
@@ -133,12 +138,10 @@ Rules:
 - Use a scope when it improves clarity.
 - Use BREAKING CHANGE in the footer for incompatible changes.
 - After completing each task, run all required checks.
-- If all checks pass, create a Git commit using Conventional Commits.
-- Automatically push the commit to the current working branch.
+- If all checks pass, create a local Conventional Commit only.
 - Include relevant AGENTS.md and ARCHITECTURE.md updates in the same commit.
-- Never commit or push when checks fail.
-- Never force-push, amend existing commits or rewrite Git history.
-- Never push directly to a protected branch.
+- Never commit when checks fail.
+- Never run `git push`, including force-push.
+- Never amend existing commits or rewrite Git history.
 - Never include secrets, credentials or unrelated changes.
-- If pushing fails, report the error without attempting destructive fixes.
-- Report the commit message, commit hash and push status in the final summary.
+- Report the commit message and hash in the final summary.
