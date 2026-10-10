@@ -1,4 +1,7 @@
 import { createApp } from 'vue'
+import { createOptimizationService } from './application/optimization/optimization-service'
+import { optimizationServiceFactoryKey } from './features/optimization/optimization-service'
+import { createOptimizationWorker } from './workers/optimization/create-optimization-worker'
 import { createCatalogRepositories } from './application/catalog/catalog-repositories'
 import { supplierRepositoryKey, supplierProductRepositoryKey } from './features/suppliers/catalog-repositories'
 
@@ -19,6 +22,7 @@ app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
 app.provide(projectServiceKey, createProjectService(persistence))
+app.provide(optimizationServiceFactoryKey, () => createOptimizationService(createOptimizationWorker))
 app.onUnmount(() => { persistence.close() })
 
 app.use(createAppPinia())

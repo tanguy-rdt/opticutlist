@@ -70,6 +70,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Worker messages must be plain, structured-cloneable data defined in `optimization-protocol.ts`. Check incoming messages with its type guards rather than casting `MessageEvent.data`.
 - UI code uses `createOptimizationService`, never a `Worker` directly. Inject a fake `OptimizationWorkerPort` in tests (jsdom has no workers).
 - The service resolves typed outcomes instead of rejecting, and re-validates every received plan. Keep both properties when extending it.
+- Project Optimization uses only scoped Parts and selected catalog supplier products; reread inputs before running. Keep all requested copies explicit, including incompatible/unplaced demand. Preserve single-panel semantics and never purchase/consume inventory from this tool. Each view owns and disposes its service; invalidate pending reads/results on cancellation, input changes and project exit.
 - Persistence code uses the application repository ports; Dexie stays in `src/infrastructure/`.
 - Validate records on both database reads and writes with existing strict domain schemas. Never omit corrupt records from lists or upsert through `create`/`update`.
 - Multi-record writes use the persistence transaction callback, only its scoped repositories, and await every operation. Any failed operation aborts all changes; do not await network requests or timers inside transactions.

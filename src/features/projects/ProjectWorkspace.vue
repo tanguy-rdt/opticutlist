@@ -79,7 +79,7 @@ onMounted(load)
         </div>
         <nav
           aria-label="Project"
-          class="flex gap-2"
+          class="flex flex-wrap gap-2"
         >
           <RouterLink
             :to="{ name: 'project-parts', params: { projectId: project.id } }"
@@ -92,6 +92,12 @@ onMounted(load)
             class="nav-link"
           >
             Materials
+          </RouterLink>
+          <RouterLink
+            :to="{ name: 'project-optimization', params: { projectId: project.id } }"
+            class="nav-link"
+          >
+            Optimization
           </RouterLink>
         </nav>
       </div>

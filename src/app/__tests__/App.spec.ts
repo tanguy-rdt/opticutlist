@@ -3,6 +3,9 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { createMemoryHistory } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { createOptimizationService, type OptimizationWorkerPort } from '../../application/optimization/optimization-service'
+import { optimizationServiceFactoryKey } from '../../features/optimization/optimization-service'
+import { optimizePanel } from '../../domain/optimizer/optimize-panel'
 import App from '../App.vue'
 import { createAppPinia } from '../pinia'
 import { createAppRouter } from '../router'
@@ -30,6 +33,13 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
   connections.push(persistence)
   const catalog = createCatalogRepositories(persistence)
   const service = createProjectService(persistence)
+  const workers: OptimizationWorkerPort[] = []
+  const postMessage = vi.fn<OptimizationWorkerPort['postMessage']>()
+  const createWorker = (): OptimizationWorkerPort => {
+    const worker: OptimizationWorkerPort = { postMessage, terminate: vi.fn(), onmessage: null, onerror: null, onmessageerror: null }
+    workers.push(worker)
+    return worker
+  }
   const router = createAppRouter(createMemoryHistory())
   await router.push(path)
   await router.isReady()
@@ -38,6 +48,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
     global: {
       plugins: [createAppPinia(), router],
       provide: {
+        [optimizationServiceFactoryKey]: () => createOptimizationService(createWorker),
         [materialRepositoryKey]: catalog.materials,
         [projectServiceKey]: service,
         [supplierRepositoryKey]: catalog.suppliers,
@@ -48,7 +59,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
   })
   wrappers.push(wrapper)
   await flushPromises()
-  return { wrapper, router, persistence, service }
+  return { wrapper, router, persistence, service, workers, postMessage }
 }
 
 describe('Home and application navigation', () => {
@@ -192,6 +203,45 @@ describe('Home and application navigation', () => {
     await vi.waitFor(() => { expect(wrapper.find('table').exists()).toBe(true) })
     expect(wrapper.get('table').text()).toContain('Only second project')
     expect(wrapper.get('table').text()).not.toContain('Only first project')
+  })
+
+  it('opens Optimization only within a saved project and discards results when switching projects', async () => {
+    const indexedDB = new IDBFactory()
+    const { wrapper, router, persistence, service, workers, postMessage } = await mountAt('/', indexedDB)
+    expect(wrapper.find('a[href$="/optimization"]').exists()).toBe(false)
+    await persistence.materials.create(validMaterialInput)
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.supplierProducts.create(validSupplierProductInput)
+    const first = cuttingProjectSchema.parse({ id: 'cutting-first', name: 'First cutting project', partIds: [], materialIds: [], supplierProductIds: [validSupplierProductInput.id] })
+    const second = cuttingProjectSchema.parse({ ...first, id: 'cutting-second', name: 'Second cutting project', supplierProductIds: [] })
+    await service.projects.create(first); await service.projects.create(second)
+    await service.parts(first.id).create(validPartInput)
+    await router.push('/projects/cutting-first/parts')
+    await vi.waitFor(() => { expect(wrapper.find('nav a[href$="/optimization"]').exists()).toBe(true) })
+    await wrapper.get('nav a[href$="/optimization"]').trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find('#optimization-panel').exists()).toBe(true) })
+    await vi.waitFor(() => { expect(wrapper.text()).not.toContain('Loading project inputs') })
+    await wrapper.get('#optimization-panel').setValue(validSupplierProductInput.id)
+    await wrapper.get('form').trigger('submit')
+    await vi.waitFor(() => { expect(postMessage).toHaveBeenCalledOnce() })
+    const worker = workers[0]
+    const request = postMessage.mock.calls[0]?.[0]
+    if (worker === undefined || request === undefined) throw new Error('Expected running worker')
+    const lateReply = worker.onmessage
+    const terminated = vi.spyOn(worker, 'terminate')
+    await router.push('/projects/cutting-second/optimization')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('No parts in this project') })
+    expect(terminated).toHaveBeenCalledOnce()
+    lateReply?.(new MessageEvent('message', { data: { type: 'result', requestId: request.requestId, selection: optimizePanel(request.input) } }))
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).not.toContain('First cutting project')
+    wrapper.unmount(); persistence.close()
+    const reopened = await mountAt('/projects/cutting-first/optimization', indexedDB)
+    await vi.waitFor(() => { expect(reopened.wrapper.text()).toContain('2 requested copies') })
+    expect(reopened.wrapper.text()).toContain('First cutting project')
+    await reopened.wrapper.get('main a[href="/"]').trigger('click')
+    await vi.waitFor(() => { expect(reopened.wrapper.find('nav').exists()).toBe(false) })
   })
 
   it('shows missing projects without mounting global Parts or Materials', async () => {
