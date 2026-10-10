@@ -59,6 +59,8 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Optimizers must be deterministic: no `Math.random`, clocks or iteration over unordered inputs. Break ties explicitly (e.g. by input order).
 - Optimizers return failures as typed `{ ok: false, error }` results and report unplaced parts explicitly; they never drop parts silently.
 - Randomized tests use a seeded generator so failures are reproducible.
+- New placement strategies are added to `PLACEMENT_STRATEGIES` in `plan-with-strategy.ts`. They reuse the shared splitting and validation, and must not change the selection ranking in `optimize-panel.ts` without updating `ARCHITECTURE.md`.
+- Keep `largestAreaFirst` byte-for-byte stable; its exact-tree tests are the optimizer's regression baseline.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD

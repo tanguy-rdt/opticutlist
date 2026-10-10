@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, and a single-panel deterministic optimizer (see below). No UI, persistence, Web Worker, multi-panel or cost optimization exist yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, and a single-panel optimizer comparing several deterministic strategies (see below). No UI, persistence, Web Worker, multi-panel or cost optimization exist yet.
 
 ### Suggested Directory Layout
 
@@ -140,18 +140,27 @@ Exact region equality makes the leaves tile the usable area minus kerfs, so no g
 
 ### Implemented Single-Panel Optimizer
 
-`src/domain/optimizer/optimize-panel.ts` contains one deterministic guillotine heuristic for **one panel**. It is pure TypeScript: no worker, UI or persistence. The Web Worker will wrap it later.
+`src/domain/optimizer/` optimizes **one panel** with a few deterministic guillotine strategies and selects the best validated plan. It is pure TypeScript: no worker, UI or persistence. The Web Worker will wrap it later.
 
-- **Input:** `optimizePanel({ panel, parts, settings })` takes a supplier product or stock item, schema-validated parts with unique IDs (duplicates throw) and `CuttingSettings`.
+- **Entry point** (`optimize-panel.ts`): `optimizePanel({ panel, parts, settings })` runs every strategy and returns `{ ok: true, strategy, plan, comparison }`. It takes a supplier product or stock item, schema-validated parts with unique IDs (duplicates throw) and `CuttingSettings`.
+  - Otherwise it returns `{ ok: false, error }` with `noUsableArea`, or `noValidCandidate` when every candidate was rejected (the comparison is included).
+- **Single strategy** (`plan-with-strategy.ts`): `planWithStrategy(input, strategy)` builds and validates one candidate.
 - **Pre-check:** each part goes through `checkPartFit` against the empty panel. That covers material, exact thickness, margins, grain, rotation and size. Each orientation must also be producible by a cut, i.e. size = extent or size + kerf < extent.
   - Parts that fail are reported as `cannotFitPanel` (with the fit issues), or as `remainderNarrowerThanKerf` when the only leftover strip would be ≤ kerf.
 - **Quantities:** copies are expanded lazily per part and taken in increasing `copyIndex` order, keeping the original `partId`. Very large quantities therefore cost nothing up front.
-- **Heuristic:** parts are ordered by area descending, then longest side descending, then input order.
-  - Each free region takes the first part, in that order, that can be cut from it; orientations are tried `normal` before `rotated`.
-  - The part goes to the region's start corner and is freed with up to two guillotine cuts. The cut order keeps the largest leftover rectangle; ties cut along the length first.
-  - The strip beside the part is filled before the larger remainder. Regions that take no part become waste leaves.
-- **Validation:** every tree is checked by `validateCuttingTree`. A rejected tree yields `{ ok: false, error: { kind: 'invalidTree' } }` and is never returned as a plan. A panel without usable area yields `{ ok: false, error: { kind: 'noUsableArea' } }`.
-- **Result:** `PanelCuttingPlan` contains:
+- **Strategies** (`PLACEMENT_STRATEGIES`, listed in tie-break priority order). Stable sorting keeps input order among equal parts. Orientations are always tried `normal` before `rotated`.
+  1. `largestAreaFirst` (baseline, unchanged): region-driven. Free regions are filled depth-first, the strip beside a part before the larger remainder. Each region takes the first part that can be cut from it, with parts ordered by area descending, then longest side descending.
+  2. `longestSideFirst`: the same region-driven fill, with parts ordered by longest side descending, then area descending.
+  3. `bestShortSideFit`: part-driven. Each copy, in `largestAreaFirst` order, goes to the free region and orientation with the smallest short-side leftover. Ties go to the smaller long-side leftover, then the oldest region, then `normal`. Copies that fit no region are left unplaced.
+- **Splitting** is shared by all strategies. The part goes to the region's start corner and is freed with up to two guillotine cuts. The cut order keeps the largest leftover rectangle; ties cut along the length first. Regions that take no part become waste leaves.
+- **Validation:** every candidate tree is checked by `validateCuttingTree`. A rejected candidate becomes `{ status: 'rejected', error: { kind: 'invalidTree' } }` in the comparison and is never selected or returned as a plan.
+- **Selection:** candidates are ranked best first, comparing integer µ-units:
+  1. fewer unplaced copies
+  2. more used area (less waste on the same panel)
+  3. larger single waste region (a more reusable offcut)
+  4. `PLACEMENT_STRATEGIES` order
+- **Comparison:** one `StrategyCandidate` per strategy, in strategy order. Valid candidates carry `CandidateMetrics`: the area metrics plus `placedCount`, `unplacedCount` and `largestWasteRegionMm2`.
+- **Plan:** `PanelCuttingPlan` contains:
   - `tree`.
   - `placements`, read from the validated tree, with region, orientation and oriented `Dimensions3D` including thickness.
   - `unplaced`, as ranges `{ partId, firstCopyIndex, count, reason }`. The reason `noSpaceLeft` covers parts that would fit an empty panel but found no region.
