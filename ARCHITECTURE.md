@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). No business features exist yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models and compatibility checks (see below). No UI, persistence or optimizer exists yet.
 
 ### Suggested Directory Layout
 
@@ -81,6 +81,24 @@ Each dimension is finite and strictly positive. Layout geometry is 2D, but **thi
 - **StockMovement:** auditable physical inventory change.
 
 Supplier products are purchasable catalog entries; stock items are actually owned. They must never be conflated.
+
+### Implemented Domain Models
+
+`src/domain/model/` defines each model as a Zod schema; the TypeScript type is inferred from it (`z.infer`), so validation and types cannot drift apart. Zod is the only runtime dependency allowed in the domain.
+
+- **IDs** (`ids.ts`): stable, opaque strings (1–128 chars, no whitespace, e.g. UUIDs). Each entity has a branded type (`MaterialId`, `PartId`, `SupplierId`, `SupplierProductId`, `StockItemId`), so IDs cannot be mixed up or used unvalidated.
+- **Dimensions3D** (`dimensions.ts`): `lengthMm`, `widthMm`, `thicknessMm`, each finite and strictly positive. Entities spread these as **flat, mandatory fields**. `widthMm` is not required to be the smaller side.
+- **GrainDirection** (`orientation.ts`): `none | length | width`, relative to the item's own length/width axes.
+- **RotationPolicy** (`orientation.ts`): `allowed | forbidden`, for 90° in-plane rotation of parts. Grain constraints still apply on top of this permission.
+- **Material**: `id`, `name`, `category`. No thickness: thickness belongs to each physical item.
+- **Part**: `id`, `name`, `materialId`, dimensions, `quantity` (positive safe integer), `grainDirection`, `rotation`.
+- **Supplier**: `id`, `name`, optional http(s) `websiteUrl`.
+- **SupplierProduct**: `id`, `supplierId`, `materialId`, `name`, dimensions, `grainDirection`, `price` (finite, ≥ 0, per panel), `currency` (ISO 4217 code), optional `productUrl`, `availability` (`available | unavailable | unknown`). It has no quantity or provenance.
+- **StockItem**: `id`, `kind` (`fullPanel | offcut`), `materialId`, dimensions, `quantity`, `grainDirection`, `provenance` (`{ source: 'manual' }` or `{ source: 'purchase', supplierProductId }`). It has no price or supplier. Plan-produced offcut provenance will be added with cutting plans.
+
+All object schemas are strict: unknown keys are rejected, never silently stripped. Names are trimmed and must be non-empty (≤ 200 chars).
+
+`src/domain/compatibility.ts` provides reusable placement prerequisites for anything with `{ materialId, thicknessMm }`: `hasSameMaterial`, `hasSameThickness` (exact `===`, no tolerance), `getCompatibilityIssues` (lists every mismatch, for validator reporting) and `isCompatible`. Geometry, grain and rotation checks are out of scope there.
 
 ## Guillotine Optimization
 

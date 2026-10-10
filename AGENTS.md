@@ -47,6 +47,9 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - ESLint uses `typescript-eslint` `strictTypeChecked` and `eslint-plugin-vue` recommended rules; SFCs must use `<script setup lang="ts">`.
 - TypeScript also enables `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and unused-symbol checks.
 - Place unit tests in `__tests__/*.spec.ts` next to the code under test; import Vitest APIs explicitly (no globals).
+- Domain models are Zod schemas with inferred types (`z.infer`); do not declare a parallel interface by hand. Use `z.strictObject` so unknown keys fail instead of being stripped.
+- Use the branded ID types from `src/domain/model/ids.ts`; obtain IDs only by parsing through their schema.
+- Zod is the only third-party runtime dependency allowed in `src/domain/`.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD
@@ -108,3 +111,7 @@ Rules:
 - Use a scope when it improves clarity.
 - Use BREAKING CHANGE in the footer for incompatible changes.
 - Do not commit or push automatically unless explicitly requested.
+- Always propose a Conventional Commit message at the end of every completed task.
+- Include it explicitly in the final task summary under "Suggested commit".
+- Use the format `type(scope): short imperative description`.
+- This is mandatory even when no commit was created.
