@@ -6,7 +6,7 @@ import { cuttingSettingsSchema, type CuttingSettings } from '../../domain/model/
 import type { Part } from '../../domain/model/part'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { OptimizePanelSelection } from '../../domain/optimizer/optimize-panel'
-import type { UnplacedReason } from '../../domain/optimizer/plan-with-strategy'
+import type { PanelCuttingPlan, UnplacedReason } from '../../domain/optimizer/plan-with-strategy'
 import FormField from '../../shared/ui/FormField.vue'
 import CuttingPlanViewer from './CuttingPlanViewer.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
@@ -39,6 +39,9 @@ const error = ref('')
 const inputError = ref('')
 const fieldErrors = ref<{ kerfMm?: string; edgeMarginMm?: string }>({})
 const result = shallowRef<RunResult | null>(null)
+const editedPlan = shallowRef<PanelCuttingPlan | null>(null)
+const displayedPlan = computed(() => editedPlan.value ?? result.value?.selection.plan ?? null)
+function planChanged(plan: PanelCuttingPlan, modified: boolean): void { editedPlan.value = modified ? plan : null }
 let generation = 0
 const busy = computed(() => state.value === 'running' || state.value === 'loading')
 const selectedPanel = computed(() => panels.value.find(panel => panel.product.id === panelId.value))
@@ -53,6 +56,7 @@ function invalidate(): void {
   generation += 1
   optimizer.cancel()
   result.value = null
+  editedPlan.value = null
   error.value = ''
 }
 watch([panelId, kerf, margin], () => {
@@ -377,7 +381,7 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
         {{ error }}
       </p>
       <section
-        v-if="result"
+        v-if="result && displayedPlan"
         class="panel space-y-5 p-6"
         aria-labelledby="optimization-result-title"
       >
@@ -385,21 +389,22 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
           id="optimization-result-title"
           class="text-xl font-semibold"
         >
-          Validated single-panel plan
+          {{ editedPlan ? 'Validated edited single-panel plan' : 'Validated single-panel plan' }}
         </h2>
         <p role="status">
-          {{ result.selection.plan.placements.length }} copies placed · {{ unplacedCount }} copies unplaced{{ unplacedCount ? '. Additional panels or different inputs are needed.' : '.' }}
+          {{ displayedPlan.placements.length }} copies placed · {{ unplacedCount }} copies unplaced{{ unplacedCount ? '. Additional panels or different inputs are needed.' : '.' }}
         </p>
         <CuttingPlanViewer
           :plan="result.selection.plan"
           :panel="result.panel"
           :parts="result.parts"
           :settings="result.settings"
+          @plan-change="planChanged"
         />
         <dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt class="text-sm text-muted">
-              Selected strategy
+              {{ editedPlan ? 'Optimizer baseline strategy' : 'Selected strategy' }}
             </dt><dd class="font-semibold">
               {{ result.selection.strategy }}
             </dd>
@@ -408,14 +413,14 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
             <dt class="text-sm text-muted">
               Panel utilization
             </dt><dd class="font-semibold">
-              {{ result.selection.plan.metrics.utilizationPercent.toFixed(2) }}%
+              {{ displayedPlan.metrics.utilizationPercent.toFixed(2) }}%
             </dd>
           </div>
           <div>
             <dt class="text-sm text-muted">
               Waste area (including kerf and margins)
             </dt><dd class="font-semibold">
-              {{ result.selection.plan.metrics.wasteAreaMm2.toLocaleString() }} mm²
+              {{ displayedPlan.metrics.wasteAreaMm2.toLocaleString() }} mm²
             </dd>
           </div>
           <div>
@@ -430,7 +435,7 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
           Kerf {{ result.settings.kerfMm }} mm · Edge margin {{ result.settings.edgeMarginMm }} mm. Coordinates are measured along the panel length (x) and width (y).
         </p>
         <div
-          v-if="result.selection.plan.placements.length"
+          v-if="displayedPlan.placements.length"
           class="overflow-x-auto"
           tabindex="0"
           role="region"
@@ -467,7 +472,7 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
             </thead>
             <tbody>
               <tr
-                v-for="placed in result.selection.plan.placements"
+                v-for="placed in displayedPlan.placements"
                 :key="`${placed.partId}-${placed.copyIndex}`"
                 class="border-t border-line"
               >
@@ -493,7 +498,7 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
           </h3>
           <ul class="space-y-2">
             <li
-              v-for="item in result.selection.plan.unplaced"
+              v-for="item in displayedPlan.unplaced"
               :key="`${item.partId}-${item.firstCopyIndex}`"
             >
               {{ partName(item.partId) }} · {{ item.count }} copies · {{ reasonText(item.reason) }}

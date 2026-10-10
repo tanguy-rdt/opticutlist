@@ -86,6 +86,39 @@ async function setup() {
   return { wrapper, persistence, catalog, service, project, other, product, part, workers, start }
 }
 describe('Project single-panel optimization', () => {
+  it('edits the displayed plan with undo/reset while leaving saved parts, selections and inventory unchanged', async () => {
+    const { wrapper, persistence, service, project, workers, start } = await setup()
+    const stock = await persistence.stockItems.list()
+    const savedProject = await service.projects.get(project.id)
+    const savedParts = await service.parts(project.id).list()
+    const worker = await start()
+    const input = structuredClone(worker.request.input)
+    worker.complete(); await flushPromises()
+    async function click(label: string): Promise<void> {
+      const button = wrapper.findAll('button').find(button => button.text() === label)
+      if (button === undefined) throw new Error(`Missing ${label}`)
+      await button.trigger('click')
+    }
+    await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
+    await click('Enter Edit Mode')
+    await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
+    await click('Swap selected copies')
+    expect(wrapper.text()).toContain('Swap accepted and independently validated')
+    expect(wrapper.text()).toContain('Validated edited single-panel plan')
+    expect(wrapper.text()).toContain('Optimizer baseline strategy')
+    expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
+    await click('Undo edit')
+    expect(wrapper.text()).toContain('Validated single-panel plan')
+    expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
+    await click('Redo edit')
+    await click('Reset to Optimized Plan')
+    expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
+    expect(worker.request.input).toEqual(input)
+    expect(workers).toHaveLength(1)
+    expect(await persistence.stockItems.list()).toEqual(stock)
+    expect(await service.projects.get(project.id)).toEqual(savedProject)
+    expect(await service.parts(project.id).list()).toEqual(savedParts)
+  })
   it('loads only active-project parts and selected catalog products', async () => {
     const { wrapper, start, product, part } = await setup()
     expect(wrapper.get('select').text()).toContain(product.name)

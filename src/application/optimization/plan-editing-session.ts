@@ -1,0 +1,49 @@
+import { editCuttingTree, type CuttingTreeEdit, type CuttingTreeEditError } from '../../domain/cutting-tree/edit-cutting-tree'
+import type { Part } from '../../domain/model/part'
+import { computeAreaMetrics, type OptimizePanelInput, type PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
+import { createCuttingPlanScene } from './cutting-plan-scene'
+
+export type EditingInput = Omit<OptimizePanelInput, 'parts'> & { readonly parts: readonly Part[] }
+export interface PlanEditingSession {
+  readonly optimizedPlan: PanelCuttingPlan
+  readonly input: EditingInput
+  readonly history: readonly PanelCuttingPlan[]
+  readonly cursor: number
+}
+export type PlanEditingResult =
+  | { readonly ok: true; readonly session: PlanEditingSession }
+  | { readonly ok: false; readonly error: CuttingTreeEditError }
+
+export function createPlanEditingSession(plan: PanelCuttingPlan, input: EditingInput): PlanEditingResult {
+  const projection = createCuttingPlanScene(plan, input)
+  if (projection.status !== 'valid') return { ok: false, error: { message: projection.status === 'invalid' ? projection.message : 'No cutting plan.', issues: [] } }
+  try {
+    const optimizedPlan = structuredClone(plan)
+    return { ok: true, session: { optimizedPlan, input: structuredClone(input), history: [optimizedPlan], cursor: 0 } }
+  } catch {
+    return { ok: false, error: { message: 'The cutting plan could not be snapshotted for editing.', issues: [] } }
+  }
+}
+export function currentEditingPlan(session: PlanEditingSession): PanelCuttingPlan {
+  return session.history[session.cursor] ?? session.optimizedPlan
+}
+export function applyPlanEdit(session: PlanEditingSession, edit: CuttingTreeEdit): PlanEditingResult {
+  const current = currentEditingPlan(session)
+  const edited = editCuttingTree(current.tree, session.input, edit)
+  if (!edited.ok) return edited
+  const projection = createCuttingPlanScene({ ...current, tree: edited.tree }, session.input)
+  if (projection.status !== 'valid') return { ok: false, error: { message: projection.status === 'invalid' ? projection.message : 'No cutting plan.', issues: [] } }
+  const placements = projection.scene.parts.map(part => ({ partId: part.part.id, copyIndex: part.copyIndex, orientation: part.orientation, region: part.region, dimensions: part.dimensions }))
+  const plan = { ...current, tree: edited.tree, placements, metrics: computeAreaMetrics(session.input.panel, placements) }
+  return { ok: true, session: { ...session, history: [...session.history.slice(0, session.cursor + 1), plan], cursor: session.cursor + 1 } }
+}
+export function undoPlanEdit(session: PlanEditingSession): PlanEditingSession {
+  return session.cursor === 0 ? session : { ...session, cursor: session.cursor - 1 }
+}
+export function redoPlanEdit(session: PlanEditingSession): PlanEditingSession {
+  return session.cursor === session.history.length - 1 ? session : { ...session, cursor: session.cursor + 1 }
+}
+/** An explicit reset discards both undo and redo history. */
+export function resetPlanEdits(session: PlanEditingSession): PlanEditingSession {
+  return { ...session, history: [session.optimizedPlan], cursor: 0 }
+}

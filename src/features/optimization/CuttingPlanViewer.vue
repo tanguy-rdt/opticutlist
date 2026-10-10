@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, toRaw, watch } from 'vue'
+import { applyPlanEdit, createPlanEditingSession, currentEditingPlan, undoPlanEdit, redoPlanEdit, resetPlanEdits, type PlanEditingSession } from '../../application/optimization/plan-editing-session'
+import type { CuttingTreeEdit } from '../../domain/cutting-tree/edit-cutting-tree'
 import { createCuttingPlanScene } from '../../application/optimization/cutting-plan-scene'
 import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
@@ -10,10 +12,54 @@ import { createPlanCanvas, type PlanCanvas, type PlanPalette } from './viewer/pl
 import { fitViewport, panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
 
 const props = defineProps<{ plan: PanelCuttingPlan | null; panel: SupplierProduct; parts: readonly Part[]; settings: CuttingSettings }>()
-const projection = computed(() => createCuttingPlanScene(props.plan, { panel: props.panel, parts: props.parts, settings: props.settings }))
+const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean] }>()
+const session = shallowRef<PlanEditingSession | null>(null)
+const editMode = ref(false)
+const editFeedback = ref('')
+const editError = ref('')
+const swapKey = ref('')
+watch([() => props.plan, () => props.panel, () => props.parts, () => props.settings], () => {
+  session.value = null
+  editMode.value = false
+  swapKey.value = ''
+  editFeedback.value = ''
+  editError.value = ''
+  if (props.plan !== null) {
+    const created = createPlanEditingSession(toRaw(props.plan), { panel: toRaw(props.panel), parts: toRaw(props.parts), settings: toRaw(props.settings) })
+    if (created.ok) session.value = created.session
+  }
+}, { immediate: true, flush: 'sync' })
+const displayedPlan = computed(() => session.value === null ? props.plan : currentEditingPlan(session.value))
+const projection = computed(() => createCuttingPlanScene(displayedPlan.value, { panel: props.panel, parts: props.parts, settings: props.settings }))
 const host = ref<HTMLDivElement | null>(null)
 const selectedKey = ref('')
 const selectedPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === selectedKey.value) : undefined)
+const swapPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === swapKey.value) : undefined)
+const rotationEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === undefined ? null : { kind: 'rotate', copy: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex } })
+const swapEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === undefined || swapPart.value === undefined ? null : { kind: 'swap', first: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex }, second: { partId: swapPart.value.part.id, copyIndex: swapPart.value.copyIndex } })
+function unavailableReason(edit: CuttingTreeEdit | null, emptyMessage: string): string {
+  if (session.value === null) return 'A valid cutting plan is required.'
+  if (edit === null) return emptyMessage
+  const proposed = applyPlanEdit(session.value, edit)
+  return proposed.ok ? '' : proposed.error.message
+}
+const rotationReason = computed(() => unavailableReason(rotationEdit.value, 'Select a placed copy to rotate.'))
+const swapReason = computed(() => unavailableReason(swapEdit.value, 'Select two different placed copies to swap.'))
+function announceSession(next: PlanEditingSession, message: string): void {
+  session.value = next
+  editError.value = ''
+  editFeedback.value = message
+  emit('plan-change', currentEditingPlan(next), next.cursor > 0)
+}
+function applyEdit(edit: CuttingTreeEdit | null): void {
+  if (!editMode.value || session.value === null || edit === null) return
+  const outcome = applyPlanEdit(session.value, edit)
+  if (!outcome.ok) { editError.value = outcome.error.message; editFeedback.value = ''; return }
+  announceSession(outcome.session, edit.kind === 'rotate' ? 'Rotation accepted and independently validated.' : 'Swap accepted and independently validated.')
+}
+function undo(): void { if (editMode.value && session.value !== null) announceSession(undoPlanEdit(session.value), 'Edit undone.') }
+function redo(): void { if (editMode.value && session.value !== null) announceSession(redoPlanEdit(session.value), 'Edit restored.') }
+function resetOptimized(): void { if (editMode.value && session.value !== null) announceSession(resetPlanEdits(session.value), 'Optimized plan restored. Edit history cleared.') }
 const canvasError = ref('')
 const canvasReady = ref(false)
 const view = ref<Viewport>({ x: 0, y: 0, scale: 1 })
@@ -68,14 +114,16 @@ function render(): void {
   canvas?.destroy(); canvas = null
   canvasReady.value = false
   canvasError.value = ''
-  selectedKey.value = ''
+  if (projection.value.status !== 'valid' || !projection.value.scene.parts.some(part => part.key === selectedKey.value)) selectedKey.value = ''
   if (projection.value.status !== 'valid' || host.value === null) return
   try {
     size = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
     fittedView.value = fitViewport(projection.value.scene.panel, size)
     canvas = createPlanCanvas(host.value, projection.value.scene, size, palette(), key => { selectedKey.value = key }, next => { isFitted = false; view.value = next })
     canvasReady.value = true
-    fit()
+    if (isFitted) fit()
+    else canvas.setViewport(view.value)
+    canvas.setSelection(selectedKey.value)
     resizeObserver?.disconnect()
     resizeObserver?.observe(host.value)
   } catch {
@@ -116,6 +164,15 @@ onBeforeUnmount(() => {
       >
         Cutting layout
       </h3>
+      <button
+        type="button"
+        class="button"
+        :aria-pressed="editMode"
+        :disabled="session === null || projection.status !== 'valid'"
+        @click="editMode = !editMode"
+      >
+        {{ editMode ? 'Switch to View Mode' : 'Enter Edit Mode' }}
+      </button>
       <div
         class="flex flex-wrap items-center gap-2"
         role="group"
@@ -176,10 +233,17 @@ onBeforeUnmount(() => {
     </p>
     <template v-else>
       <p
+        role="status"
+        class="text-sm font-semibold text-accent"
+      >
+        {{ editMode ? 'Edit Mode — validated, constrained changes only. Edits are not saved.' : 'View Mode — placements are read-only.' }}
+        {{ session && session.cursor > 0 ? 'Showing a manually edited plan.' : 'Showing the optimized plan.' }}
+      </p>
+      <p
         id="cutting-viewer-help"
         class="text-sm text-muted"
       >
-        Drag to pan; click a part to inspect it. Keyboard: focus the canvas and use arrow keys to pan, +/− to zoom, 0 to fit. Parts cannot be moved or edited.
+        Drag to pan; click a part to inspect it. Keyboard: focus the canvas and use arrow keys to pan, +/− to zoom, 0 to fit. Dragging only pans the viewport. Use Edit Mode controls for constrained changes.
       </p>
       <p
         v-if="canvasError"
@@ -265,6 +329,115 @@ onBeforeUnmount(() => {
               </select>
             </template>
           </FormField>
+          <div
+            v-if="editMode"
+            class="space-y-3 border-t border-line pt-4"
+            aria-label="Constrained plan editing"
+          >
+            <button
+              type="button"
+              class="button w-full"
+              :disabled="Boolean(rotationReason)"
+              aria-describedby="edit-rotation-reason"
+              @click="applyEdit(rotationEdit)"
+            >
+              Rotate selected copy 90°
+            </button>
+            <p
+              id="edit-rotation-reason"
+              class="text-sm text-muted"
+            >
+              {{ rotationReason || 'Uses only this copy’s reserved region and waste. Its anchor and other parts stay fixed.' }}
+            </p>
+            <FormField
+              id="cutting-viewer-swap"
+              label="Swap with placed copy"
+            >
+              <template #default="{ controlAttrs }">
+                <select
+                  v-bind="controlAttrs"
+                  v-model="swapKey"
+                  class="field"
+                  :disabled="!selectedPart"
+                >
+                  <option value="">
+                    Select another copy
+                  </option>
+                  <option
+                    v-for="part in projection.scene.parts.filter(part => part.key !== selectedKey)"
+                    :key="part.key"
+                    :value="part.key"
+                  >
+                    {{ part.part.name }} / {{ part.copyIndex + 1 }}
+                  </option>
+                </select>
+              </template>
+            </FormField>
+            <button
+              type="button"
+              class="button w-full"
+              :disabled="Boolean(swapReason)"
+              aria-describedby="edit-swap-reason"
+              @click="applyEdit(swapEdit)"
+            >
+              Swap selected copies
+            </button>
+            <p
+              id="edit-swap-reason"
+              class="text-sm text-muted"
+            >
+              {{ swapReason || 'Both copies fit the other leaf exactly. Cut regions stay fixed; orientations may change when permitted.' }}
+            </p>
+            <div
+              class="flex flex-wrap gap-2"
+              aria-describedby="edit-history-help"
+            >
+              <button
+                type="button"
+                class="button"
+                :disabled="!session || session.cursor === 0"
+                @click="undo"
+              >
+                Undo edit
+              </button>
+              <button
+                type="button"
+                class="button"
+                :disabled="!session || session.cursor >= session.history.length - 1"
+                @click="redo"
+              >
+                Redo edit
+              </button>
+              <button
+                type="button"
+                class="button"
+                :disabled="!session || session.history.length === 1"
+                @click="resetOptimized"
+              >
+                Reset to Optimized Plan
+              </button>
+            </div>
+            <p
+              id="edit-history-help"
+              class="text-sm text-muted"
+            >
+              Undo and Redo apply to accepted edits. Reset restores the optimizer result and clears history.
+            </p>
+            <p
+              v-if="editFeedback"
+              role="status"
+              class="text-sm text-success"
+            >
+              {{ editFeedback }}
+            </p>
+            <p
+              v-if="editError"
+              role="alert"
+              class="text-sm text-danger"
+            >
+              {{ editError }}
+            </p>
+          </div>
           <dl
             v-if="selectedPart"
             class="space-y-3 text-sm"

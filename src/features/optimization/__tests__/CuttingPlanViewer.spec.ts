@@ -109,7 +109,8 @@ describe('Read-only cutting plan viewer', () => {
     await flushPromises()
     expect(canvas.destroy).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('The graphical viewer is unavailable')
-    expect(wrapper.findAll('button').every(item => item.attributes('disabled') !== undefined)).toBe(true)
+    expect(wrapper.get('[aria-label="Cutting layout view controls"]').findAll('button').every(item => item.attributes('disabled') !== undefined)).toBe(true)
+    expect(wrapper.findAll('button').find(item => item.text() === 'Enter Edit Mode')?.attributes('disabled')).toBeUndefined()
   })
   it('updates theme colors without rebuilding and disconnects observers and media listeners on unmount', async () => {
     const disconnect = vi.fn()
