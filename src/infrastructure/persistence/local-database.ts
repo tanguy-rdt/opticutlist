@@ -2,6 +2,7 @@ import Dexie, { type DexieOptions, type Table } from 'dexie'
 import type { z } from 'zod'
 
 import type { LocalPersistence, PersistenceError, PersistenceResult, Repositories, Repository } from '../../application/persistence/repositories'
+import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import { materialSchema } from '../../domain/model/material'
 import { partSchema } from '../../domain/model/part'
 import { stockItemSchema } from '../../domain/model/stock-item'
@@ -9,14 +10,15 @@ import { supplierSchema } from '../../domain/model/supplier'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 
 export const DATABASE_NAME = 'opticutlist'
-export const DATABASE_VERSION = 1
-export const DATABASE_STORES = {
+export const DATABASE_VERSION = 2
+export const DATABASE_V1_STORES = {
   materials: 'id',
   parts: 'id',
   suppliers: 'id',
   supplierProducts: 'id',
   stockItems: 'id',
 } as const
+export const DATABASE_STORES = { ...DATABASE_V1_STORES, projects: 'id' } as const
 
 class PersistenceFailure extends Error {
   constructor(readonly detail: PersistenceError) {
@@ -101,6 +103,9 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
   const db = new Dexie(name, options)
   // Keep this declaration immutable. Append versions with transactional upgrade callbacks when
   // records need transformation; a failed migration must abort, never clear or recreate the DB.
+  db.version(1).stores(DATABASE_V1_STORES)
+  // Additive upgrade: existing records are untouched. Legacy parts remain unassigned
+  // until the user explicitly adopts them through the project application service.
   db.version(DATABASE_VERSION).stores(DATABASE_STORES)
   db.on('ready', () => {
     // Dexie versions are multiplied by ten in the native IndexedDB version.
@@ -119,6 +124,7 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
 
   function repositories(tableFor: (name: string) => Table<unknown, string>, run: Execute): Repositories {
     return {
+      projects: createRepository(tableFor('projects'), cuttingProjectSchema, cuttingProjectSchema.shape.id, run),
       materials: createRepository(tableFor('materials'), materialSchema, materialSchema.shape.id, run),
       parts: createRepository(tableFor('parts'), partSchema, partSchema.shape.id, run),
       suppliers: createRepository(tableFor('suppliers'), supplierSchema, supplierSchema.shape.id, run),

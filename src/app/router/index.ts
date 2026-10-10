@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory, type Router, type RouterHistory } from 'vue-router'
 
-import PartsView from '../../features/parts/PartsView.vue'
+import ProjectPartsView from '../../features/projects/ProjectPartsView.vue'
+import ProjectWorkspace from '../../features/projects/ProjectWorkspace.vue'
 import SuppliersView from '../../features/suppliers/SuppliersView.vue'
 import MaterialsView from '../../features/materials/MaterialsView.vue'
 import ProjectsView from '../views/ProjectsView.vue'
@@ -13,10 +14,15 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
     history,
     routes: [
       { path: '/', name: 'home', component: HomeView },
-      { path: '/materials', name: 'materials', component: MaterialsView },
-      { path: '/parts', name: 'parts', component: PartsView },
+      { path: '/materials', redirect: '/projects' },
+      { path: '/parts', redirect: '/projects' },
       { path: '/catalog', alias: '/suppliers', name: 'suppliers', component: SuppliersView },
       { path: '/projects', name: 'projects', component: ProjectsView },
+      { path: '/projects/:projectId', component: ProjectWorkspace, props: true, children: [
+        { path: '', redirect: to => ({ name: 'project-parts', params: to.params }) },
+        { path: 'parts', name: 'project-parts', component: ProjectPartsView },
+        { path: 'materials', name: 'project-materials', component: MaterialsView },
+      ] },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
     ],
   })

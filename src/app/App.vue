@@ -59,7 +59,7 @@ function focusContent(): void {
       tabindex="-1"
       class="mx-auto w-full max-w-7xl flex-1 px-6 py-8 lg:px-8 lg:py-10"
     >
-      <RouterView />
+      <RouterView :key="String($route.params.projectId ?? '')" />
     </main>
     <footer class="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-2 px-6 py-6 text-xs text-muted lg:px-8">
       <span>Saved on this device. Browser storage can be cleared.</span>

@@ -2,7 +2,8 @@ import { createApp } from 'vue'
 import { createCatalogRepositories } from './application/catalog/catalog-repositories'
 import { supplierRepositoryKey, supplierProductRepositoryKey } from './features/suppliers/catalog-repositories'
 
-import { partRepositoryKey } from './features/parts/part-repository'
+import { createProjectService } from './application/projects/project-service'
+import { projectServiceKey } from './features/projects/project-service'
 import { materialRepositoryKey } from './features/materials/material-repository'
 import { createLocalPersistence } from './infrastructure/persistence/local-database'
 
@@ -17,7 +18,7 @@ const catalog = createCatalogRepositories(persistence)
 app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
-app.provide(partRepositoryKey, persistence.parts)
+app.provide(projectServiceKey, createProjectService(persistence))
 app.onUnmount(() => { persistence.close() })
 
 app.use(createAppPinia())

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import ProjectList from '../../features/projects/ProjectList.vue'
 </script>
 
 <template>
@@ -17,13 +18,10 @@ import { RouterLink } from 'vue-router'
     </div>
 
     <div class="grid gap-5 md:grid-cols-2 md:grid-rows-2 lg:gap-6">
-      <article
+      <RouterLink
+        to="/projects"
         class="home-card relative flex flex-col items-start gap-4 overflow-hidden p-6 md:p-8"
         aria-labelledby="new-project-title"
-        aria-describedby="new-project-unavailable"
-        role="button"
-        aria-disabled="true"
-        tabindex="0"
       >
         <svg
           class="pointer-events-none absolute -right-8 -top-8 h-48 w-48 text-accent opacity-[0.08]"
@@ -59,15 +57,7 @@ import { RouterLink } from 'vue-router'
             Give your next idea a place to grow, from the first dimensions to the final cut.
           </p>
         </div>
-        <div class="mt-auto space-y-2 pt-2">
-          <p
-            id="new-project-unavailable"
-            class="text-sm text-muted"
-          >
-            Project creation is not available yet.
-          </p>
-        </div>
-      </article>
+      </RouterLink>
 
       <article
         class="home-card flex flex-col items-start gap-4 p-6 md:col-start-1 md:row-start-2 md:p-8"
@@ -195,6 +185,8 @@ import { RouterLink } from 'vue-router'
         </div>
       </RouterLink>
     </div>
+
+    <ProjectList />
 
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-sm text-muted">
       <p>Made for the workshop. Stored on your device.</p>

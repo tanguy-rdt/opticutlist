@@ -7,7 +7,9 @@ import App from '../App.vue'
 import { createAppPinia } from '../pinia'
 import { createAppRouter } from '../router'
 import { materialRepositoryKey } from '../../features/materials/material-repository'
-import { partRepositoryKey } from '../../features/parts/part-repository'
+import { projectServiceKey } from '../../features/projects/project-service'
+import { createProjectService } from '../../application/projects/project-service'
+import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import { createLocalPersistence } from '../../infrastructure/persistence/local-database'
 import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../features/suppliers/catalog-repositories'
 import { createCatalogRepositories } from '../../application/catalog/catalog-repositories'
@@ -27,6 +29,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
   const persistence = createLocalPersistence('navigation-test', { indexedDB, IDBKeyRange })
   connections.push(persistence)
   const catalog = createCatalogRepositories(persistence)
+  const service = createProjectService(persistence)
   const router = createAppRouter(createMemoryHistory())
   await router.push(path)
   await router.isReady()
@@ -36,7 +39,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
       plugins: [createAppPinia(), router],
       provide: {
         [materialRepositoryKey]: catalog.materials,
-        [partRepositoryKey]: persistence.parts,
+        [projectServiceKey]: service,
         [supplierRepositoryKey]: catalog.suppliers,
         [supplierProductRepositoryKey]: catalog.supplierProducts,
       },
@@ -45,7 +48,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
   })
   wrappers.push(wrapper)
   await flushPromises()
-  return { wrapper, router, persistence }
+  return { wrapper, router, persistence, service }
 }
 
 describe('Home and application navigation', () => {
@@ -70,7 +73,7 @@ describe('Home and application navigation', () => {
 
   it('exposes unavailable project tiles to keyboard users with clear explanations', async () => {
     const { wrapper, router } = await mountAt('/')
-    for (const id of ['new-project', 'import-project']) {
+    for (const id of ['import-project']) {
       const tile = wrapper.get<HTMLElement>(`[aria-labelledby="${id}-title"]`)
       expect(tile.attributes('aria-disabled')).toBe('true')
       expect(tile.attributes('role')).toBe('button')
@@ -115,8 +118,8 @@ describe('Home and application navigation', () => {
 
   it('removes nested actions, catalogue badges and independent saved-library links', async () => {
     const { wrapper } = await mountAt('/')
-    expect(wrapper.find('main button').exists()).toBe(false)
-    expect(wrapper.findAll('main a').map(link => link.attributes('href'))).toEqual(['/catalog'])
+    expect(wrapper.find('.home-card button').exists()).toBe(false)
+    expect(wrapper.findAll('.home-card').filter(tile => tile.element.tagName === 'A').map(link => link.attributes('href'))).toEqual(['/projects', '/catalog'])
     expect(wrapper.text()).not.toContain('Access saved parts and materials')
     const catalogue = wrapper.get('[aria-labelledby="catalog-title"]')
     expect(catalogue.findAll('span')).toHaveLength(0)
@@ -136,31 +139,86 @@ describe('Home and application navigation', () => {
     expect(wrapper.get('h1').text()).toBe('Your next build starts here.')
   })
 
-  it('keeps legacy routes usable without exposing global Parts or Materials links', async () => {
-    const { wrapper, router } = await mountAt('/projects')
-    expect(wrapper.get('h1').text()).toBe('Projects')
-    expect(wrapper.find('a[href="/parts"], a[href="/materials"]').exists()).toBe(false)
-    for (const path of ['/parts', '/materials']) {
-      await router.push(path)
-      await flushPromises()
-      expect(wrapper.get('h1').text()).toBe(path === '/parts' ? 'Parts' : 'Materials')
-      expect(wrapper.find('nav').exists()).toBe(false)
-      expect(wrapper.find('a[href="/projects"]').exists()).toBe(false)
-    }
+  it('requires a project for old Parts and Materials routes', async () => {
+    const { wrapper, router } = await mountAt('/parts')
+    expect(router.currentRoute.value.path).toBe('/projects')
+    expect(wrapper.get('h1').text()).toBe('New Project')
+    expect(wrapper.find('nav').exists()).toBe(false)
+    await router.push('/materials')
+    expect(router.currentRoute.value.path).toBe('/projects')
+  })
+
+  it('creates, opens and refreshes an isolated project workspace from Home', async () => {
+    const indexedDB = new IDBFactory()
+    const { wrapper, router, persistence } = await mountAt('/', indexedDB)
+    await wrapper.get('a[aria-labelledby="new-project-title"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('h1').text()).toBe('New Project')
+    await wrapper.get('#project-name').setValue('Workshop cabinet')
+    await wrapper.get('form').trigger('submit')
+    await vi.waitFor(() => { expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(true) })
+    const path = router.currentRoute.value.path
+    expect(path).toMatch(/^\/projects\/[^/]+\/parts$/)
+    expect(wrapper.text()).toContain('Workshop cabinet')
+    expect(wrapper.get('h1').text()).toBe('Parts')
+    await wrapper.get('nav a').trigger('click')
+    await router.push(path.replace(/parts$/, 'materials'))
+    await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe('Materials') })
+    await wrapper.get('main a[href="/"]').trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find('nav').exists()).toBe(false) })
+    await vi.waitFor(() => { expect(wrapper.find(`a[href="${path}"]`).exists()).toBe(true) })
+    await wrapper.get(`a[href="${path}"]`).trigger('click')
+    await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe('Parts') })
+    wrapper.unmount(); persistence.close()
+    const reopened = await mountAt(path, indexedDB)
+    await vi.waitFor(() => { expect(reopened.wrapper.get('h1').text()).toBe('Parts') })
+    expect(reopened.wrapper.text()).toContain('Workshop cabinet')
+  })
+
+  it('never displays another project’s Parts when switching or refreshing workspaces', async () => {
+    const { wrapper, router, persistence, service } = await mountAt('/')
+    await persistence.materials.create(validMaterialInput)
+    const first = cuttingProjectSchema.parse({ id: 'isolation-first', name: 'First', partIds: [], materialIds: [], supplierProductIds: [] })
+    const second = cuttingProjectSchema.parse({ ...first, id: 'isolation-second', name: 'Second' })
+    await service.projects.create(first)
+    await service.projects.create(second)
+    await service.parts(first.id).create({ ...validPartInput, name: 'Only first project' })
+    await service.parts(second.id).create({ ...validPartInput, id: 'second-part', name: 'Only second project' })
+    await router.push('/projects/isolation-first/parts')
+    await vi.waitFor(() => { expect(wrapper.find('table').exists()).toBe(true) })
+    expect(wrapper.get('table').text()).toContain('Only first project')
+    expect(wrapper.get('table').text()).not.toContain('Only second project')
+    await router.push('/projects/isolation-second/parts')
+    await vi.waitFor(() => { expect(wrapper.find('table').exists()).toBe(true) })
+    expect(wrapper.get('table').text()).toContain('Only second project')
+    expect(wrapper.get('table').text()).not.toContain('Only first project')
+  })
+
+  it('shows missing projects without mounting global Parts or Materials', async () => {
+    const { wrapper } = await mountAt('/projects/missing/parts')
+    await vi.waitFor(() => { expect(wrapper.find('[role="alert"]').exists()).toBe(true) })
+    expect(wrapper.get('h1').text()).toBe('Could not open project')
+    expect(wrapper.find('nav').exists()).toBe(false)
+    expect(wrapper.find('#part-name').exists()).toBe(false)
   })
 
   it('preserves existing records across navigation and database reopening', async () => {
     const indexedDB = new IDBFactory()
-    const { wrapper, router, persistence } = await mountAt('/', indexedDB)
+    const { wrapper, router, persistence, service } = await mountAt('/', indexedDB)
     expect((await persistence.materials.create(validMaterialInput)).ok).toBe(true)
     expect((await persistence.parts.create(validPartInput)).ok).toBe(true)
     expect((await persistence.suppliers.create(validSupplierInput)).ok).toBe(true)
     expect((await persistence.supplierProducts.create(validSupplierProductInput)).ok).toBe(true)
 
-    await router.push('/parts')
+    const project = cuttingProjectSchema.parse({ id: 'retained-project', name: 'Retained project', partIds: [], materialIds: [], supplierProductIds: [] })
+    expect((await service.projects.create(project)).ok).toBe(true)
+    const legacy = await service.listLegacyParts()
+    if (!legacy.ok || !legacy.value[0]) throw new Error('Missing legacy part')
+    expect((await service.adoptLegacyParts(project.id, [legacy.value[0].id])).ok).toBe(true)
+    await router.push('/projects/retained-project/parts')
     await flushPromises()
     await vi.waitFor(() => { expect(wrapper.get('table').text()).toContain(validPartInput.name) })
-    await router.push('/materials')
+    await router.push('/projects/retained-project/materials')
     await flushPromises()
     await vi.waitFor(() => { expect(wrapper.get('table').text()).toContain(validMaterialInput.name) })
     await router.push('/catalog')
@@ -172,7 +230,7 @@ describe('Home and application navigation', () => {
     wrapper.unmount()
     persistence.close()
 
-    const reopened = await mountAt('/parts', indexedDB)
+    const reopened = await mountAt('/projects/retained-project/parts', indexedDB)
     await vi.waitFor(() => { expect(reopened.wrapper.get('table').text()).toContain(validPartInput.name) })
     expect(await reopened.persistence.parts.list()).toEqual({ ok: true, value: [expect.objectContaining(validPartInput)] })
     expect(await reopened.persistence.materials.list()).toEqual({ ok: true, value: [expect.objectContaining(validMaterialInput)] })

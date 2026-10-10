@@ -1,3 +1,4 @@
+import type { CuttingProject } from '../../domain/model/cutting-project'
 import type { Material } from '../../domain/model/material'
 import type { Part } from '../../domain/model/part'
 import type { StockItem } from '../../domain/model/stock-item'
@@ -25,6 +26,7 @@ export interface Repository<Entity extends { id: string }> {
 }
 
 export interface Repositories {
+  readonly projects: Repository<CuttingProject>
   readonly materials: Repository<Material>
   readonly parts: Repository<Part>
   readonly suppliers: Repository<Supplier>

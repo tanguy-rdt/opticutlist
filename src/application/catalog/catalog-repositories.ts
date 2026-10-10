@@ -38,6 +38,9 @@ export function createCatalogRepositories(persistence: LocalPersistence): Pick<R
       update: (id, record) => saveProduct(record, id),
       delete(id: SupplierProduct['id']) {
         return persistence.transaction(async (repositories) => {
+          const projects = await repositories.projects.list()
+          if (!projects.ok) return projects
+          if (projects.value.some(project => project.supplierProductIds.includes(id))) return conflict('Cannot delete this product while a project selects it. Remove the project selection first.')
           const stock = await repositories.stockItems.list()
           if (!stock.ok) return stock
           if (stock.value.some((item) => item.provenance.source === 'purchase' && item.provenance.supplierProductId === id)) return conflict('Cannot delete this product because owned stock references it as its purchase source.')
@@ -49,6 +52,9 @@ export function createCatalogRepositories(persistence: LocalPersistence): Pick<R
       ...persistence.materials,
       delete(id: Material['id']) {
         return persistence.transaction(async (repositories) => {
+          const projects = await repositories.projects.list()
+          if (!projects.ok) return projects
+          if (projects.value.some(project => project.materialIds.includes(id))) return conflict('Cannot delete this material while a project selects it. Remove the project selection first.')
           const parts = await repositories.parts.list()
           if (!parts.ok) return parts
           const products = await repositories.supplierProducts.list()

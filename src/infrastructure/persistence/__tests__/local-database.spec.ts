@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
 
 import type { LocalPersistence, PersistenceResult, Repositories, Repository } from '../../../application/persistence/repositories'
+import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import { materialSchema } from '../../../domain/model/material'
 import { partSchema } from '../../../domain/model/part'
 import { stockItemSchema } from '../../../domain/model/stock-item'
@@ -14,7 +15,7 @@ import {
   dimensionKeys, invalidDimensionValues, validMaterialInput, validPartInput,
   validStockItemInput, validSupplierInput, validSupplierProductInput, without,
 } from '../../../domain/model/__tests__/fixtures'
-import { createLocalPersistence, DATABASE_STORES, DATABASE_VERSION } from '../local-database'
+import { createLocalPersistence, DATABASE_STORES, DATABASE_VERSION, DATABASE_V1_STORES } from '../local-database'
 
 let indexedDB: IDBFactory
 let persistence: LocalPersistence
@@ -118,6 +119,7 @@ function repositoryTests<Entity extends { id: string }>(
   })
 }
 
+repositoryTests('projects', cuttingProjectSchema, { id: 'project-cabinet', name: 'Cabinet', partIds: [], materialIds: [], supplierProductIds: [] }, repositories => repositories.projects)
 repositoryTests('materials', materialSchema, validMaterialInput, (repositories) => repositories.materials)
 repositoryTests('parts', partSchema, validPartInput, (repositories) => repositories.parts)
 repositoryTests('suppliers', supplierSchema, validSupplierInput, (repositories) => repositories.suppliers)
@@ -232,6 +234,39 @@ describe('atomic transactions', () => {
 })
 
 describe('storage failures and versions', () => {
+  it('upgrades version 1 additively and leaves every legacy record unassigned and unchanged', async () => {
+    persistence.close()
+    const legacy = rawDatabase()
+    legacy.version(1).stores(DATABASE_V1_STORES)
+    for (const [table, record] of [
+      ['materials', validMaterialInput], ['parts', validPartInput], ['suppliers', validSupplierInput],
+      ['supplierProducts', validSupplierProductInput], ['stockItems', validStockItemInput],
+    ] as const) await legacy.table<unknown, string>(table).add(record)
+    legacy.close()
+    const upgraded = connect()
+    success(await upgraded.open())
+    expect(success(await upgraded.projects.list())).toEqual([])
+    expect(success(await upgraded.parts.list())).toEqual([validPartInput])
+    expect(success(await upgraded.materials.list())).toEqual([validMaterialInput])
+    expect(success(await upgraded.suppliers.list())).toEqual([validSupplierInput])
+    expect(success(await upgraded.supplierProducts.list())).toEqual([validSupplierProductInput])
+    expect(success(await upgraded.stockItems.list())).toEqual([validStockItemInput])
+  })
+  it('retains invalid legacy records on upgrade and reports their validation failure', async () => {
+    persistence.close()
+    const legacy = rawDatabase()
+    legacy.version(1).stores(DATABASE_V1_STORES)
+    await legacy.table<unknown, string>('parts').add({ ...validPartInput, thicknessMm: 0 })
+    legacy.close()
+    const upgraded = connect()
+    success(await upgraded.open())
+    expect(await upgraded.parts.list()).toMatchObject({ ok: false, error: { kind: 'invalidRecord' } })
+    upgraded.close()
+    const raw = rawDatabase()
+    raw.version(DATABASE_VERSION).stores(DATABASE_STORES)
+    expect(await raw.table<unknown, string>('parts').get(validPartInput.id)).toEqual({ ...validPartInput, thicknessMm: 0 })
+  })
+
   it('reports unavailable IndexedDB instead of rejecting promises', async () => {
     const unavailable = createLocalPersistence('unavailable', { indexedDB: { open() { throw new Error('IndexedDB unavailable') } }, IDBKeyRange })
     connections.push(unavailable)
