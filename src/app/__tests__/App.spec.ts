@@ -49,83 +49,104 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
 }
 
 describe('Home and application navigation', () => {
-  it('renders the three home cards in the desktop two-column arrangement', async () => {
+  it('keeps the three-tile layout and woodworking imagery', async () => {
     const { wrapper } = await mountAt('/')
     expect(wrapper.get('header').text()).toContain('OptiCutList')
     expect(wrapper.get('h1').text()).toBe('Your next build starts here.')
-    expect(wrapper.findAll('article h2').map(heading => heading.text())).toEqual(['New Project', 'Import Project', 'Catalog'])
-    expect(wrapper.get('article[aria-labelledby="catalog-title"]').classes()).toContain('md:row-span-2')
-    expect(wrapper.get('article[aria-labelledby="import-project-title"]').classes()).toContain('md:row-start-2')
-    expect(wrapper.get('article[aria-labelledby="catalog-title"] svg').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.findAll('.home-card h2').map(heading => heading.text())).toEqual(['New Project', 'Import Project', 'Catalogue'])
+    expect(wrapper.get('[aria-labelledby="catalog-title"]').classes()).toContain('md:row-span-2')
+    expect(wrapper.get('[aria-labelledby="import-project-title"]').classes()).toContain('md:row-start-2')
+    expect(wrapper.get('[aria-labelledby="catalog-title"] svg').attributes('aria-hidden')).toBe('true')
   })
 
-  it('keeps global navigation limited to Home and Catalog without a fake project workspace', async () => {
+  it('keeps only the logo and theme selector in the header', async () => {
     const { wrapper } = await mountAt('/')
-    expect(wrapper.findAll('nav[aria-label="Main"] a').map(link => link.text())).toEqual(['Home', 'Catalog'])
-    expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(false)
-    expect(wrapper.get('nav a[href="/"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.find('header nav').exists()).toBe(false)
+    expect(wrapper.findAll('header a')).toHaveLength(1)
+    expect(wrapper.get('header a').attributes('aria-label')).toBe('OptiCutList home')
+    expect(wrapper.find('#theme-preference').exists()).toBe(true)
+    expect(wrapper.find('aside').exists()).toBe(false)
   })
 
-  it('clearly disables project creation and import when no workflow exists', async () => {
+  it('exposes unavailable project tiles to keyboard users with clear explanations', async () => {
     const { wrapper, router } = await mountAt('/')
-    const create = wrapper.get('article[aria-labelledby="new-project-title"] button')
-    const importProject = wrapper.get('article[aria-labelledby="import-project-title"] button')
-    expect(create.attributes('disabled')).toBeDefined()
-    expect(importProject.attributes('disabled')).toBeDefined()
-    expect(create.attributes('aria-describedby')).toBe('new-project-unavailable')
-    expect(importProject.attributes('aria-describedby')).toBe('import-project-unavailable')
-    expect(wrapper.get('#new-project-unavailable').text()).toContain('not available yet')
-    expect(wrapper.get('#import-project-unavailable').text()).toContain('not available yet')
-    await create.trigger('click')
-    await importProject.trigger('click')
-    expect(router.currentRoute.value.path).toBe('/')
+    for (const id of ['new-project', 'import-project']) {
+      const tile = wrapper.get<HTMLElement>(`[aria-labelledby="${id}-title"]`)
+      expect(tile.attributes('aria-disabled')).toBe('true')
+      expect(tile.attributes('role')).toBe('button')
+      expect(tile.attributes('tabindex')).toBe('0')
+      expect(tile.attributes('aria-describedby')).toBe(`${id}-unavailable`)
+      expect(wrapper.get(`#${id}-unavailable`).text()).toContain('not available yet')
+      tile.element.focus()
+      expect(document.activeElement).toBe(tile.element)
+      await tile.trigger('click')
+      await tile.trigger('keydown', { key: 'Enter' })
+      await tile.trigger('keydown', { key: ' ' })
+      await flushPromises()
+      expect(router.currentRoute.value.path).toBe('/')
+    }
   })
 
-  it('opens the existing catalog from its home card with no project', async () => {
+  it('opens Catalogue when any part of its tile is clicked', async () => {
     const { wrapper, router } = await mountAt('/')
-    await wrapper.get('article a[href="/catalog"]').trigger('click')
+    const tile = wrapper.get('a[aria-labelledby="catalog-title"]')
+    expect(tile.attributes('href')).toBe('/catalog')
+    expect(tile.find('a, button, input, select').exists()).toBe(false)
+    await tile.get('svg').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/catalog')
-    expect(wrapper.get('h1').text()).toBe('Catalog')
+    expect(wrapper.get('h1').text()).toBe('Catalogue')
     expect(wrapper.text()).toContain('New supplier')
-    expect(wrapper.get('nav a[href="/catalog"]').attributes('aria-current')).toBe('page')
-    expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(false)
   })
 
-  it('opens Catalog from global navigation and returns home', async () => {
+  it('supports native keyboard activation of the entire Catalogue link', async () => {
     const { wrapper, router } = await mountAt('/')
-    await wrapper.get('nav a[href="/catalog"]').trigger('click')
+    const tile = wrapper.get<HTMLAnchorElement>('a[aria-labelledby="catalog-title"]')
+    tile.element.focus()
+    expect(document.activeElement).toBe(tile.element)
+    expect(tile.element.tabIndex).toBe(0)
+    expect(tile.attributes('aria-disabled')).toBeUndefined()
+    // jsdom does not synthesize browser default actions for Enter. Dispatch the
+    // zero-detail click that a browser emits when a focused native link is activated.
+    tile.element.dispatchEvent(new MouseEvent('click', { detail: 0, bubbles: true, cancelable: true }))
     await flushPromises()
-    expect(wrapper.get('h1').text()).toBe('Catalog')
-    await wrapper.get('a[aria-label="OptiCutList home"]').trigger('click')
+    expect(router.currentRoute.value.path).toBe('/catalog')
+  })
+
+  it('removes nested actions, catalogue badges and independent saved-library links', async () => {
+    const { wrapper } = await mountAt('/')
+    expect(wrapper.find('main button').exists()).toBe(false)
+    expect(wrapper.findAll('main a').map(link => link.attributes('href'))).toEqual(['/catalog'])
+    expect(wrapper.text()).not.toContain('Access saved parts and materials')
+    const catalogue = wrapper.get('[aria-labelledby="catalog-title"]')
+    expect(catalogue.findAll('span')).toHaveLength(0)
+    expect(catalogue.findAll('p')).toHaveLength(1)
+    expect(catalogue.text()).not.toContain('Open catalog')
+  })
+
+  it.each(['/catalog', '/suppliers'])('provides Back to Home from %s without a project', async (path) => {
+    const { wrapper, router } = await mountAt(path)
+    expect(wrapper.get('h1').text()).toBe('Catalogue')
+    expect(router.currentRoute.value.name).toBe('suppliers')
+    const back = wrapper.get('main a[href="/"]')
+    expect(back.text()).toContain('Back to Home')
+    await back.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
     expect(wrapper.get('h1').text()).toBe('Your next build starts here.')
   })
 
-  it('preserves the supplier deep link as an alias of the same catalog', async () => {
-    const { wrapper, router } = await mountAt('/suppliers')
-    expect(wrapper.get('h1').text()).toBe('Catalog')
-    expect(router.currentRoute.value.name).toBe('suppliers')
-    expect(wrapper.get('nav a[href="/catalog"]').attributes('aria-current')).toBe('page')
-  })
-
-  it('keeps saved libraries reachable without adding them to global navigation', async () => {
-    const { wrapper } = await mountAt('/')
-    await wrapper.get('a[href="/projects"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('h1').text()).toBe('Saved parts and materials')
-    await wrapper.get('a[href="/parts"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('h1').text()).toBe('Parts')
-    expect(wrapper.text()).toContain('These records are not attached to a project.')
-    expect(wrapper.findAll('nav a').map(link => link.text())).toEqual(['Home', 'Catalog'])
-    await wrapper.get('a[href="/projects"]').trigger('click')
-    await flushPromises()
-    await wrapper.get('a[href="/materials"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('h1').text()).toBe('Materials')
-    expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(false)
+  it('keeps legacy routes usable without exposing global Parts or Materials links', async () => {
+    const { wrapper, router } = await mountAt('/projects')
+    expect(wrapper.get('h1').text()).toBe('Projects')
+    expect(wrapper.find('a[href="/parts"], a[href="/materials"]').exists()).toBe(false)
+    for (const path of ['/parts', '/materials']) {
+      await router.push(path)
+      await flushPromises()
+      expect(wrapper.get('h1').text()).toBe(path === '/parts' ? 'Parts' : 'Materials')
+      expect(wrapper.find('nav').exists()).toBe(false)
+      expect(wrapper.find('a[href="/projects"]').exists()).toBe(false)
+    }
   })
 
   it('preserves existing records across navigation and database reopening', async () => {

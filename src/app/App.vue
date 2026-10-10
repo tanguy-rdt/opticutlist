@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView } from 'vue-router'
 import ThemeSelector from './theme/ThemeSelector.vue'
-
-const route = useRoute()
 
 function focusContent(): void {
   document.getElementById('main-content')?.focus()
@@ -55,43 +53,12 @@ function focusContent(): void {
         </RouterLink>
         <ThemeSelector />
       </div>
-      <nav
-        class="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-6 pb-3 lg:px-8"
-        aria-label="Main"
-      >
-        <RouterLink
-          to="/"
-          class="nav-link"
-        >
-          Home
-        </RouterLink>
-        <RouterLink
-          to="/catalog"
-          class="nav-link"
-        >
-          Catalog
-        </RouterLink>
-      </nav>
     </header>
     <main
       id="main-content"
       tabindex="-1"
       class="mx-auto w-full max-w-7xl flex-1 px-6 py-8 lg:px-8 lg:py-10"
     >
-      <div
-        v-if="route.name === 'parts' || route.name === 'materials'"
-        class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-4 py-3 text-sm"
-      >
-        <p class="text-muted">
-          Saved library · These records are not attached to a project.
-        </p>
-        <RouterLink
-          to="/projects"
-          class="font-semibold text-accent underline underline-offset-4"
-        >
-          Back to saved data
-        </RouterLink>
-      </div>
       <RouterView />
     </main>
     <footer class="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-2 px-6 py-6 text-xs text-muted lg:px-8">

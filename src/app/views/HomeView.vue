@@ -12,7 +12,7 @@ import { RouterLink } from 'vue-router'
         Your next build starts here.
       </h1>
       <p class="max-w-2xl text-lg leading-relaxed text-muted">
-        A little planning. A lot of possibility. Keep your panel catalog ready for whatever takes shape in your workshop.
+        A little planning. A lot of possibility. Keep your panel catalogue ready for whatever takes shape in your workshop.
       </p>
     </div>
 
@@ -20,6 +20,10 @@ import { RouterLink } from 'vue-router'
       <article
         class="home-card relative flex flex-col items-start gap-4 overflow-hidden p-6 md:p-8"
         aria-labelledby="new-project-title"
+        aria-describedby="new-project-unavailable"
+        role="button"
+        aria-disabled="true"
+        tabindex="0"
       >
         <svg
           class="pointer-events-none absolute -right-8 -top-8 h-48 w-48 text-accent opacity-[0.08]"
@@ -56,14 +60,6 @@ import { RouterLink } from 'vue-router'
           </p>
         </div>
         <div class="mt-auto space-y-2 pt-2">
-          <button
-            type="button"
-            class="button"
-            disabled
-            aria-describedby="new-project-unavailable"
-          >
-            New project <span aria-hidden="true">＋</span>
-          </button>
           <p
             id="new-project-unavailable"
             class="text-sm text-muted"
@@ -73,10 +69,13 @@ import { RouterLink } from 'vue-router'
         </div>
       </article>
 
-
       <article
         class="home-card flex flex-col items-start gap-4 p-6 md:col-start-1 md:row-start-2 md:p-8"
         aria-labelledby="import-project-title"
+        aria-describedby="import-project-unavailable"
+        role="button"
+        aria-disabled="true"
+        tabindex="0"
       >
         <span class="home-icon">
           <svg
@@ -101,14 +100,6 @@ import { RouterLink } from 'vue-router'
           </p>
         </div>
         <div class="mt-auto space-y-2 pt-2">
-          <button
-            type="button"
-            class="button"
-            disabled
-            aria-describedby="import-project-unavailable"
-          >
-            Import project <span aria-hidden="true">↓</span>
-          </button>
           <p
             id="import-project-unavailable"
             class="text-sm text-muted"
@@ -118,7 +109,8 @@ import { RouterLink } from 'vue-router'
         </div>
       </article>
 
-      <article
+      <RouterLink
+        to="/catalog"
         class="home-card relative flex flex-col overflow-hidden md:col-start-2 md:row-span-2 md:row-start-1"
         aria-labelledby="catalog-title"
       >
@@ -191,42 +183,21 @@ import { RouterLink } from 'vue-router'
           </svg>
         </div>
         <div class="relative flex flex-col items-start gap-4 p-6 md:p-8">
-          <span class="eyebrow text-accent">Your workshop, organized</span>
           <h2
             id="catalog-title"
             class="text-3xl font-semibold tracking-tight"
           >
-            Catalog
+            Catalogue
           </h2>
           <p class="max-w-md leading-relaxed text-muted">
-            The right material makes all the difference. Keep suppliers, materials and purchasable panels together in one place.
-          </p>
-          <div class="flex flex-wrap gap-2 text-xs font-medium text-muted">
-            <span class="rounded-full border border-line px-3 py-1">Suppliers</span>
-            <span class="rounded-full border border-line px-3 py-1">Materials</span>
-            <span class="rounded-full border border-line px-3 py-1">Panel products</span>
-          </div>
-          <RouterLink
-            to="/catalog"
-            class="button button-primary mt-2"
-          >
-            Open catalog <span aria-hidden="true">→</span>
-          </RouterLink>
-          <p class="text-sm text-muted">
-            Ready to use. No project needed.
+            Suppliers, materials and purchasable panels, organized for your next build.
           </p>
         </div>
-      </article>
+      </RouterLink>
     </div>
 
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-sm text-muted">
       <p>Made for the workshop. Stored on your device.</p>
-      <RouterLink
-        to="/projects"
-        class="font-medium text-accent underline underline-offset-4"
-      >
-        Access saved parts and materials <span aria-hidden="true">→</span>
-      </RouterLink>
     </div>
   </section>
 </template>

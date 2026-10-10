@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
+import { RouterLink } from 'vue-router'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
@@ -140,12 +141,18 @@ onMounted(load)
 </script>
 <template>
   <section class="min-w-0 space-y-6">
+    <RouterLink
+      to="/"
+      class="button"
+    >
+      <span aria-hidden="true">←</span> Back to Home
+    </RouterLink>
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div class="space-y-2">
         <p class="eyebrow">
           Purchasable panels
         </p><h1 class="text-3xl font-semibold tracking-tight">
-          Catalog
+          Catalogue
         </h1><p class="max-w-2xl text-muted">
           Manage suppliers and their panel catalogs. Catalog products describe what you can buy; adding them does not create owned stock.
         </p>
