@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, a single-panel optimizer comparing several deterministic strategies, and Web Worker execution through an application service (see below). No UI, persistence, multi-panel or cost optimization exist yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, a single-panel optimizer comparing several deterministic strategies, and Web Worker execution through an application service (see below). Local persistence for the five initial entities is implemented through application repository ports and a Dexie adapter. No business UI, multi-panel or cost optimization exists yet.
 
 ### Suggested Directory Layout
 
@@ -224,6 +224,17 @@ Physical stock consumption requires explicit confirmation and one atomic, idempo
 ## Persistence, Import/Export and PDF
 
 Use Dexie/IndexedDB for projects, materials, suppliers, products, stock, movements and settings. JSON imports and exports include an explicit schema version, Zod validation and tested migrations. Provide complete backup/restore; never silently discard incompatible data. Remind users that browser storage can be cleared.
+
+### Implemented Local Persistence
+
+- `src/application/persistence/repositories.ts` defines a minimal generic `Repository<Entity>`, the five named repositories and `LocalPersistence`. `create`, `get`, full-record `update`, `delete` and deterministic ID-ordered `list` return typed `PersistenceResult` values. Errors distinguish `invalidRecord` (with field paths), `duplicateId`, `notFound` and `storageFailure`.
+- `src/infrastructure/persistence/local-database.ts` implements these ports with Dexie. `createLocalPersistence()` creates an independent connection to `opticutlist`; tests inject a fresh fake-indexeddb factory. `open()` reports storage failures and `close()` releases the connection; explicitly reopening preserves records. There is no singleton, entity cache or persistent Pinia data.
+- Database **version 1** has `materials`, `parts`, `suppliers`, `supplierProducts` and `stockItems`, each keyed by the existing stable `id`. Products and physically owned stock remain separate stores. IDs are supplied by callers and validated with their existing branded schemas.
+- Reads and writes validate full records with the existing strict Zod schemas. Corrupt reads fail explicitly without skipping or deleting data. `create` uses insert-only `add`; full replacements require an existing record and an unchanged ID. Existence checks and writes/deletions share a transaction, preventing accidental upserts and races. These entity repositories do not introduce foreign-key cascades or alter placement compatibility rules.
+- `transaction(callback)` spans all five stores and provides scoped repositories. Every failed operation, failed callback result or exception rolls back the entire transaction, even if the callback ignores an operation's error. Scoped repositories expire when the callback ends. Only await repository operations inside it; network calls and timers can cause IndexedDB to commit prematurely. Completion is reported only after commit.
+- Migration strategy: keep version 1 immutable and append higher Dexie versions. Additive stores/indexes preserve records automatically; future record transformations must run in a transactional `upgrade` callback, validate transformed records and throw on failure. Never clear, delete or recreate the database as recovery. Databases newer than this application are rejected explicitly to prevent writes with an outdated schema. Tests exercise an additive version-2 index fixture and a failing version-2 migration, verifying preservation and rollback; no version-2 production schema is introduced.
+
+Projects, inventory consumption, cutting plans, JSON import/export and PDFs remain outside this persistence implementation.
 
 Use pdf-lib to generate vector PDFs from validated plan data, including dimensions (with thickness), identifiers, material, layouts, available cutting sequence and waste/cost summaries. Do not use canvas screenshots as the final PDF.
 
