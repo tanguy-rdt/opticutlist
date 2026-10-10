@@ -56,6 +56,9 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Validators of untrusted structures (e.g. cutting trees) convert numbers with `tryToMicrometres` and report every problem with its location. They must not throw on malformed contents.
 - A cutting tree is executable only if `validateCuttingTree` returns `{ valid: true }`. Producers such as the optimizer or the editor must not bypass or duplicate this validator.
 - In validator tests, write expected regions as literal coordinates rather than deriving them with the code under test.
+- Optimizers must be deterministic: no `Math.random`, clocks or iteration over unordered inputs. Break ties explicitly (e.g. by input order).
+- Optimizers return failures as typed `{ ok: false, error }` results and report unplaced parts explicitly; they never drop parts silently.
+- Randomized tests use a seeded generator so failures are reproducible.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD
@@ -116,8 +119,13 @@ Rules:
 - Each commit should represent one coherent change.
 - Use a scope when it improves clarity.
 - Use BREAKING CHANGE in the footer for incompatible changes.
-- Do not commit or push automatically unless explicitly requested.
-- Always propose a Conventional Commit message at the end of every completed task.
-- Include it explicitly in the final task summary under "Suggested commit".
-- Use the format `type(scope): short imperative description`.
-- This is mandatory even when no commit was created.
+- After completing each task, run all required checks.
+- If all checks pass, create a Git commit using Conventional Commits.
+- Automatically push the commit to the current working branch.
+- Include relevant AGENTS.md and ARCHITECTURE.md updates in the same commit.
+- Never commit or push when checks fail.
+- Never force-push, amend existing commits or rewrite Git history.
+- Never push directly to a protected branch.
+- Never include secrets, credentials or unrelated changes.
+- If pushing fails, report the error without attempting destructive fixes.
+- Report the commit message, commit hash and push status in the final summary.

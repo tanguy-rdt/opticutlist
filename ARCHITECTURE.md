@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, and the guillotine cutting tree with its independent validator (see below). No UI, persistence, placement heuristics or optimizer exist yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, the guillotine cutting tree with its independent validator, and a single-panel deterministic optimizer (see below). No UI, persistence, Web Worker, multi-panel or cost optimization exist yet.
 
 ### Suggested Directory Layout
 
@@ -137,6 +137,28 @@ Computed geometry values (`Rect`, `Orientation`, results) are plain TypeScript t
   - **Structure:** a node object referenced twice (DAG or cycle) is `reusedNode` and is not revisited.
 
 Exact region equality makes the leaves tile the usable area minus kerfs, so no global overlap pass is needed. Tree contents are untrusted and never throw; `context` must hold schema-validated values (duplicate part IDs throw). Quantity completeness across several panels belongs to the future plan-level validator.
+
+### Implemented Single-Panel Optimizer
+
+`src/domain/optimizer/optimize-panel.ts` contains one deterministic guillotine heuristic for **one panel**. It is pure TypeScript: no worker, UI or persistence. The Web Worker will wrap it later.
+
+- **Input:** `optimizePanel({ panel, parts, settings })` takes a supplier product or stock item, schema-validated parts with unique IDs (duplicates throw) and `CuttingSettings`.
+- **Pre-check:** each part goes through `checkPartFit` against the empty panel. That covers material, exact thickness, margins, grain, rotation and size. Each orientation must also be producible by a cut, i.e. size = extent or size + kerf < extent.
+  - Parts that fail are reported as `cannotFitPanel` (with the fit issues), or as `remainderNarrowerThanKerf` when the only leftover strip would be ≤ kerf.
+- **Quantities:** copies are expanded lazily per part and taken in increasing `copyIndex` order, keeping the original `partId`. Very large quantities therefore cost nothing up front.
+- **Heuristic:** parts are ordered by area descending, then longest side descending, then input order.
+  - Each free region takes the first part, in that order, that can be cut from it; orientations are tried `normal` before `rotated`.
+  - The part goes to the region's start corner and is freed with up to two guillotine cuts. The cut order keeps the largest leftover rectangle; ties cut along the length first.
+  - The strip beside the part is filled before the larger remainder. Regions that take no part become waste leaves.
+- **Validation:** every tree is checked by `validateCuttingTree`. A rejected tree yields `{ ok: false, error: { kind: 'invalidTree' } }` and is never returned as a plan. A panel without usable area yields `{ ok: false, error: { kind: 'noUsableArea' } }`.
+- **Result:** `PanelCuttingPlan` contains:
+  - `tree`.
+  - `placements`, read from the validated tree, with region, orientation and oriented `Dimensions3D` including thickness.
+  - `unplaced`, as ranges `{ partId, firstCopyIndex, count, reason }`. The reason `noSpaceLeft` covers parts that would fit an empty panel but found no region.
+  - `metrics`.
+- **Metrics** (`computeAreaMetrics`): areas are computed in integer µm² and reported in mm². They are relative to the whole panel, so waste includes margins, kerf and waste leaves. `utilizationPercent = used / panel × 100`.
+
+Because a cut must leave a strictly positive second region, a part that would leave a sliver narrower than or equal to the kerf is not placed. This follows the current cut-tree rule.
 
 ## Guillotine Optimization
 
