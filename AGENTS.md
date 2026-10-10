@@ -53,6 +53,9 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Computed, non-persisted domain values (e.g. geometry `Rect`, fit results) may be plain TypeScript types.
 - Geometry arithmetic and comparisons go through the micrometre helpers in `src/domain/geometry/units.ts`. Never add, subtract or compare raw millimeter floats, and never introduce ad-hoc epsilons.
 - Geometry functions throw `RangeError` for out-of-range numeric input rather than clamping. Expected business outcomes (e.g. "does not fit") are returned as typed issues, never thrown.
+- Validators of untrusted structures (e.g. cutting trees) convert numbers with `tryToMicrometres` and report every problem with its location. They must not throw on malformed contents.
+- A cutting tree is executable only if `validateCuttingTree` returns `{ valid: true }`. Producers such as the optimizer or the editor must not bypass or duplicate this validator.
+- In validator tests, write expected regions as literal coordinates rather than deriving them with the code under test.
 - Create routers and stores through factories (e.g. `createAppRouter(history)`) so tests can use isolated instances and memory history.
 
 ## CI/CD

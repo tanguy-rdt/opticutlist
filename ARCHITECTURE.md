@@ -29,7 +29,7 @@ Install packages only when their functionality is needed.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks and panel geometry/cutting constraints (see below). No UI, persistence, placement heuristics or optimizer exist yet.
+Currently implemented: `src/main.ts` bootstraps the app; `src/app/` holds the shell (`App.vue`), router factory (`router/`), Pinia factory (`pinia.ts`) and placeholder views (`views/`). `src/domain/` holds the initial domain models, compatibility checks, panel geometry/cutting constraints, and the guillotine cutting tree with its independent validator (see below). No UI, persistence, placement heuristics or optimizer exist yet.
 
 ### Suggested Directory Layout
 
@@ -116,6 +116,27 @@ All object schemas are strict: unknown keys are rejected, never silently strippe
 - **Part fit** (`part-fit.ts`): `checkPartFit(part, panel, settings)` checks one copy of a part on an empty supplier product or stock item. It returns the usable area and the fitting orientations, or every issue in a fixed order: `materialMismatch`, `thicknessMismatch`, `noUsableArea`, `grainRequiresRotation` (grain needs a forbidden rotation), `exceedsUsableArea` (lists the orientations tried).
 
 Computed geometry values (`Rect`, `Orientation`, results) are plain TypeScript types. They become Zod schemas once they cross a persistence or import boundary.
+
+`tryToMicrometres` is the non-throwing variant of the conversion. Validators use it so malformed numbers in untrusted structures become reported issues.
+
+### Implemented Cutting Tree and Validator
+
+`src/domain/cutting-tree/` models and validates the guillotine cutting tree of **one panel**. It does not know how the tree was produced (optimizer, manual edit or import).
+
+- **Model** (`cutting-tree.ts`): `CuttingTreeNode = CutNode | PartLeaf | WasteLeaf`. Every node stores its `region` (`Rect`) explicitly.
+  - A `CutNode` has one `GuillotineCut` (`axis: length | width`, `offsetMm`) and exactly two children, `first` and `second`, separated by the kerf. Axis `length` is a cut line across the panel length (x); `width` is a cut line across the width (y).
+  - A `PartLeaf` places one copy of a part: `partId`, `copyIndex` (0 ≤ index < quantity) and `orientation`.
+  - A `WasteLeaf` is an area with no part. Reusable offcut flags are deferred.
+  - A `TreePath` (`first`/`second` steps from the root) locates a node.
+- **Validator** (`validate-cutting-tree.ts`): `validateCuttingTree(root, { panel, parts, settings })` returns `{ valid: true }` or every issue with its path, in depth-first order. It recomputes each expected region from the usable area and the cuts (via `splitRect`) and compares declared regions exactly at micrometre resolution. Rules:
+  - **Margins:** the root region equals the usable area exactly (`noUsableArea`, `regionOutOfBounds`, `missingRegion`).
+  - **Region dimensions:** finite coordinates ≥ 0 and extents ≥ 0.001 mm (`invalidRegion`).
+  - **Cut position:** 0 < offset < extent (`cutOutOfBounds`, `invalidCutOffset` for non-finite values). The cut must leave a strictly positive second region after the kerf (`cutLeavesNoRemainder`).
+  - **Child regions:** each child equals its derived slot. Reaching outside the parent is `regionOutOfBounds`, reaching into the kerf or the sibling is `regionOverlap`, and an uncovered part of the slot is `missingRegion`.
+  - **Part leaves:** the part must be known (`unknownPart`), with a copy index in range (`invalidCopyIndex`), placed at most once per tree (`duplicatePlacement`). Material and thickness must match exactly (`materialMismatch`, `thicknessMismatch`). Grain and rotation must permit the orientation (`orientationNotAllowed`). The region must equal the oriented part size exactly (`partSizeMismatch`); extra space must be cut off into waste.
+  - **Structure:** a node object referenced twice (DAG or cycle) is `reusedNode` and is not revisited.
+
+Exact region equality makes the leaves tile the usable area minus kerfs, so no global overlap pass is needed. Tree contents are untrusted and never throw; `context` must hold schema-validated values (duplicate part IDs throw). Quantity completeness across several panels belongs to the future plan-level validator.
 
 ## Guillotine Optimization
 
