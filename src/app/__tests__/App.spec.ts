@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createOptimizationService, type OptimizationWorkerPort } from '../../application/optimization/optimization-service'
 import { optimizationServiceFactoryKey } from '../../features/optimization/optimization-service'
-import { optimizePanel } from '../../domain/optimizer/optimize-panel'
+import { handleOptimizationRequest } from '../../workers/optimization/handle-optimization-request'
 import App from '../App.vue'
 import { createAppPinia } from '../pinia'
 import { createAppRouter } from '../router'
@@ -219,9 +219,8 @@ describe('Home and application navigation', () => {
     await router.push('/projects/cutting-first/parts')
     await vi.waitFor(() => { expect(wrapper.find('nav a[href$="/optimization"]').exists()).toBe(true) })
     await wrapper.get('nav a[href$="/optimization"]').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.find('#optimization-panel').exists()).toBe(true) })
+    await vi.waitFor(() => { expect(wrapper.find('[data-panel-id]').exists()).toBe(true) })
     await vi.waitFor(() => { expect(wrapper.text()).not.toContain('Loading project inputs') })
-    await wrapper.get('#optimization-panel').setValue(validSupplierProductInput.id)
     await wrapper.get('form').trigger('submit')
     await vi.waitFor(() => { expect(postMessage).toHaveBeenCalledOnce() })
     const worker = workers[0]
@@ -232,9 +231,9 @@ describe('Home and application navigation', () => {
     await router.push('/projects/cutting-second/optimization')
     await vi.waitFor(() => { expect(wrapper.text()).toContain('No parts in this project') })
     expect(terminated).toHaveBeenCalledOnce()
-    lateReply?.(new MessageEvent('message', { data: { type: 'result', requestId: request.requestId, selection: optimizePanel(request.input) } }))
+    lateReply?.(new MessageEvent('message', { data: handleOptimizationRequest(request) }))
     await flushPromises()
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).not.toContain('Validated project cutting plan')
     expect(wrapper.text()).not.toContain('First cutting project')
     wrapper.unmount(); persistence.close()
     const reopened = await mountAt('/projects/cutting-first/optimization', indexedDB)

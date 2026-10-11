@@ -7,6 +7,10 @@ import { applyPlanEdit, createPlanEditingSession, currentEditingPlan } from '../
 import { rotationInput, rotationPlan, swapInput, swapPlan } from '../../../domain/cutting-tree/__tests__/editing-fixtures'
 import { freezeDeep, viewerPart } from '../../../domain/cutting-tree/__tests__/viewer-fixtures'
 import { optimizePanel } from '../../../domain/optimizer/optimize-panel'
+import { optimizeProject } from '../../../domain/optimizer/optimize-project'
+import { partSchema } from '../../../domain/model/part'
+import { supplierProductSchema } from '../../../domain/model/supplier-product'
+import { validPartInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
 
 export function pageOperators(pdf: PDFDocument, pageIndex: number): string {
   const contents = pdf.getPage(pageIndex).node.Contents()
@@ -52,14 +56,14 @@ describe('Vector cutting plan PDF', () => {
     const optimized = optimizePanel(rotationInput)
     if (!optimized.ok) throw new Error('No optimized plan')
     const pdf = await exportPdf({ ...pdfRequest, plan: optimized.plan })
-    expect(hasText(pageOperators(pdf, 0), 'Optimized single-panel plan')).toBe(true)
+    expect(hasText(pageOperators(pdf, 0), 'Optimized panel plan')).toBe(true)
     const session = createPlanEditingSession(rotationPlan, rotationInput)
     if (!session.ok) throw new Error(session.error.message)
     const edit = applyPlanEdit(session.session, { kind: 'rotate', copy: { partId: viewerPart.id, copyIndex: 0 } })
     if (!edit.ok) throw new Error(edit.error.message)
     const original = structuredClone(rotationPlan)
     const edited = await exportPdf({ ...pdfRequest, plan: currentEditingPlan(edit.session), edited: true })
-    expect(hasText(pageOperators(edited, 0), 'Manually edited single-panel plan')).toBe(true)
+    expect(hasText(pageOperators(edited, 0), 'Manually edited panel plan')).toBe(true)
     expect(hasText(pageOperators(edited, 1), '50 x 30 x 18 mm / Normal')).toBe(true)
     expect(rotationPlan).toEqual(original)
   })
@@ -95,4 +99,22 @@ describe('Vector cutting plan PDF', () => {
     if (result.ok) throw new Error('Unsupported names should fail explicitly')
     expect(result.error.message).toContain('characters unsupported by the built-in PDF font')
   })
+})
+
+it('exports each allocated panel as vectors and identifies copies allocated elsewhere without mutating the project plan', async () => {
+  const part = partSchema.parse({ ...validPartInput, lengthMm: 100, widthMm: 100 })
+  const panel = supplierProductSchema.parse({ ...validSupplierProductInput, lengthMm: 100, widthMm: 100 })
+  const settings = { kerfMm: 0, edgeMarginMm: 0 }
+  const result = optimizeProject({ parts: [part], panels: [{ product: panel, quantity: 2 }], settings })
+  if (!result.ok) throw new Error(result.error.message)
+  const original = structuredClone(result.plan)
+  freezeDeep(result.plan)
+  for (const allocation of result.plan.panels) {
+    const pdf = await exportPdf({ ...pdfRequest, plan: allocation.plan, panel, parts: [part], settings })
+    expect(pageOperators(pdf, 0)).toMatch(/\bm\b/u)
+    expect(pageOperators(pdf, 0)).not.toMatch(/\bDo\b/u)
+    expect(hasText(pageOperators(pdf, 1), 'Allocated to another panel in the project')).toBe(true)
+    expect(hasText(pageOperators(pdf, 1), 'All requested copies are placed on this panel')).toBe(false)
+  }
+  expect(result.plan).toEqual(original)
 })

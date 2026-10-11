@@ -1,11 +1,13 @@
 import { validateCuttingTree, type CuttingTreeIssue } from '../../domain/cutting-tree/validate-cutting-tree'
 import type { OptimizePanelSelection } from '../../domain/optimizer/optimize-panel'
 import type { OptimizePanelInput } from '../../domain/optimizer/plan-with-strategy'
-import { isOptimizationResponse, type OptimizationWorkerError, type OptimizeRequest } from './optimization-protocol'
+import type { OptimizeProjectInput, OptimizeProjectResult, ProjectPlanIssue } from '../../domain/optimizer/project-plan'
+import { validateProjectPlan } from '../../domain/optimizer/validate-project-plan'
+import { isOptimizationResponse, type OptimizationWorkerError, type OptimizationRequest, type OptimizationResponse } from './optimization-protocol'
 
 /** The subset of `Worker` the service needs; a real `Worker` satisfies it, tests use a fake. */
 export interface OptimizationWorkerPort {
-  postMessage(message: OptimizeRequest): void
+  postMessage(message: OptimizationRequest): void
   terminate(): void
   onmessage: ((event: MessageEvent<unknown>) => void) | null
   onerror: ((event: ErrorEvent) => void) | null
@@ -19,14 +21,16 @@ export type OptimizationFailure =
   /** The worker sent something that is not a protocol response. */
   | { readonly kind: 'invalidResponse'; readonly message: string }
   /** The received plan failed independent re-validation on the main thread. */
-  | { readonly kind: 'invalidPlan'; readonly issues: readonly CuttingTreeIssue[] }
+  | { readonly kind: 'invalidPlan'; readonly issues: readonly (CuttingTreeIssue | ProjectPlanIssue)[] }
 
 export type CancellationReason = 'cancelled' | 'superseded' | 'disposed'
 
-export type OptimizationOutcome =
-  | { readonly status: 'completed'; readonly requestId: number; readonly selection: OptimizePanelSelection }
+type RunOutcome<Selection> =
+  | { readonly status: 'completed'; readonly requestId: number; readonly selection: Selection }
   | { readonly status: 'cancelled'; readonly requestId: number; readonly reason: CancellationReason }
   | { readonly status: 'failed'; readonly requestId: number; readonly error: OptimizationFailure }
+export type OptimizationOutcome = RunOutcome<OptimizePanelSelection>
+export type ProjectOptimizationOutcome = RunOutcome<OptimizeProjectResult>
 
 export interface OptimizationService {
   /**
@@ -34,6 +38,7 @@ export interface OptimizationService {
    * previous request, whose promise resolves as `cancelled`. Promises never reject for expected outcomes.
    */
   optimize(input: OptimizePanelInput): Promise<OptimizationOutcome>
+  optimizeProject(input: OptimizeProjectInput): Promise<ProjectOptimizationOutcome>
   /** Cancels the in-flight request, if any, by terminating the worker. */
   cancel(): void
   /** Cancels any request and releases the worker; `optimize` throws afterwards. */
@@ -42,8 +47,9 @@ export interface OptimizationService {
 
 interface PendingRequest {
   readonly requestId: number
-  readonly input: OptimizePanelInput
-  readonly resolve: (outcome: OptimizationOutcome) => void
+  readonly complete: (data: OptimizationResponse) => void
+  readonly fail: (error: OptimizationFailure) => void
+  readonly cancel: (reason: CancellationReason) => void
 }
 
 /**
@@ -57,15 +63,6 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
   let pending: PendingRequest | null = null
   let nextRequestId = 1
   let disposed = false
-
-  function settle(outcome: OptimizationOutcome): void {
-    const current = pending
-    if (current?.requestId !== outcome.requestId) {
-      return
-    }
-    pending = null
-    current.resolve(outcome)
-  }
 
   function destroyWorker(): void {
     if (worker === null) {
@@ -85,7 +82,7 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
     }
     destroyWorker()
     if (pending !== null) {
-      settle({ status: 'failed', requestId: pending.requestId, error })
+      pending.fail(error)
     }
   }
 
@@ -102,25 +99,11 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
       return // Stale response for a request that is no longer in flight.
     }
     if (data.type === 'error') {
-      settle({ status: 'failed', requestId: current.requestId, error: data.error })
+      current.fail(data.error)
       return
     }
 
-    const { selection } = data
-    if (selection.ok) {
-      let validation
-      try {
-        validation = validateCuttingTree(selection.plan.tree, current.input)
-      } catch (error) {
-        failWorker(source, { kind: 'invalidResponse', message: error instanceof Error ? error.message : String(error) })
-        return
-      }
-      if (!validation.valid) {
-        settle({ status: 'failed', requestId: current.requestId, error: { kind: 'invalidPlan', issues: validation.issues } })
-        return
-      }
-    }
-    settle({ status: 'completed', requestId: current.requestId, selection })
+    current.complete(data)
   }
 
   function ensureWorker(): OptimizationWorkerPort {
@@ -148,34 +131,50 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
     }
     // The worker cannot be interrupted mid-computation, so it is replaced.
     destroyWorker()
-    settle({ status: 'cancelled', requestId: pending.requestId, reason })
+    pending.cancel(reason)
+  }
+
+  function run<Input, Selection>(input: Input, request: (requestId: number, snapshot: Input) => OptimizationRequest,
+    receive: (data: OptimizationResponse) => Selection | null,
+    validate: (selection: Selection, snapshot: Input) => { valid: true } | { valid: false; issues: readonly (CuttingTreeIssue | ProjectPlanIssue)[] },
+  ): Promise<RunOutcome<Selection>> {
+    if (disposed) throw new Error('Optimization service has been disposed')
+    cancelPending('superseded')
+    const requestId = nextRequestId++
+    return new Promise(resolve => {
+      function settle(outcome: RunOutcome<Selection>): void {
+        if (pending?.requestId !== requestId) return
+        pending = null; resolve(outcome)
+      }
+      const fail = (error: OptimizationFailure) => { settle({ status: 'failed', requestId, error }) }
+      pending = { requestId, fail, cancel: reason => { settle({ status: 'cancelled', requestId, reason }) }, complete: () => {} }
+      try {
+        const snapshot = structuredClone(input)
+        pending = { ...pending, complete: data => {
+          const selection = receive(data)
+          if (selection === null) { if (worker) failWorker(worker, { kind: 'invalidResponse', message: 'Worker returned the wrong result type' }); return }
+          try {
+            const validation = validate(selection, snapshot)
+            if (!validation.valid) { fail({ kind: 'invalidPlan', issues: validation.issues }); return }
+            settle({ status: 'completed', requestId, selection })
+          } catch (cause) { if (worker) failWorker(worker, { kind: 'invalidResponse', message: cause instanceof Error ? cause.message : String(cause) }) }
+        } }
+        ensureWorker().postMessage(request(requestId, snapshot))
+      } catch (cause) {
+        destroyWorker()
+        fail({ kind: 'workerError', message: cause instanceof Error ? cause.message : String(cause) })
+      }
+    })
   }
 
   return {
     optimize(input) {
-      if (disposed) {
-        throw new Error('Optimization service has been disposed')
-      }
-      cancelPending('superseded')
-
-      const requestId = nextRequestId
-      nextRequestId += 1
-
-      return new Promise<OptimizationOutcome>((resolve) => {
-        pending = { requestId, input, resolve }
-        try {
-          const snapshot = structuredClone(input)
-          pending = { requestId, input: snapshot, resolve }
-          ensureWorker().postMessage({ type: 'optimize', requestId, input: snapshot })
-        } catch (error) {
-          destroyWorker()
-          settle({
-            status: 'failed',
-            requestId,
-            error: { kind: 'workerError', message: error instanceof Error ? error.message : String(error) },
-          })
-        }
-      })
+      return run(input, (requestId, snapshot) => ({ type: 'optimize', requestId, input: snapshot }), data => data.type === 'result' ? data.selection : null,
+        (selection, snapshot) => selection.ok ? validateCuttingTree(selection.plan.tree, snapshot) : { valid: true })
+    },
+    optimizeProject(input) {
+      return run(input, (requestId, snapshot) => ({ type: 'optimizeProject', requestId, input: snapshot }), data => data.type === 'projectResult' ? data.selection : null,
+        (selection, snapshot) => selection.ok ? validateProjectPlan(selection.plan, snapshot) : { valid: true })
     },
 
     cancel() {

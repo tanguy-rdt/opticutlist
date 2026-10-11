@@ -5,7 +5,7 @@ import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validPartInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
 import { optimizePanel } from '../../../domain/optimizer/optimize-panel'
 import { handleOptimizationRequest } from '../../../workers/optimization/handle-optimization-request'
-import type { OptimizationResponse, OptimizeRequest } from '../optimization-protocol'
+import type { OptimizationResponse, OptimizationRequest } from '../optimization-protocol'
 import { createOptimizationService, type OptimizationWorkerPort } from '../optimization-service'
 
 const input = {
@@ -20,10 +20,10 @@ class FakeWorker implements OptimizationWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null
   onerror: ((event: ErrorEvent) => void) | null = null
   onmessageerror: ((event: MessageEvent<unknown>) => void) | null = null
-  readonly posted: OptimizeRequest[] = []
+  readonly posted: OptimizationRequest[] = []
   terminated = false
 
-  postMessage(message: OptimizeRequest): void {
+  postMessage(message: OptimizationRequest): void {
     if (this.terminated) {
       throw new Error('postMessage after terminate')
     }
@@ -448,5 +448,103 @@ describe('createOptimizationService', () => {
         service.dispose()
       }).not.toThrow()
     })
+  })
+})
+
+describe('automatic project execution through the same worker service', () => {
+  const projectInput = {
+    parts: [partSchema.parse({ ...validPartInput, lengthMm: 100, widthMm: 100 })],
+    panels: [{ product: supplierProductSchema.parse({ ...validSupplierProductInput, lengthMm: 100, widthMm: 100 }), quantity: 2 }],
+    settings: { kerfMm: 0, edgeMarginMm: 0 },
+  }
+  it('posts the typed project request and validates every panel plus global accounting', async () => {
+    const { service, current } = setup()
+    const outcome = service.optimizeProject(projectInput)
+    expect(current().posted).toEqual([{ type: 'optimizeProject', requestId: 1, input: projectInput }])
+    current().respondWithHandler()
+    await expect(outcome).resolves.toMatchObject({ status: 'completed', selection: { ok: true, plan: { metrics: { panelCount: 2, placedCount: 2, unplacedCount: 0 } } } })
+    service.dispose()
+  })
+  it('checks a detached snapshot even when caller quantities and parts change', async () => {
+    const { service, current } = setup()
+    const mutable = structuredClone(projectInput)
+    const outcome = service.optimizeProject(mutable)
+    if (!mutable.panels[0] || !mutable.parts[0]) throw new Error('Fixture')
+    mutable.panels[0].quantity = 0
+    mutable.parts[0].thicknessMm = 100
+    current().respondWithHandler()
+    await expect(outcome).resolves.toMatchObject({ status: 'completed', selection: { ok: true } })
+    service.dispose()
+  })
+  it('rejects cross-panel duplicates even when both individual trees are valid', async () => {
+    const { service, current } = setup()
+    const outcome = service.optimizeProject(projectInput)
+    const response = handleOptimizationRequest(current().posted[0])
+    if (response.type !== 'projectResult' || !response.selection.ok) throw new Error('Fixture')
+    const first = response.selection.plan.panels[0]
+    if (!first) throw new Error('Fixture')
+    current().respond({ ...response, selection: { ...response.selection, plan: { ...response.selection.plan, panels: [first, { ...first, panelCopyIndex: 1 }] } } })
+    await expect(outcome).resolves.toMatchObject({ status: 'failed', error: { kind: 'invalidPlan' } })
+    service.dispose()
+  })
+  it('rejects excess panel quantities and forged metrics on the main thread', async () => {
+    for (const tamper of ['quantity', 'metrics']) {
+      const { service, current } = setup()
+      const outcome = service.optimizeProject(projectInput)
+      const response = handleOptimizationRequest(current().posted[0])
+      if (response.type !== 'projectResult' || !response.selection.ok) throw new Error('Fixture')
+      const first = response.selection.plan.panels[0]
+      if (!first) throw new Error('Fixture')
+      const plan = response.selection.plan
+      current().respond({ ...response, selection: { ok: true, plan: tamper === 'quantity' ? { ...plan, panels: [{ ...first, panelCopyIndex: 3 }, ...plan.panels.slice(1)] } : { ...plan, metrics: { ...plan.metrics, placedCount: 999 } } } })
+      await expect(outcome).resolves.toMatchObject({ status: 'failed', error: { kind: 'invalidPlan' } })
+      service.dispose()
+    }
+  })
+  it('cancels and supersedes project requests, ignoring old sources and IDs', async () => {
+    const { service, current, workers } = setup()
+    const first = service.optimizeProject(projectInput)
+    const oldReply = current().onmessage
+    service.cancel()
+    await expect(first).resolves.toMatchObject({ status: 'cancelled', reason: 'cancelled' })
+    const second = service.optimizeProject(projectInput)
+    const third = service.optimizeProject(projectInput)
+    await expect(second).resolves.toMatchObject({ status: 'cancelled', reason: 'superseded' })
+    const response = handleOptimizationRequest(current().posted[0])
+    oldReply?.(new MessageEvent('message', { data: response }))
+    current().respond({ ...response, requestId: 2 })
+    let settled = false
+    void third.then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    current().respondWithHandler()
+    await expect(third).resolves.toMatchObject({ status: 'completed', requestId: 3 })
+    expect(workers).toHaveLength(3)
+    expect(workers.slice(0, 2).every(worker => worker.terminated && worker.onmessage === null)).toBe(true)
+    service.dispose()
+    expect(current().terminated).toBe(true)
+  })
+  it('surfaces errors, malformed responses and wrong response types with cleanup', async () => {
+    const { service, current } = setup()
+    const first = service.optimizeProject(projectInput)
+    current().crash('Project worker crashed')
+    await expect(first).resolves.toMatchObject({ status: 'failed', error: { kind: 'workerError' } })
+    const second = service.optimizeProject(projectInput)
+    current().respond(result(2))
+    await expect(second).resolves.toMatchObject({ status: 'failed', error: { kind: 'invalidResponse' } })
+    expect(current().terminated).toBe(true)
+    const third = service.optimizeProject(projectInput)
+    current().respond({ type: 'projectResult', requestId: 3, selection: { ok: true, plan: { panels: [{ plan: {} }] } } })
+    await expect(third).resolves.toMatchObject({ status: 'failed', error: { kind: 'invalidResponse' } })
+    const fourth = service.optimizeProject(projectInput)
+    current().respond({ type: 'projectResult', requestId: 4, selection: { ok: false, error: { kind: 'invalidPlan', message: 'bad', issues: [{ kind: { toString: 'not callable' }, message: 'bad' }] } } })
+    await expect(fourth).resolves.toMatchObject({ status: 'failed', error: { kind: 'invalidResponse' } })
+    service.dispose()
+  })
+  it('handles invalid project requests with structured worker failures', () => {
+    for (const malformed of [
+      { ...projectInput, panels: [{ product: projectInput.panels[0]?.product, quantity: -1 }] },
+      { ...projectInput, parts: [{ ...projectInput.parts[0], thicknessMm: undefined }] },
+    ]) expect(handleOptimizationRequest({ type: 'optimizeProject', requestId: 1, input: malformed })).toMatchObject({ type: 'error', requestId: 1, error: { kind: 'invalidRequest' } })
   })
 })

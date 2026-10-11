@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, toRaw, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, toRaw, watch } from 'vue'
 import { applyPlanEdit, createPlanEditingSession, currentEditingPlan, undoPlanEdit, redoPlanEdit, resetPlanEdits, type PlanEditingSession } from '../../application/optimization/plan-editing-session'
 import type { CuttingTreeEdit } from '../../domain/cutting-tree/edit-cutting-tree'
 import { createCuttingPlanScene } from '../../application/optimization/cutting-plan-scene'
@@ -71,6 +71,7 @@ let resizeObserver: ResizeObserver | null = null
 let themeObserver: MutationObserver | null = null
 let media: MediaQueryList | null = null
 let isFitted = true
+let paused = false
 function palette(): PlanPalette {
   const style = getComputedStyle(document.documentElement)
   const token = (name: string) => style.getPropertyValue(`--${name}`).trim()
@@ -100,7 +101,7 @@ function keyboard(event: KeyboardEvent): void {
   event.preventDefault()
 }
 function resize(): void {
-  if (host.value === null || projection.value.status !== 'valid') return
+  if (paused || host.value === null || projection.value.status !== 'valid') return
   const next = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
   if (next.width === size.width && next.height === size.height) return
   size = next
@@ -115,7 +116,7 @@ function render(): void {
   canvasReady.value = false
   canvasError.value = ''
   if (projection.value.status !== 'valid' || !projection.value.scene.parts.some(part => part.key === selectedKey.value)) selectedKey.value = ''
-  if (projection.value.status !== 'valid' || host.value === null) return
+  if (paused || projection.value.status !== 'valid' || host.value === null) return
   try {
     size = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
     fittedView.value = fitViewport(projection.value.scene.panel, size)
@@ -145,6 +146,14 @@ onMounted(() => {
   }
   render()
 })
+// Keep transient edit/viewport state when switching panels, but release hidden Konva stages.
+onDeactivated(() => {
+  paused = true
+  resizeObserver?.disconnect()
+  canvas?.destroy(); canvas = null
+  canvasReady.value = false
+})
+onActivated(() => { if (paused) { paused = false; render() } })
 onBeforeUnmount(() => {
   resizeObserver?.disconnect(); themeObserver?.disconnect()
   window.removeEventListener('resize', resize)

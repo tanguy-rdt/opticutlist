@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, toRaw, watch } from 'vue'
+import { onBeforeUnmount, onDeactivated, ref, toRaw, watch } from 'vue'
 import type { PdfOrientation } from '../../application/export/cutting-plan-pdf-service'
 import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
@@ -19,6 +19,7 @@ watch([() => props.plan, () => props.panel, () => props.parts, () => props.setti
   generation += 1; exporting.value = false; error.value = ''; feedback.value = ''
 }, { flush: 'sync' })
 onBeforeUnmount(() => { generation += 1 })
+onDeactivated(() => { generation += 1; exporting.value = false })
 async function exportPdf(): Promise<void> {
   if (exporting.value || service === undefined) return
   const current = ++generation

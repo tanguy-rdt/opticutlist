@@ -199,6 +199,28 @@ describe('MaterialsView', () => {
       expect(other.findAll('input:checked')).toHaveLength(0)
     } finally { persistence.close() }
   })
+  it('preserves quantities for retained selections and removes only explicitly deselected references', async () => {
+    const persistence = createLocalPersistence('selection-quantities-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
+    try {
+      await persistence.materials.create(material)
+      await persistence.suppliers.create(validSupplierInput)
+      await persistence.supplierProducts.create(validSupplierProductInput)
+      await persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'second-panel', name: 'Second panel' })
+      const selected = cuttingProjectSchema.parse({ ...project, supplierProductIds: [validSupplierProductInput.id, 'second-panel'], panelQuantities: [{ supplierProductId: validSupplierProductInput.id, quantity: 5 }, { supplierProductId: 'second-panel', quantity: 2 }] })
+      const service = createProjectService(persistence)
+      await service.projects.create(selected)
+      const wrapper = render(persistence.materials, service, persistence)
+      await vi.waitFor(() => { expect(wrapper.find('#project-products-title').exists()).toBe(true) })
+      const productCheckbox = wrapper.findAll('label').find(label => label.text().includes('Second panel'))?.get('input')
+      if (!productCheckbox) throw new Error('Missing product checkbox')
+      await productCheckbox.setValue(false)
+      await button(wrapper, 'Save project selections').trigger('click')
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      const saved = await service.projects.get(project.id)
+      expect(saved.ok && saved.value.panelQuantities).toEqual([{ supplierProductId: validSupplierProductInput.id, quantity: 5 }])
+      expect((await persistence.supplierProducts.list()).ok).toBe(true)
+    } finally { persistence.close() }
+  })
   it('preserves failed selection drafts and retries without modifying materials', async () => {
     const persistence = createLocalPersistence('selection-failure-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
     try {

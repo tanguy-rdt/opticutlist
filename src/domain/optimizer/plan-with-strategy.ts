@@ -22,6 +22,8 @@ export interface PlacedPart {
 }
 
 export type UnplacedReason =
+  /** Not cut on this panel, but accounted for by another panel in the project plan. */
+  | { readonly kind: 'allocatedElsewhere' }
   /** The part cannot be cut from this panel at all (material, thickness, grain/rotation or size). */
   | { readonly kind: 'cannotFitPanel'; readonly issues: readonly PartFitIssue[] }
   /** It fits the empty usable area only by leaving a strip no wider than the kerf, which no cut can produce. */

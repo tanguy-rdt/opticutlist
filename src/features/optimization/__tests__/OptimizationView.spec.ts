@@ -5,13 +5,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAppRouter } from '../../../app/router'
 import { createCatalogRepositories } from '../../../application/catalog/catalog-repositories'
 import { createOptimizationService, type OptimizationWorkerPort } from '../../../application/optimization/optimization-service'
-import type { OptimizeRequest } from '../../../application/optimization/optimization-protocol'
+import type { OptimizationRequest } from '../../../application/optimization/optimization-protocol'
 import { createProjectService } from '../../../application/projects/project-service'
 import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import { partSchema } from '../../../domain/model/part'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validMaterialInput, validPartInput, validStockItemInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
-import { optimizePanel } from '../../../domain/optimizer/optimize-panel'
+import { optimizeProject } from '../../../domain/optimizer/optimize-project'
+import { handleOptimizationRequest } from '../../../workers/optimization/handle-optimization-request'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
 import { materialRepositoryKey } from '../../materials/material-repository'
 import { projectIdKey, projectServiceKey } from '../../projects/project-service'
@@ -21,6 +22,7 @@ import { optimizationServiceFactoryKey } from '../optimization-service'
 import { createCuttingPlanPdfService, type CuttingPlanPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
 import { cuttingPlanPdfServiceKey } from '../pdf-export-service'
 import type * as PdfExportModule from '../pdf-export-service'
+import { downloadCuttingPlanPdf } from '../pdf-export-service'
 
 vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
 vi.mock('../pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn() }))
@@ -29,15 +31,15 @@ class FakeWorker implements OptimizationWorkerPort {
   onmessage: OptimizationWorkerPort['onmessage'] = null
   onerror: OptimizationWorkerPort['onerror'] = null
   onmessageerror: OptimizationWorkerPort['onmessageerror'] = null
-  requests: OptimizeRequest[] = []
+  requests: OptimizationRequest[] = []
   terminate = vi.fn()
-  postMessage(message: OptimizeRequest): void { this.requests.push(message) }
-  get request(): OptimizeRequest {
+  postMessage(message: OptimizationRequest): void { this.requests.push(message) }
+  get request(): OptimizationRequest {
     const request = this.requests.at(-1)
     if (request === undefined) throw new Error('No request')
     return request
   }
-  complete(): void { this.onmessage?.(new MessageEvent('message', { data: { type: 'result', requestId: this.request.requestId, selection: optimizePanel(this.request.input) } })) }
+  complete(): void { this.onmessage?.(new MessageEvent('message', { data: handleOptimizationRequest(this.request) })) }
 }
 const wrappers: VueWrapper[] = []
 const connections: ReturnType<typeof createLocalPersistence>[] = []
@@ -47,7 +49,8 @@ afterEach(() => {
   wrappers.length = 0; connections.length = 0
 })
 async function setup() {
-  const persistence = createLocalPersistence('optimization-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
+  const indexedDB = new IDBFactory()
+  const persistence = createLocalPersistence('optimization-ui', { indexedDB, IDBKeyRange })
   connections.push(persistence)
   const catalog = createCatalogRepositories(persistence)
   const service = createProjectService(persistence)
@@ -82,16 +85,15 @@ async function setup() {
   wrappers.push(wrapper)
   await vi.waitFor(() => { expect(wrapper.text()).not.toContain('Loading project inputs') })
   async function start(): Promise<FakeWorker> {
-    await wrapper.get('#optimization-panel').setValue(product.id)
     await wrapper.get('form').trigger('submit')
     await vi.waitFor(() => { expect(workers.length).toBeGreaterThan(0) })
     const worker = workers.at(-1)
     if (worker === undefined) throw new Error('Missing worker')
     return worker
   }
-  return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate }
+  return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB }
 }
-describe('Project single-panel optimization', () => {
+describe('Automatic project optimization', () => {
   it('edits and exports the displayed plan with undo/reset while leaving saved parts, selections and inventory unchanged', async () => {
     const { wrapper, persistence, service, project, workers, start, pdfGenerate } = await setup()
     const stock = await persistence.stockItems.list()
@@ -113,7 +115,7 @@ describe('Project single-panel optimization', () => {
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click('Swap selected copies')
     expect(wrapper.text()).toContain('Swap accepted and independently validated')
-    expect(wrapper.text()).toContain('Validated edited single-panel plan')
+    expect(wrapper.text()).toContain('Validated edited panel plan')
     expect(wrapper.text()).toContain('Optimizer baseline strategy')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
     await wrapper.get('#pdf-page-orientation').setValue('portrait')
@@ -121,7 +123,7 @@ describe('Project single-panel optimization', () => {
     expect(pdfGenerate.mock.calls[1]?.[0]).toMatchObject({ edited: true, orientation: 'portrait' })
     expect(pdfGenerate.mock.calls[1]?.[0].scene.parts[0]?.copyIndex).toBe(1)
     await click('Undo edit')
-    expect(wrapper.text()).toContain('Validated single-panel plan')
+    expect(wrapper.text()).toContain('Validated panel plan')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
     await click('Export PDF'); await flushPromises()
     expect(pdfGenerate.mock.calls[2]?.[0].edited).toBe(false)
@@ -137,11 +139,12 @@ describe('Project single-panel optimization', () => {
   })
   it('loads only active-project parts and selected catalog products', async () => {
     const { wrapper, start, product, part } = await setup()
-    expect(wrapper.get('select').text()).toContain(product.name)
-    expect(wrapper.get('select').text()).not.toContain('Unselected panel')
+    expect(wrapper.text()).toContain(product.name)
+    expect(wrapper.text()).not.toContain('Unselected panel')
     const worker = await start()
     expect(worker.request.input.parts).toEqual([part])
-    expect(worker.request.input.panel).toEqual(product)
+    expect(worker.request.type).toBe('optimizeProject')
+    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels).toEqual([{ product, quantity: 1 }])
     expect(worker.request.input.settings).toEqual({ kerfMm: 3, edgeMarginMm: 0 })
     expect(wrapper.text()).toContain('Optimization running')
   })
@@ -150,7 +153,7 @@ describe('Project single-panel optimization', () => {
     const stock = await persistence.stockItems.list()
     const savedProject = await service.projects.get(project.id)
     const worker = await start(); worker.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('Validated single-panel plan')
+    expect(wrapper.text()).toContain('Validated panel plan')
     expect(wrapper.text()).toContain('2 copies placed · 0 copies unplaced')
     expect(wrapper.text()).toContain('largestAreaFirst')
     expect(wrapper.text()).toContain('Cutting layout')
@@ -169,8 +172,8 @@ describe('Project single-panel optimization', () => {
     expect(await persistence.stockItems.list()).toEqual(stock)
     expect(await service.projects.get(project.id)).toEqual(savedProject)
   })
-  it('disables panels with a different material or even slightly different thickness', async () => {
-    const { wrapper, catalog, service, project, product, workers } = await setup()
+  it('automatically skips references with a different material or even slightly different thickness', async () => {
+    const { wrapper, catalog, service, project, product, start } = await setup()
     await catalog.materials.create({ ...validMaterialInput, id: 'different-material' })
     const wrongMaterial = supplierProductSchema.parse({ ...product, id: 'wrong-material', materialId: 'different-material' })
     const wrongThickness = supplierProductSchema.parse({ ...product, id: 'wrong-thickness', thicknessMm: 18.000001 })
@@ -178,15 +181,13 @@ describe('Project single-panel optimization', () => {
     const saved = await service.projects.get(project.id)
     if (!saved.ok) throw new Error('Missing project')
     await service.projects.update(project.id, { ...saved.value, supplierProductIds: [product.id, wrongMaterial.id, wrongThickness.id] })
-    await wrapper.get('button').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.findAll('option')).toHaveLength(4) })
-    for (const id of [wrongMaterial.id, wrongThickness.id]) {
-      expect(wrapper.get(`option[value="${id}"]`).attributes('disabled')).toBeDefined()
-      await wrapper.get('select').setValue(id)
-      await wrapper.get('form').trigger('submit')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('No matching material and exact thickness') })
-    }
-    expect(workers).toHaveLength(0)
+    const worker = await start()
+    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels).toHaveLength(3)
+    worker.complete(); await flushPromises()
+    expect(wrapper.text()).toContain('No matching material and exact thickness')
+    expect(wrapper.text()).toContain('2 copies placed · 0 copies unplaced')
+    expect(wrapper.get('#optimization-layout').findAll('option')).toHaveLength(1)
+    expect(wrapper.get('#optimization-layout').text()).toContain(product.name)
   })
   it('includes incompatible project parts as unplaced instead of silently filtering them', async () => {
     const { wrapper, service, project, part, start } = await setup()
@@ -195,7 +196,7 @@ describe('Project single-panel optimization', () => {
     expect(worker.request.input.parts).toHaveLength(2)
     worker.complete(); await flushPromises()
     expect(wrapper.text()).toContain('3 copies unplaced')
-    expect(wrapper.text()).toContain('Thick part · 3 copies · Exact thickness mismatch')
+    expect(wrapper.text()).toContain('Thick part · 3 copies · No selected panel matches the material and exact thickness')
     expect(wrapper.text()).toContain('Additional panels or different inputs are needed')
   })
   it('reports oversized parts and grain with forbidden rotation as impossible placements', async () => {
@@ -203,14 +204,14 @@ describe('Project single-panel optimization', () => {
     await service.parts(project.id).create({ ...part, id: 'huge-part', name: 'Oversized', lengthMm: 9000, widthMm: 9000 })
     await service.parts(project.id).create({ ...part, id: 'grain-part', name: 'Cross grain', grainDirection: 'width' })
     const worker = await start(); worker.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('Oversized · 2 copies · Exceeds usable panel size')
-    expect(wrapper.text()).toContain('Cross grain · 2 copies · Grain requires forbidden rotation')
+    expect(wrapper.text()).toContain('Oversized · 2 copies · Dimensions, grain, rotation, kerf or margins prevent placement')
+    expect(wrapper.text()).toContain('Cross grain · 2 copies · Dimensions, grain, rotation, kerf or margins prevent placement')
   })
   it('reports quantities that exceed the capacity of one panel', async () => {
     const { wrapper, service, project, part, start } = await setup()
     await service.parts(project.id).update(part.id, { ...part, quantity: 50 })
     const worker = await start(); worker.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('No space left on this panel')
+    expect(wrapper.text()).toContain('Available panel quantity or remaining usable space is insufficient')
     expect(wrapper.text()).toContain('Additional panels or different inputs are needed')
   })
   it('cancels and ignores a late reply before starting a newer request', async () => {
@@ -222,11 +223,11 @@ describe('Project single-panel optimization', () => {
     expect(wrapper.text()).toContain('Optimization cancelled')
     await wrapper.get('form').trigger('submit')
     await vi.waitFor(() => { expect(workers).toHaveLength(2) })
-    lateReply?.(new MessageEvent('message', { data: { type: 'result', requestId: first.request.requestId, selection: optimizePanel(first.request.input) } }))
+    lateReply?.(new MessageEvent('message', { data: handleOptimizationRequest(first.request) }))
     await flushPromises()
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).not.toContain('Validated panel plan')
     workers[1]?.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('Validated single-panel plan')
+    expect(wrapper.text()).toContain('Validated panel plan')
   })
   it('terminates the worker and removes handlers when leaving the project section', async () => {
     const { wrapper, start } = await setup()
@@ -239,11 +240,10 @@ describe('Project single-panel optimization', () => {
     const { wrapper, start } = await setup()
     const worker = await start(); worker.complete(); await flushPromises()
     await wrapper.get('#optimization-kerf').setValue(4)
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).not.toContain('Validated panel plan')
   })
   it.each(['optimization-kerf', 'optimization-margin'])('validates empty and negative %s without starting a worker', async id => {
-    const { wrapper, product, workers } = await setup()
-    await wrapper.get('select').setValue(product.id)
+    const { wrapper, workers } = await setup()
     for (const value of ['', -1]) {
       await wrapper.get(`#${id}`).setValue(value)
       await wrapper.get('form').trigger('submit')
@@ -251,12 +251,12 @@ describe('Project single-panel optimization', () => {
     }
     expect(workers).toHaveLength(0)
   })
-  it('surfaces no usable area as a failure, never a successful plan', async () => {
+  it('reports margins that prevent placement without allocating an empty panel', async () => {
     const { wrapper, start } = await setup()
     await wrapper.get('#optimization-margin').setValue(2000)
     const worker = await start(); worker.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('Margins leave no usable panel area')
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).toContain('Dimensions, grain, rotation, kerf or margins prevent placement')
+    expect(wrapper.text()).toContain('No panels allocated')
   })
   it('surfaces worker errors with retry available', async () => {
     const { wrapper, start } = await setup()
@@ -268,22 +268,24 @@ describe('Project single-panel optimization', () => {
   it('rejects a worker plan that fails independent validation', async () => {
     const { wrapper, start } = await setup()
     const worker = await start()
-    const selection = optimizePanel(worker.request.input)
+    if (worker.request.type !== 'optimizeProject') throw new Error('Expected project request')
+    const selection = optimizeProject(worker.request.input)
     if (!selection.ok) throw new Error('Expected valid fixture')
-    const invalid = { ...selection, plan: { ...selection.plan, tree: { ...selection.plan.tree, region: { ...selection.plan.tree.region, xMm: 10 } } } }
-    worker.onmessage?.(new MessageEvent('message', { data: { type: 'result', requestId: worker.request.requestId, selection: invalid } }))
+    const panel = selection.plan.panels[0]
+    if (!panel) throw new Error('Expected panel')
+    const invalid = { ...selection, plan: { ...selection.plan, panels: [{ ...panel, plan: { ...panel.plan, tree: { ...panel.plan.tree, region: { ...panel.plan.tree.region, xMm: 10 } } } }] } }
+    worker.onmessage?.(new MessageEvent('message', { data: { type: 'projectResult', requestId: worker.request.requestId, selection: invalid } }))
     await flushPromises()
     expect(wrapper.text()).toContain('failed independent validation')
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).not.toContain('Validated panel plan')
   })
   it('rereads project selections before running and refuses a removed product', async () => {
-    const { wrapper, service, project, product, workers } = await setup()
-    await wrapper.get('select').setValue(product.id)
+    const { wrapper, service, project, workers } = await setup()
     const saved = await service.projects.get(project.id)
     if (!saved.ok) throw new Error('Missing project')
     await service.projects.update(project.id, { ...saved.value, supplierProductIds: [] })
     await wrapper.get('form').trigger('submit')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Select an existing panel from this project') })
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Select catalog panels in this project') })
     expect(workers).toHaveLength(0)
   })
   it('handles storage failures and retry without showing previous inputs as a plan', async () => {
@@ -320,27 +322,26 @@ describe('Project single-panel optimization', () => {
     await vi.waitFor(() => { expect(wrapper.find('form').exists()).toBe(true) })
   })
   it('cancels input loading before a worker is created and ignores the late load', async () => {
-    const { wrapper, service, project, product, workers } = await setup()
+    const { wrapper, service, project, workers } = await setup()
     const saved = await service.projects.get(project.id)
     let finish: () => void = () => { throw new Error('Not started') }
     vi.spyOn(service.projects, 'get').mockReturnValueOnce(new Promise(resolve => { finish = () => { resolve(saved) } }))
-    await wrapper.get('select').setValue(product.id)
     await wrapper.get('form').trigger('submit')
     await wrapper.get('form button[type="button"]').trigger('click')
     finish(); await flushPromises()
     expect(workers).toHaveLength(0)
     expect(wrapper.text()).toContain('Optimization cancelled')
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).not.toContain('Validated panel plan')
   })
   it('ignores responses with the wrong request ID while the current request continues', async () => {
     const { wrapper, start } = await setup()
     const worker = await start()
-    worker.onmessage?.(new MessageEvent('message', { data: { type: 'result', requestId: worker.request.requestId + 1, selection: optimizePanel(worker.request.input) } }))
+    worker.onmessage?.(new MessageEvent('message', { data: { ...handleOptimizationRequest(worker.request), requestId: worker.request.requestId + 1 } }))
     await flushPromises()
     expect(wrapper.text()).toContain('Optimization running')
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    expect(wrapper.text()).not.toContain('Validated panel plan')
     worker.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('Validated single-panel plan')
+    expect(wrapper.text()).toContain('Validated panel plan')
   })
   it('reports a valid zero-placement plan without claiming parts were produced', async () => {
     const { wrapper, service, project, part, start } = await setup()
@@ -354,10 +355,10 @@ describe('Project single-panel optimization', () => {
     const { wrapper, catalog, product, start } = await setup()
     await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 723, widthMm: 560 })
     const worker = await start(); worker.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('Remainder cannot be cut with this kerf')
+    expect(wrapper.text()).toContain('Dimensions, grain, rotation, kerf or margins prevent placement')
     expect(wrapper.text()).toContain('0 copies placed · 2 copies unplaced')
   })
-  it('uses entered kerf and margins and clears the plan when choosing another panel', async () => {
+  it('uses entered kerf and margins and clears the plan when changing availability', async () => {
     const { wrapper, start } = await setup()
     await wrapper.get('#optimization-kerf').setValue(4.5)
     await wrapper.get('#optimization-margin').setValue(10)
@@ -365,19 +366,19 @@ describe('Project single-panel optimization', () => {
     expect(worker.request.input.settings).toEqual({ kerfMm: 4.5, edgeMarginMm: 10 })
     worker.complete(); await flushPromises()
     expect(wrapper.text()).toContain('Kerf 4.5 mm · Edge margin 10 mm')
-    await wrapper.get('select').setValue('')
-    expect(wrapper.text()).not.toContain('Validated single-panel plan')
+    await wrapper.get('[data-panel-id]').setValue(0)
+    expect(wrapper.text()).not.toContain('Validated panel plan')
   })
   it('disables unavailable and broken catalog panels without repairing records', async () => {
     const { wrapper, catalog, persistence, product, workers } = await setup()
     await catalog.supplierProducts.update(product.id, { ...product, availability: 'unavailable' })
     await wrapper.get('button').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.get(`option[value="${product.id}"]`).text()).toContain('Unavailable') })
-    expect(wrapper.get(`option[value="${product.id}"]`).attributes('disabled')).toBeDefined()
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Unavailable') })
+    expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeDefined()
     await persistence.suppliers.delete(product.supplierId)
     await wrapper.get('button').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.get(`option[value="${product.id}"]`).text()).toContain('Missing catalog reference') })
-    expect(wrapper.get(`option[value="${product.id}"]`).attributes('disabled')).toBeDefined()
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Missing catalog reference') })
+    expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeDefined()
     expect(workers).toHaveLength(0)
     expect((await persistence.supplierProducts.get(product.id)).ok).toBe(true)
   })
@@ -389,5 +390,115 @@ describe('Project single-panel optimization', () => {
     await vi.waitFor(() => { expect(wrapper.text()).toContain(`Missing selected products: ${product.id}`) })
     const saved = await service.projects.get(project.id)
     expect(saved.ok && saved.value.supplierProductIds).toEqual([product.id])
+  })
+})
+
+describe('automatic workflow and per-panel integration', () => {
+  it('offers one Optimize action without a panel picker or single/multi mode selector', async () => {
+    const { wrapper, start } = await setup()
+    expect(wrapper.find('#optimization-panel').exists()).toBe(false)
+    expect(wrapper.find('select').exists()).toBe(false)
+    expect(wrapper.findAll('button').filter(button => button.text() === 'Optimize')).toHaveLength(1)
+    expect(wrapper.text()).not.toMatch(/single.panel|multi.panel/i)
+    const worker = await start()
+    worker.complete(); await flushPromises()
+    expect(wrapper.get('#optimization-layout').findAll('option')).toHaveLength(1)
+    expect(wrapper.text()).toContain('2 copies placed · 0 copies unplaced')
+  })
+  it.each(['', -1, 1.5, '9007199254740992'])('rejects invalid availability %s without starting a worker', async value => {
+    const { wrapper, workers } = await setup()
+    await wrapper.get('[data-panel-id]').setValue(value)
+    await wrapper.get('form').trigger('submit')
+    await vi.waitFor(() => { expect(wrapper.get('[data-panel-id]').attributes('aria-invalid')).toBe('true') })
+    expect(workers).toHaveLength(0)
+  })
+  it('persists quantities independently per project and reopens them without modifying legacy records or catalog data', async () => {
+    const { wrapper, indexedDB, persistence, service, project, other, start, catalog } = await setup()
+    const stock = await persistence.stockItems.list()
+    const parts = await service.parts(project.id).list()
+    const materials = await catalog.materials.list()
+    const products = await catalog.supplierProducts.list()
+    const untouched = await service.projects.get(other.id)
+    await wrapper.get('[data-panel-id]').setValue(3)
+    const worker = await start(); worker.complete(); await flushPromises()
+    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels[0]?.quantity).toBe(3)
+    const reopened = createLocalPersistence('optimization-ui', { indexedDB, IDBKeyRange })
+    connections.push(reopened)
+    const saved = await reopened.projects.get(project.id)
+    expect(saved.ok && saved.value.panelQuantities).toEqual([{ supplierProductId: validSupplierProductInput.id, quantity: 3 }])
+    expect(await service.projects.get(other.id)).toEqual(untouched)
+    expect(await persistence.stockItems.list()).toEqual(stock)
+    expect(await service.parts(project.id).list()).toEqual(parts)
+    expect(await catalog.materials.list()).toEqual(materials)
+    expect(await catalog.supplierProducts.list()).toEqual(products)
+    await wrapper.get('button').trigger('click')
+    await vi.waitFor(() => { expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '3') })
+  })
+  it('shows quantity persistence failures and preserves the draft for retry', async () => {
+    const { wrapper, service, workers } = await setup()
+    vi.spyOn(service.projects, 'update').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Cannot save' } })
+    await wrapper.get('[data-panel-id]').setValue(2)
+    await wrapper.get('form').trigger('submit')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Could not access local storage') })
+    expect(workers).toHaveLength(0)
+    expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '2')
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+  it('navigates layouts and preserves independent edits, undo, viewport and per-panel PDF exports', async () => {
+    const { wrapper, catalog, service, project, product, part, start, pdfGenerate, persistence } = await setup()
+    await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 1443, widthMm: 560 })
+    await service.parts(project.id).update(part.id, { ...part, quantity: 4 })
+    const stock = await persistence.stockItems.list()
+    await wrapper.get('[data-panel-id]').setValue(2)
+    const worker = await start()
+    const snapshot = structuredClone(worker.request.input)
+    worker.complete(); await flushPromises()
+    expect(wrapper.text()).toContain('4 copies placed · 0 copies unplaced')
+    expect(wrapper.get('#optimization-layout').findAll('option')).toHaveLength(2)
+    async function click(label: string): Promise<void> {
+      const button = wrapper.findAll('button').find(button => button.text() === label)
+      if (!button) throw new Error(`Missing ${label}`)
+      await button.trigger('click')
+    }
+    await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
+    await click('Enter Edit Mode')
+    await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
+    await click('Swap selected copies')
+    expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
+    await click('Zoom in')
+    await click('Export PDF'); await flushPromises()
+    expect(pdfGenerate.mock.calls[0]?.[0].edited).toBe(true)
+    expect(pdfGenerate.mock.calls[0]?.[0].unplaced).toMatchObject([{ firstCopyIndex: 2, count: 2, reason: { kind: 'allocatedElsewhere' } }])
+    await wrapper.get('#optimization-layout').setValue(1)
+    expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 3')
+    expect(wrapper.text()).not.toContain('Validated edited panel plan')
+    expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
+    expect(wrapper.findAll('[aria-label="Cutting plan canvas"]')).toHaveLength(1)
+    await click('Export PDF'); await flushPromises()
+    expect(pdfGenerate.mock.calls[1]?.[0].edited).toBe(false)
+    expect(pdfGenerate.mock.calls[1]?.[0].scene.parts[0]?.copyIndex).toBe(2)
+    await wrapper.get('#optimization-layout').setValue(0)
+    expect(wrapper.text()).toContain('Validated edited panel plan')
+    expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
+    await click('Undo edit')
+    expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
+    const downloads = vi.mocked(downloadCuttingPlanPdf).mock.calls.length
+    let finish: () => void = () => { throw new Error('Export has not started') }
+    pdfGenerate.mockImplementationOnce(() => new Promise(resolve => { finish = () => { resolve(new Uint8Array([2])) } }))
+    await click('Export PDF'); await flushPromises()
+    expect(wrapper.text()).toContain('Generating PDF')
+    await wrapper.get('#optimization-layout').setValue(1)
+    finish(); await flushPromises()
+    expect(vi.mocked(downloadCuttingPlanPdf).mock.calls).toHaveLength(downloads)
+    expect(worker.request.input).toEqual(snapshot)
+    expect(await persistence.stockItems.list()).toEqual(stock)
+  })
+  it('reports zero availability without allocating a panel or exposing an export action', async () => {
+    const { wrapper, start } = await setup()
+    await wrapper.get('[data-panel-id]').setValue(0)
+    const worker = await start(); worker.complete(); await flushPromises()
+    expect(wrapper.text()).toContain('0 copies placed · 2 copies unplaced')
+    expect(wrapper.text()).toContain('No panels allocated')
+    expect(wrapper.findAll('button').some(button => button.text() === 'Export PDF')).toBe(false)
   })
 })

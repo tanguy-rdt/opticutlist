@@ -43,7 +43,7 @@ async function renderCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<U
   const contentWidth = size.width - 2 * margin
   let y = size.height - margin
   page.drawText('OptiCutList / Cutting plan', { x: margin, y, size: 19, font: bold, color: ink }); y -= 24
-  y = drawLines(page, wrapPdfText(`${document.edited ? 'Manually edited' : 'Optimized'} single-panel plan - independently validated`, font, 10, contentWidth), font, margin, y)
+  y = drawLines(page, wrapPdfText(`${document.edited ? 'Manually edited' : 'Optimized'} panel plan - independently validated`, font, 10, contentWidth), font, margin, y)
   y = drawLines(page, wrapPdfText(`Panel: ${document.panel.name} / ${dimensions(document.panel)}`, font, 10, contentWidth), font, margin, y)
   y = drawLines(page, wrapPdfText(`Material: ${document.materialName} / ID: ${document.panel.materialId}`, font, 10, contentWidth), font, margin, y)
   y = drawLines(page, wrapPdfText(`Panel grain: ${document.panel.grainDirection} / Kerf: ${String(document.settings.kerfMm)} mm / Edge margin: ${String(document.settings.edgeMarginMm)} mm`, font, 10, contentWidth), font, margin, y)
@@ -110,7 +110,8 @@ async function renderCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<U
   if (document.unplaced.length === 0) row('None. All requested copies are placed on this panel.')
   for (const missing of document.unplaced) {
     const part = document.parts.find(part => part.id === missing.partId)
-    const reason = missing.reason.kind === 'noSpaceLeft' ? 'No space left on this panel'
+    const reason = missing.reason.kind === 'allocatedElsewhere' ? 'Allocated to another panel in the project'
+      : missing.reason.kind === 'noSpaceLeft' ? 'No space left on this panel'
       : missing.reason.kind === 'remainderNarrowerThanKerf' ? 'Remainder cannot be cut with this kerf'
         : missing.reason.issues.map(issue => ({ materialMismatch: 'Material mismatch', thicknessMismatch: 'Exact thickness mismatch', noUsableArea: 'No usable area', grainRequiresRotation: 'Grain requires forbidden rotation', exceedsUsableArea: 'Exceeds usable panel size' })[issue.kind]).join('; ')
     row(`${part?.name ?? missing.partId} / ID: ${missing.partId}\n${String(missing.count)} unplaced copies, starting at copy ${String(missing.firstCopyIndex + 1)}${part === undefined ? '' : ` / ${dimensions(part)}`}\nReason: ${reason}`)

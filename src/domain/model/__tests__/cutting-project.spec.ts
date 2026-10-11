@@ -17,3 +17,18 @@ describe('CuttingProject', () => {
     }
   })
 })
+
+describe('project panel quantities', () => {
+  it('accepts legacy records unchanged and explicit zero/non-negative safe quantities', () => {
+    expect(cuttingProjectSchema.parse(record)).not.toHaveProperty('panelQuantities')
+    expect(cuttingProjectSchema.parse({ ...record, panelQuantities: [{ supplierProductId: 'panel', quantity: 0 }] }).panelQuantities).toEqual([{ supplierProductId: 'panel', quantity: 0 }])
+  })
+  it('rejects unknown/unselected or duplicate references and invalid quantity values', () => {
+    for (const quantity of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1', null]) expect(cuttingProjectSchema.safeParse({ ...record, panelQuantities: [{ supplierProductId: 'panel', quantity }] }).success).toBe(false)
+    for (const panelQuantities of [
+      [{ supplierProductId: 'unselected', quantity: 1 }],
+      [{ supplierProductId: 'panel', quantity: 1 }, { supplierProductId: 'panel', quantity: 2 }],
+      [{ supplierProductId: 'panel', quantity: 1, stock: true }],
+    ]) expect(cuttingProjectSchema.safeParse({ ...record, panelQuantities }).success).toBe(false)
+  })
+})

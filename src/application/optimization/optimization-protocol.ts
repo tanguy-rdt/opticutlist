@@ -1,5 +1,8 @@
 import { cuttingSettingsSchema } from '../../domain/model/cutting-settings'
 import { partSchema } from '../../domain/model/part'
+import { supplierProductSchema } from '../../domain/model/supplier-product'
+import { panelQuantitySchema } from '../../domain/model/cutting-project'
+import type { OptimizeProjectInput, OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import { PLACEMENT_STRATEGIES } from '../../domain/optimizer/plan-with-strategy'
 import type { OptimizePanelSelection } from '../../domain/optimizer/optimize-panel'
 import type { OptimizePanelInput } from '../../domain/optimizer/plan-with-strategy'
@@ -14,14 +17,21 @@ export interface OptimizeRequest {
   readonly requestId: number
   readonly input: OptimizePanelInput
 }
+export interface OptimizeProjectRequest {
+  readonly type: 'optimizeProject'
+  readonly requestId: number
+  readonly input: OptimizeProjectInput
+}
+export type OptimizationRequest = OptimizeRequest | OptimizeProjectRequest
 
 export type OptimizationWorkerError =
   /** The optimizer threw (e.g. duplicate part IDs or out-of-range geometry input). */
   | { readonly kind: 'optimizerError'; readonly message: string }
-  /** The worker received a message that is not an `OptimizeRequest`. */
+  /** The worker received a message that is not a supported optimization request. */
   | { readonly kind: 'invalidRequest'; readonly message: string }
 
 export type OptimizationResponse =
+  | { readonly type: 'projectResult'; readonly requestId: number; readonly selection: OptimizeProjectResult }
   /** The optimizer ran; `selection` may itself be a domain failure such as `noUsableArea`. */
   | { readonly type: 'result'; readonly requestId: number; readonly selection: OptimizePanelSelection }
   /** `requestId` is `null` only when the request was unreadable. */
@@ -57,6 +67,12 @@ export function isOptimizeRequest(data: unknown): data is OptimizeRequest {
   ) && cuttingSettingsSchema.safeParse(settings).success
 }
 
+export function isOptimizeProjectRequest(data: unknown): data is OptimizeProjectRequest {
+  if (!isRecord(data) || data.type !== 'optimizeProject' || !isRequestId(data.requestId) || !isRecord(data.input)) return false
+  return Array.isArray(data.input.panels) && data.input.panels.every((source: unknown) => isRecord(source) && supplierProductSchema.safeParse(source.product).success && panelQuantitySchema.safeParse(source.quantity).success) &&
+    Array.isArray(data.input.parts) && data.input.parts.every((part: unknown) => partSchema.safeParse(part).success) && cuttingSettingsSchema.safeParse(data.input.settings).success
+}
+
 /** Check tree structure before calling the geometric validator, including cyclic cloned data. */
 export function hasTreeStructure(root: unknown): boolean {
   const remaining: unknown[] = [root]
@@ -83,6 +99,20 @@ export function hasTreeStructure(root: unknown): boolean {
 export function isOptimizationResponse(data: unknown): data is OptimizationResponse {
   if (!isRecord(data)) {
     return false
+  }
+  if (data.type === 'projectResult') {
+    if (!isRequestId(data.requestId) || !isRecord(data.selection)) return false
+    const selection = data.selection
+    if (selection.ok === false) return isRecord(selection.error) && (selection.error.kind === 'invalidInput' || selection.error.kind === 'invalidPlan') && typeof selection.error.message === 'string' && Array.isArray(selection.error.issues) && selection.error.issues.every((issue: unknown) => isRecord(issue) &&
+      typeof issue.kind === 'string' && ['invalidTree', 'invalidPanel', 'panelLimit', 'emptyPanel', 'invalidAccounting', 'invalidMetrics'].includes(issue.kind) && typeof issue.message === 'string' &&
+      (issue.panelIndex === undefined || typeof issue.panelIndex === 'number' && Number.isSafeInteger(issue.panelIndex) && issue.panelIndex >= 0))
+    if (selection.ok !== true || !isRecord(selection.plan)) return false
+    const plan = selection.plan
+    return Array.isArray(plan.panels) && plan.panels.every((panel: unknown) => isRecord(panel) && supplierProductSchema.shape.id.safeParse(panel.supplierProductId).success &&
+      typeof panel.panelCopyIndex === 'number' && PLACEMENT_STRATEGIES.some(strategy => strategy === panel.strategy) && isRecord(panel.plan) && hasTreeStructure(panel.plan.tree) &&
+      Array.isArray(panel.plan.placements) && Array.isArray(panel.plan.unplaced) && isRecord(panel.plan.metrics)) &&
+      Array.isArray(plan.unplaced) && plan.unplaced.every((item: unknown) => isRecord(item) && partSchema.shape.id.safeParse(item.partId).success && typeof item.firstCopyIndex === 'number' && typeof item.count === 'number' &&
+        (item.reason === 'noCompatiblePanel' || item.reason === 'constraintsPreventPlacement' || item.reason === 'panelLimitReached')) && isRecord(plan.metrics)
   }
   if (data.type === 'result') {
     if (!isRequestId(data.requestId) || !isRecord(data.selection)) return false

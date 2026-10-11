@@ -101,6 +101,7 @@ async function save(): Promise<void> {
   const project = await service.projects.get(projectId)
   const result = project.ok ? await service.projects.update(projectId, {
     ...project.value, materialIds: selectedIds.value, supplierProductIds: selectedProductIds.value,
+    ...(project.value.panelQuantities === undefined ? {} : { panelQuantities: project.value.panelQuantities.filter(item => selectedProductIds.value.includes(item.supplierProductId)) }),
   }) : project
   if (result.ok) { await load(); notice.value = 'Project selections saved.' }
   else saveError.value = persistenceErrorMessage(result.error, 'Project')
