@@ -93,9 +93,9 @@ const productUrl = ref(props.product?.productUrl ?? '')
 const grainDirection = ref(props.product?.grainDirection ?? 'none')
 const availability = ref(props.product?.availability ?? 'unknown')
 const errors = shallowRef<ReadonlyMap<string, string>>(new Map())
-const numericFields = [
+const dimensionFields = [
   { key: 'lengthMm', label: 'Length (mm)' }, { key: 'widthMm', label: 'Width (mm)' },
-  { key: 'thicknessMm', label: 'Thickness (mm)' }, { key: 'price', label: 'Price per panel' },
+  { key: 'thicknessMm', label: 'Thickness (mm)' },
 ] as const
 function numberInput(value: number | string): number | undefined { return typeof value === 'string' && value.trim() === '' ? undefined : Number(value) }
 function focusName(): void { form.value?.querySelector<HTMLInputElement>('input')?.focus() }
@@ -119,27 +119,31 @@ async function submit(): Promise<void> {
 }
 </script>
 <template>
-  <section
-    class="panel p-6"
-    aria-labelledby="product-form-title"
+  <form
+    ref="form"
+    novalidate
+    aria-label="Product editor"
+    class="product-editor space-y-4"
+    @submit.prevent="submit"
   >
-    <h2
-      id="product-form-title"
-      class="sr-only"
+    <section
+      aria-labelledby="product-general-heading"
+      class="space-y-3"
     >
-      {{ product ? 'Edit product' : 'New catalog product' }}
-    </h2>
-    <p class="mb-5 text-sm text-muted">
-      A purchasable panel, not owned stock. Enter all three dimensions in millimeters.
-    </p>
-    <form
-      ref="form"
-      novalidate
-      class="space-y-5"
-      @submit.prevent="submit"
-    >
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h3
+          id="product-general-heading"
+          class="text-sm font-semibold"
+        >
+          General information
+        </h3>
+        <p class="text-xs text-muted">
+          <span aria-hidden="true">*</span> Required fields
+        </p>
+      </div>
       <FormField
         id="product-name"
+        required-indicator="asterisk"
         label="Product name"
         required
         :error="errors.get('name') ?? ''"
@@ -155,9 +159,10 @@ async function submit(): Promise<void> {
           >
         </template>
       </FormField>
-      <div class="grid gap-5 md:grid-cols-2">
+      <div class="grid gap-4 sm:grid-cols-2">
         <FormField
           id="product-supplier"
+          required-indicator="asterisk"
           label="Supplier"
           required
           :error="errors.get('supplierId') ?? ''"
@@ -194,6 +199,7 @@ async function submit(): Promise<void> {
         </FormField>
         <FormField
           id="product-material"
+          required-indicator="asterisk"
           label="Material"
           required
           :error="errors.get('materialId') ?? ''"
@@ -209,7 +215,10 @@ async function submit(): Promise<void> {
           </template>
         </FormField>
       </div>
-      <div class="space-y-3">
+      <div
+        v-if="creatingMaterial || materialNotice"
+        class="space-y-3"
+      >
         <fieldset
           v-if="creatingMaterial"
           id="inline-material-fields"
@@ -226,6 +235,7 @@ async function submit(): Promise<void> {
           <div class="grid gap-4 md:grid-cols-2">
             <FormField
               id="inline-material-name"
+              required-indicator="asterisk"
               label="Name"
               required
               :error="materialNameError"
@@ -244,6 +254,7 @@ async function submit(): Promise<void> {
             </FormField>
             <FormField
               id="inline-material-category"
+              required-indicator="asterisk"
               label="Category"
               required
               :error="materialCategoryError"
@@ -291,11 +302,23 @@ async function submit(): Promise<void> {
           {{ materialNotice }}
         </p>
       </div>
-      <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+    </section>
+    <section
+      aria-labelledby="product-dimensions-heading"
+      class="space-y-3 border-t border-line pt-4"
+    >
+      <h3
+        id="product-dimensions-heading"
+        class="text-sm font-semibold"
+      >
+        Panel dimensions
+      </h3>
+      <div class="grid gap-4 sm:grid-cols-3">
         <FormField
-          v-for="field in numericFields"
+          v-for="field in dimensionFields"
           :id="`product-${field.key}`"
           :key="field.key"
+          required-indicator="asterisk"
           :label="field.label"
           required
           :error="errors.get(field.key) ?? ''"
@@ -314,9 +337,41 @@ async function submit(): Promise<void> {
           </template>
         </FormField>
       </div>
-      <div class="grid gap-5 md:grid-cols-3">
+    </section>
+    <section
+      aria-labelledby="product-pricing-heading"
+      class="space-y-3 border-t border-line pt-4"
+    >
+      <h3
+        id="product-pricing-heading"
+        class="text-sm font-semibold"
+      >
+        Pricing and availability
+      </h3>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <FormField
+          id="product-price"
+          required-indicator="asterisk"
+          label="Price per panel"
+          required
+          :error="errors.get('price') ?? ''"
+        >
+          <template #default="{ controlAttrs }">
+            <input
+              v-model.number="numbers.price"
+              v-bind="controlAttrs"
+              class="field"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              step="any"
+              :disabled="disabled"
+            >
+          </template>
+        </FormField>
         <FormField
           id="product-currency"
+          required-indicator="asterisk"
           label="Currency"
           required
           hint="Three uppercase letters, e.g. EUR or USD."
@@ -332,8 +387,11 @@ async function submit(): Promise<void> {
             >
           </template>
         </FormField>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
         <FormField
           id="product-grain"
+          required-indicator="asterisk"
           label="Grain direction"
           required
           :error="errors.get('grainDirection') ?? ''"
@@ -357,6 +415,7 @@ async function submit(): Promise<void> {
         </FormField>
         <FormField
           id="product-availability"
+          required-indicator="asterisk"
           label="Availability"
           required
           :error="errors.get('availability') ?? ''"
@@ -379,8 +438,20 @@ async function submit(): Promise<void> {
           </template>
         </FormField>
       </div>
+    </section>
+    <section
+      aria-labelledby="product-additional-heading"
+      class="space-y-3 border-t border-line pt-4"
+    >
+      <h3
+        id="product-additional-heading"
+        class="text-sm font-semibold"
+      >
+        Additional information
+      </h3>
       <FormField
         id="product-url"
+        required-indicator="asterisk"
         label="Product URL (optional)"
         :error="errors.get('productUrl') ?? ''"
       >
@@ -395,24 +466,34 @@ async function submit(): Promise<void> {
           >
         </template>
       </FormField>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="submit"
-          class="button button-primary"
-          :disabled="disabled || materialBusy || creatingMaterial || suppliers.length === 0"
-        >
-          {{ product ? 'Save product' : 'Create product' }}
-        </button>
-        <button
-          v-if="product"
-          type="button"
-          class="button"
-          :disabled="disabled"
-          @click="emit('cancel')"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
-  </section>
+    </section>
+    <div class="flex flex-wrap justify-end gap-3 border-t border-line pt-4">
+      <button
+        type="submit"
+        class="button button-primary"
+        :disabled="disabled || materialBusy || creatingMaterial || suppliers.length === 0"
+      >
+        {{ product ? 'Save product' : 'Create product' }}
+      </button>
+      <button
+        v-if="product"
+        type="button"
+        class="button"
+        :disabled="disabled"
+        @click="emit('cancel')"
+      >
+        Cancel
+      </button>
+    </div>
+  </form>
 </template>
+<style scoped>
+.product-editor :deep(.field) {
+  height: 3rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+.product-editor :deep(label) {
+  line-height: 1.25rem;
+}
+</style>

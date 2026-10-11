@@ -94,6 +94,33 @@ async function submit(wrapper: VueWrapper, entity: 'supplier' | 'product') {
 afterEach(() => { for (const wrapper of wrappers) wrapper.unmount(); wrappers.length = 0; vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('SuppliersView', () => {
+  it('keeps required fields and linked errors accessible in the sectioned product editor', async () => {
+    const repositories = setup()
+    const wrapper = render(repositories); await flushPromises(); await openForm(wrapper, 'product')
+    expect(wrapper.get('#catalog-dialog-title').text()).toBe('New product')
+    const form = wrapper.get('form[aria-label="Product editor"]')
+    expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing and availability', 'Additional information'])
+    for (const field of ['name', 'supplier', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain', 'availability']) {
+      const label = form.get(`label[for="product-${field}"]`)
+      expect(label.get('span[aria-hidden="true"]').text()).toBe('*')
+      expect(label.get('.sr-only').text()).toBe('(required)')
+      expect(form.get(`#product-${field}`).attributes('required')).toBeDefined()
+    }
+    expect(form.get('#product-url').attributes('required')).toBeUndefined()
+    expect(form.get<HTMLInputElement>('#product-currency').element.value).toBe('EUR')
+    await submit(wrapper, 'product')
+    for (const dimension of ['lengthMm', 'widthMm', 'thicknessMm']) {
+      expect(form.get(`#product-${dimension}`).attributes('aria-invalid')).toBe('true')
+      expect(form.get(`#product-${dimension}`).attributes('aria-describedby')).toBe(`product-${dimension}-error`)
+      expect(form.get(`#product-${dimension}-error`).attributes('role')).toBe('alert')
+    }
+    expect(repositories.supplierProducts.create).not.toHaveBeenCalled()
+    await button(wrapper, 'Close form').trigger('click')
+    expect(wrapper.find('form[aria-label="Product editor"]').exists()).toBe(false)
+    await openForm(wrapper, 'supplier')
+    expect(wrapper.get('label[for="supplier-name"]').text()).toContain('(required)')
+  })
+
   it('presents substantial icon summary cards and structured text-based product details without invented imagery', async () => {
     const repositories = setup()
     repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })

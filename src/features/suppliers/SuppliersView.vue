@@ -725,7 +725,7 @@ onMounted(load)
     </CatalogFormDialog>
     <CatalogFormDialog
       v-if="formMode"
-      :title="formMode === 'supplier' ? 'Supplier information' : (editingProduct ? 'Edit product' : 'New catalog product')"
+      :title="formMode === 'supplier' ? 'Supplier information' : (editingProduct ? 'Edit product' : 'New product')"
       :busy="busy"
       @close="closeForm"
     >

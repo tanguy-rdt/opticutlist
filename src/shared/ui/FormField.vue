@@ -5,11 +5,12 @@ withDefaults(defineProps<{
   error?: string
   required?: boolean
   hint?: string
-}>(), { error: '', required: false, hint: '' })
+  requiredIndicator?: 'text' | 'asterisk'
+}>(), { error: '', required: false, hint: '', requiredIndicator: 'text' })
 </script>
 
 <template>
-  <div class="space-y-2">
+  <div :class="requiredIndicator === 'asterisk' ? 'grid content-start gap-2' : 'space-y-2'">
     <label
       :for="id"
       class="block text-sm font-semibold"
@@ -17,7 +18,12 @@ withDefaults(defineProps<{
       {{ label }} <span
         v-if="required"
         class="font-normal text-muted"
-      >(required)</span>
+        :aria-hidden="requiredIndicator === 'asterisk' ? true : undefined"
+      >{{ requiredIndicator === 'asterisk' ? '*' : '(required)' }}</span>
+      <span
+        v-if="required && requiredIndicator === 'asterisk'"
+        class="sr-only"
+      > (required)</span>
     </label>
     <slot
       :control-attrs="{
@@ -38,6 +44,7 @@ withDefaults(defineProps<{
       :id="`${id}-error`"
       :role="error ? 'alert' : undefined"
       class="text-sm text-danger"
+      :class="{ hidden: !error && requiredIndicator === 'asterisk' }"
     >
       {{ error }}
     </p>
