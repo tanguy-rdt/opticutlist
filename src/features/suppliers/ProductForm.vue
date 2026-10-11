@@ -6,6 +6,8 @@ import { grainDirectionSchema } from '../../domain/model/orientation'
 import { supplierProductSchema, productAvailabilitySchema, type SupplierProduct } from '../../domain/model/supplier-product'
 import FormField from '../../shared/ui/FormField.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
+import MaterialPresetPicker from '../materials/MaterialPresetPicker.vue'
+import type { MaterialPreset } from '../materials/material-library'
 import { useMaterialRepository } from '../materials/material-repository'
 
 const props = defineProps<{ product: SupplierProduct | null; suppliers: readonly Supplier[]; materials: readonly Material[]; initialSupplierId: string; disabled: boolean }>()
@@ -15,6 +17,14 @@ const creatingMaterial = ref(false)
 const materialBusy = ref(false)
 const materialName = ref('')
 const materialCategory = ref('')
+const selectedPreset = shallowRef<MaterialPreset>()
+function selectPreset(preset: MaterialPreset | undefined): void {
+  selectedPreset.value = preset
+  materialName.value = preset?.name ?? ''
+  materialCategory.value = preset?.category ?? ''
+  materialNameError.value = ''
+  materialCategoryError.value = ''
+}
 const materialNameError = ref('')
 const materialCategoryError = ref('')
 const materialStorageError = ref('')
@@ -36,7 +46,7 @@ async function createMaterial(): Promise<void> {
   if (props.disabled || materialBusy.value) return
   materialStorageError.value = ''
   materialNotice.value = ''
-  const parsed = materialSchema.safeParse({ id: crypto.randomUUID(), name: materialName.value, category: materialCategory.value })
+  const parsed = materialSchema.safeParse({ id: crypto.randomUUID(), name: materialName.value, category: materialCategory.value, ...(selectedPreset.value ? { libraryPresetId: selectedPreset.value.id } : {}) })
   materialNameError.value = parsed.success ? '' : parsed.error.issues.find((issue) => issue.path[0] === 'name')?.message ?? ''
   materialCategoryError.value = parsed.success ? '' : parsed.error.issues.find((issue) => issue.path[0] === 'category')?.message ?? ''
   if (!parsed.success) {
@@ -46,16 +56,18 @@ async function createMaterial(): Promise<void> {
   }
   materialBusy.value = true
   emit('materialBusy', true)
-  const result = await materialRepository.create(parsed.data)
+  const existing = props.materials.find(material => material.name === parsed.data.name && material.category === parsed.data.category && material.libraryPresetId === parsed.data.libraryPresetId)
+  const result = existing ? { ok: true as const, value: existing } : await materialRepository.create(parsed.data)
   materialBusy.value = false
   emit('materialBusy', false)
   if (result.ok) {
-    emit('materialCreated', result.value)
+    if (!existing) emit('materialCreated', result.value)
     materialId.value = result.value.id
     creatingMaterial.value = false
     materialName.value = ''
     materialCategory.value = ''
-    materialNotice.value = 'Material created and selected.'
+    selectedPreset.value = undefined
+    materialNotice.value = existing ? 'Existing material selected; no duplicate created.' : 'Material created and selected.'
     await nextTick()
     form.value?.querySelector<HTMLSelectElement>('#product-material')?.focus()
   } else materialStorageError.value = persistenceErrorMessage(result.error, 'Material')
@@ -226,6 +238,10 @@ async function submit(): Promise<void> {
           <legend class="px-1 font-semibold">
             New catalog material
           </legend>
+          <MaterialPresetPicker
+            :selected-id="selectedPreset?.id"
+            @select="selectPreset"
+          />
           <div class="grid gap-4 md:grid-cols-2">
             <FormField
               id="inline-material-name"

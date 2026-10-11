@@ -342,6 +342,67 @@ describe('SuppliersView', () => {
     }
   })
 
+  it('offers the local presets without creating records, keeps a renamed thumbnail and the product draft', async () => {
+    const repositories = setup()
+    repositories.materials.create.mockImplementation(record => Promise.resolve({ ok: true, value: materialSchema.parse(record) }))
+    const wrapper = render(repositories); await flushPromises(); await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click')
+    expect(wrapper.findAll('input[name="material-preset"]')).toHaveLength(21)
+    for (const category of ['Hardwoods', 'Softwoods', 'Exotic woods', 'Engineered wood panels']) expect(wrapper.text()).toContain(category)
+    await wrapper.get('#material-library-search').setValue('pin')
+    expect(wrapper.findAll('input[name="material-preset"]')).toHaveLength(3) // Pin and Sapin, plus custom
+    await wrapper.get('input[value="pin"]').setValue(true)
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+    expect(wrapper.get<HTMLInputElement>('#inline-material-name').element.value).toBe('Pin')
+    await wrapper.get('#inline-material-name').setValue('Pin Douglas')
+    await button(wrapper, 'Create and select material').trigger('click'); await flushPromises()
+    const created = materialSchema.parse(repositories.materials.create.mock.calls[0]?.[0])
+    expect(created).toMatchObject({ name: 'Pin Douglas', category: 'Softwoods', libraryPresetId: 'pin' })
+    expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(created.id)
+    expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe(product.name)
+    expect(wrapper.get<HTMLInputElement>('#product-thicknessMm').element.value).toBe(String(product.thicknessMm))
+  })
+
+  it('reuses an identical material without creating duplicate records or selection options', async () => {
+    const repositories = setup()
+    const preset = materialSchema.parse({ ...material, id: 'preset-material', name: 'Pin', category: 'Softwoods', libraryPresetId: 'pin' })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [material, preset] })
+    const wrapper = render(repositories); await flushPromises(); await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click'); await wrapper.get('input[value="pin"]').setValue(true)
+    await button(wrapper, 'Create and select material').trigger('click'); await flushPromises()
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Existing material selected; no duplicate created.')
+    expect(wrapper.get('#product-material').findAll('option')).toHaveLength(3)
+  })
+
+  it('keeps preset metadata and editable drafts after validation or storage failure; custom clears the image', async () => {
+    const repositories = setup(); repositories.materials.create.mockResolvedValue(failure)
+    const wrapper = render(repositories); await flushPromises(); await fillProduct(wrapper)
+    await button(wrapper, '+ New material').trigger('click'); await wrapper.get('input[value="pin"]').setValue(true)
+    await wrapper.get('#inline-material-name').setValue(' ')
+    await button(wrapper, 'Create and select material').trigger('click')
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+    await wrapper.get('#inline-material-name').setValue('Pin Douglas')
+    await button(wrapper, 'Create and select material').trigger('click'); await flushPromises()
+    expect(wrapper.find('#inline-material-fields [role="alert"]').exists()).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('input[value="pin"]').element.checked).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('#inline-material-name').element.value).toBe('Pin Douglas')
+    await wrapper.get('input[name="material-preset"]:not([value])').setValue(true)
+    await wrapper.get('#inline-material-name').setValue('Custom board'); await wrapper.get('#inline-material-category').setValue('Boards')
+    await button(wrapper, 'Create and select material').trigger('click'); await flushPromises()
+    expect(repositories.materials.create.mock.calls[1]?.[0]).not.toHaveProperty('libraryPresetId')
+  })
+
+  it('shows only associated local material thumbnails in catalog headings', async () => {
+    const repositories = setup()
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [materialSchema.parse({ ...material, libraryPresetId: 'pin' })] })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    const wrapper = render(repositories); await flushPromises()
+    const image = wrapper.get('.catalog-material-header img')
+    expect(image.attributes('loading')).toBe('lazy')
+    expect(image.attributes('alt')).toBe('')
+  })
+
   it('validates only the required Material fields before writing', async () => {
     const repositories = setup()
     const wrapper = render(repositories)
@@ -352,7 +413,7 @@ describe('SuppliersView', () => {
     await button(wrapper, 'Create and select material').trigger('click')
     expect(wrapper.get('#inline-material-name').attributes('aria-invalid')).toBe('true')
     expect(wrapper.get('#inline-material-category').attributes('aria-invalid')).toBe('true')
-    expect(wrapper.get('#inline-material-fields').findAll('input')).toHaveLength(2)
+    expect(wrapper.get('#inline-material-fields').findAll('input[required]')).toHaveLength(2)
     expect(document.activeElement).toBe(wrapper.get('#inline-material-name').element)
     expect(repositories.materials.create).not.toHaveBeenCalled()
     expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe(product.name)
@@ -416,7 +477,7 @@ describe('SuppliersView', () => {
     await flushPromises()
   })
 
-  it('persists an inline material and its product through the existing repositories', async () => {
+  it.each([false, true])('persists an inline material and its product through the existing repositories (preset=%s)', async (preset) => {
     const indexedDB = new IDBFactory()
     const first = createLocalPersistence('inline-material-persistence', { indexedDB, IDBKeyRange })
     const second = createLocalPersistence('inline-material-persistence', { indexedDB, IDBKeyRange })
@@ -429,6 +490,7 @@ describe('SuppliersView', () => {
       await wrapper.get('#product-supplier').setValue(supplier.id)
       for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
       await button(wrapper, '+ New material').trigger('click')
+      if (preset) await wrapper.get('input[value="pin"]').setValue(true)
       await wrapper.get('#inline-material-name').setValue(material.name)
       await wrapper.get('#inline-material-category').setValue(material.category)
       await button(wrapper, 'Create and select material').trigger('click')
@@ -441,6 +503,8 @@ describe('SuppliersView', () => {
       const storedMaterials = await second.materials.list()
       const storedProducts = await second.supplierProducts.list()
       expect(storedMaterials).toMatchObject({ ok: true, value: [{ id: selectedId, name: material.name, category: material.category }] })
+      if (preset) expect(storedMaterials).toMatchObject({ ok: true, value: [{ libraryPresetId: 'pin' }] })
+      else if (storedMaterials.ok) expect(storedMaterials.value[0]).not.toHaveProperty('libraryPresetId')
       expect(storedProducts).toMatchObject({ ok: true, value: [{ materialId: selectedId, thicknessMm: product.thicknessMm }] })
       expect(await second.stockItems.list()).toEqual({ ok: true, value: [] })
     } finally { first.close(); second.close() }

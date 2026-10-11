@@ -9,6 +9,7 @@ import { useMaterialRepository } from '../materials/material-repository'
 import { useCatalogRepositories, useCatalogStockRepository } from './catalog-repositories'
 import SupplierForm from './SupplierForm.vue'
 import ProductForm from './ProductForm.vue'
+import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import CatalogTransfer from './CatalogTransfer.vue'
 import ProductDetails from './ProductDetails.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
@@ -546,7 +547,7 @@ onMounted(load)
         >
           <div class="catalog-material-header flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4">
             <div class="flex items-center gap-4">
-              <span class="catalog-material-symbol"><AppIcon name="layers" /></span>
+              <MaterialThumbnail :preset-id="section.material?.libraryPresetId" />
               <div>
                 <h3 class="text-base font-semibold">
                   {{ section.material?.name ?? 'Missing material' }}

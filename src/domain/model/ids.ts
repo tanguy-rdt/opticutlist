@@ -8,6 +8,9 @@ const stableIdSchema = z
   .max(128, { error: 'ID must be at most 128 characters' })
   .regex(/^\S+$/, { error: 'ID must not contain whitespace' })
 
+export const materialPresetIdSchema = stableIdSchema.brand<'MaterialPresetId'>()
+export type MaterialPresetId = z.infer<typeof materialPresetIdSchema>
+
 export const materialIdSchema = stableIdSchema.brand<'MaterialId'>()
 export type MaterialId = z.infer<typeof materialIdSchema>
 

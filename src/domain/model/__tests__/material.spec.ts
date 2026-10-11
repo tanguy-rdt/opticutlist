@@ -8,6 +8,13 @@ describe('materialSchema', () => {
     expect(materialSchema.parse(validMaterialInput)).toEqual(validMaterialInput)
   })
 
+  it('accepts optional stable preset metadata without altering legacy records', () => {
+    expect(materialSchema.parse({ ...validMaterialInput, libraryPresetId: 'pin' }).libraryPresetId).toBe('pin')
+    expect(materialSchema.parse(validMaterialInput)).not.toHaveProperty('libraryPresetId')
+    for (const libraryPresetId of ['', 'invalid id', null, 12]) expect(materialSchema.safeParse({ ...validMaterialInput, libraryPresetId }).success).toBe(false)
+    expect(materialSchema.safeParse({ ...validMaterialInput, image: 'binary' }).success).toBe(false)
+  })
+
   it('trims name and category', () => {
     const material = materialSchema.parse({ ...validMaterialInput, name: '  MDF  ', category: ' Boards ' })
 
