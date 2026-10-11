@@ -11,6 +11,7 @@ import { useMaterialRepository } from './material-repository'
 
 import MaterialThumbnail from './MaterialThumbnail.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
+import SupplierLogo from '../suppliers/SupplierLogo.vue'
 
 const repository = useMaterialRepository()
 const catalog = useCatalogRepositories()
@@ -100,7 +101,6 @@ async function load(): Promise<void> {
   loading.value = false
 }
 function toggle(material: Material): void {
-  activeMaterialId.value = material.id
   selectedIds.value = selectedIds.value.includes(material.id)
     ? selectedIds.value.filter(id => id !== material.id)
     : [...selectedIds.value, material.id]
@@ -162,282 +162,306 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           Choose materials and panel references from your catalog.
         </p>
       </div>
-      <button
-        type="button"
-        class="button button-compact"
-        :disabled="loading || busy"
-        @click="refresh"
-      >
-        Refresh
-      </button>
     </header>
-    <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_350px]">
-      <div
-        class="min-w-0 space-y-5"
+    <div class="materials-workspace">
+      <section
+        class="panel material-library min-w-0 overflow-hidden"
         :aria-busy="loading"
+        aria-labelledby="library-title"
       >
-        <section
-          class="panel overflow-hidden"
-          aria-labelledby="library-title"
-        >
-          <div class="border-b border-line p-4 sm:p-5">
+        <div class="border-b border-line p-4">
+          <div class="flex items-center justify-between gap-2">
             <h2
               id="library-title"
               class="font-semibold"
             >
               Material library <span class="ml-2 text-sm font-normal text-muted">{{ materials.length }}</span>
             </h2>
-            <div class="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
-              <label class="flex items-center gap-2 rounded-lg border border-control-line bg-surface px-3 focus-within:ring-2 focus-within:ring-accent">
-                <AppIcon
-                  name="search"
-                  class="text-muted"
-                />
-                <input
-                  v-model="search"
-                  type="search"
-                  aria-label="Search materials"
-                  placeholder="Search materials…"
-                  class="min-h-10 min-w-0 w-full bg-transparent text-sm outline-none"
-                  :disabled="loading || busy"
-                >
-              </label>
-              <select
-                v-model="categoryFilter"
-                aria-label="Filter material category"
-                class="field text-sm"
-                :disabled="loading || busy"
-              >
-                <option value="">
-                  All categories
-                </option>
-                <option
-                  v-for="category in categories"
-                  :key="category"
-                  :value="category"
-                >
-                  {{ category }}
-                </option>
-              </select>
-            </div>
-          </div>
-          <p
-            v-if="loading"
-            role="status"
-            class="p-10 text-center text-muted"
-          >
-            Loading materials…
-          </p>
-          <div
-            v-else-if="loadError"
-            class="space-y-3 p-5"
-          >
-            <p
-              role="alert"
-              class="text-danger"
-            >
-              {{ loadError }}
-            </p>
             <button
               type="button"
-              class="button"
+              class="button button-compact px-2"
+              title="Refresh catalog"
+              :disabled="loading || busy"
               @click="refresh"
             >
-              Try again
+              <span>Refresh</span>
             </button>
           </div>
-          <div
-            v-else-if="!materials.length"
-            class="space-y-3 p-8 text-center"
-          >
-            <h3 class="font-semibold">
-              No catalog materials yet
-            </h3>
-            <p class="text-sm text-muted">
-              Create materials in a supplier product's Material field, then choose them here.
-            </p>
-            <RouterLink
-              to="/suppliers"
-              class="button"
-            >
-              Open supplier catalog
-            </RouterLink>
-          </div>
-          <p
-            v-else-if="!visibleMaterials.length"
-            class="p-8 text-center text-sm text-muted"
-          >
-            No materials match your search.
-          </p>
-          <div
-            v-else
-            class="max-h-[420px] divide-y divide-line overflow-y-auto"
-          >
-            <section
-              v-for="group in materialGroups"
-              :key="group.name"
-            >
-              <h3 class="bg-quiet-surface px-5 py-2 text-xs font-semibold text-muted">
-                {{ group.name }}
-              </h3>
-              <div
-                v-for="material in group.materials"
-                :key="material.id"
-                class="flex items-center gap-3 border-t border-line px-4 py-2"
-                :class="activeMaterial?.id === material.id ? 'bg-subtle' : 'hover:bg-quiet-surface'"
+          <div class="mt-3 grid gap-2">
+            <label class="flex items-center gap-2 rounded-lg border border-control-line bg-surface px-3 focus-within:ring-2 focus-within:ring-accent">
+              <AppIcon
+                name="search"
+                class="text-muted"
+              />
+              <input
+                v-model="search"
+                type="search"
+                aria-label="Search materials"
+                placeholder="Search materials…"
+                class="min-h-10 min-w-0 w-full bg-transparent text-sm outline-none"
+                :disabled="loading || busy"
               >
-                <label class="flex min-h-11 items-center px-1">
-                  <input
-                    type="checkbox"
-                    class="size-4 accent-accent"
-                    :aria-label="`Use ${material.name}`"
-                    :checked="selectedIds.includes(material.id)"
-                    :disabled="busy"
-                    @change="toggle(material)"
-                  >
-                </label>
-                <button
-                  type="button"
-                  class="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md text-left"
-                  :aria-pressed="activeMaterial?.id === material.id"
-                  :aria-label="`Show panels for ${material.name}`"
-                  @click="activeMaterialId = material.id"
+            </label>
+            <select
+              v-model="categoryFilter"
+              aria-label="Filter material category"
+              class="field min-h-10 py-1.5 text-sm"
+              :disabled="loading || busy"
+            >
+              <option value="">
+                All categories
+              </option>
+              <option
+                v-for="category in categories"
+                :key="category"
+                :value="category"
+              >
+                {{ category }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <p
+          v-if="loading"
+          role="status"
+          class="p-10 text-center text-muted"
+        >
+          Loading materials…
+        </p>
+        <div
+          v-else-if="loadError"
+          class="space-y-3 p-5"
+        >
+          <p
+            role="alert"
+            class="text-danger"
+          >
+            {{ loadError }}
+          </p>
+          <button
+            type="button"
+            class="button"
+            @click="refresh"
+          >
+            Try again
+          </button>
+        </div>
+        <div
+          v-else-if="!materials.length"
+          class="space-y-3 p-8 text-center"
+        >
+          <h3 class="font-semibold">
+            No catalog materials yet
+          </h3>
+          <p class="text-sm text-muted">
+            Create materials in a supplier product's Material field, then choose them here.
+          </p>
+          <RouterLink
+            to="/suppliers"
+            class="button"
+          >
+            Open supplier catalog
+          </RouterLink>
+        </div>
+        <p
+          v-else-if="!visibleMaterials.length"
+          class="p-8 text-center text-sm text-muted"
+        >
+          No materials match your search.
+        </p>
+        <div
+          v-else
+          class="material-list divide-y divide-line overflow-y-auto"
+        >
+          <section
+            v-for="group in materialGroups"
+            :key="group.name"
+          >
+            <h3 class="bg-quiet-surface px-4 py-2 text-xs font-semibold text-muted">
+              {{ group.name }}
+            </h3>
+            <div
+              v-for="material in group.materials"
+              :key="material.id"
+              class="flex items-center gap-2 border-t border-line border-l-2 px-3 py-2"
+              :class="activeMaterial?.id === material.id ? 'border-l-accent bg-subtle' : 'border-l-transparent hover:bg-quiet-surface'"
+            >
+              <label class="flex min-h-11 items-center px-1">
+                <input
+                  type="checkbox"
+                  class="size-4 accent-accent"
+                  :aria-label="`Use ${material.name}`"
+                  :checked="selectedIds.includes(material.id)"
+                  :disabled="busy"
+                  @change="toggle(material)"
                 >
-                  <MaterialThumbnail :preset-id="material.libraryPresetId" />
-                  <span class="min-w-0 flex-1"><span class="block text-sm font-semibold [overflow-wrap:anywhere]">{{ material.name }}</span><span class="text-xs text-muted">{{ materialProducts(material).length }} panel references</span></span>
+              </label>
+              <button
+                type="button"
+                class="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md text-left"
+                :aria-pressed="activeMaterial?.id === material.id"
+                :aria-label="`Show panels for ${material.name}`"
+                @click="activeMaterialId = material.id"
+              >
+                <MaterialThumbnail :preset-id="material.libraryPresetId" />
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold [overflow-wrap:anywhere]">{{ material.name }}</span>
+                  <span class="block text-xs text-muted">{{ materialProducts(material).filter(selectable).length }} available references</span>
                   <span
                     v-if="selectedIds.includes(material.id)"
-                    class="rounded-md bg-success-surface px-2 py-1 text-xs text-success"
-                  >Selected</span>
-                  <AppIcon
-                    name="chevron"
-                    class="text-muted"
-                  />
-                </button>
-              </div>
-            </section>
-          </div>
-        </section>
-        <section
-          v-if="!loading && !loadError"
-          class="panel overflow-hidden"
-          aria-labelledby="project-products-title"
-        >
-          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4 sm:p-5">
-            <div>
-              <h2
-                id="project-products-title"
-                class="font-semibold"
-              >
-                {{ activeMaterial ? `${activeMaterial.name} panels` : 'Catalog panel products' }}
-              </h2><p class="mt-1 text-xs text-muted">
-                Panel references are selected separately from materials.
-              </p>
+                    class="block text-xs font-medium text-success"
+                  >Selected for Parts</span>
+                </span>
+                <AppIcon
+                  name="chevron"
+                  class="text-muted"
+                />
+              </button>
             </div>
+          </section>
+        </div>
+      </section>
+      <section
+        class="panel panel-references min-w-0 overflow-hidden"
+        :aria-busy="loading"
+        aria-labelledby="project-products-title"
+      >
+        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
+          <div>
+            <h2
+              id="project-products-title"
+              class="font-semibold"
+            >
+              Panels for Optimization
+            </h2><p class="mt-1 text-xs text-muted">
+              {{ activeMaterial?.name ?? 'Choose a material from the library' }}
+            </p>
+          </div>
+          <label
+            v-if="!loading && !loadError && activeProducts.length"
+            class="flex min-h-11 items-center gap-2 text-sm"
+          >
+            <input
+              type="checkbox"
+              class="size-4 accent-accent"
+              aria-label="Use all visible material panels"
+              :checked="checked(activeProducts)"
+              :indeterminate="mixed(activeProducts)"
+              :aria-checked="mixed(activeProducts) ? 'mixed' : checked(activeProducts)"
+              :disabled="busy || !groupProducts(activeProducts).length"
+              @change="toggleProducts(activeProducts)"
+            >All material panels
+          </label>
+        </header>
+        <p
+          v-if="loading"
+          role="status"
+          class="p-6 text-sm text-muted"
+        >
+          Loading panel references…
+        </p>
+        <p
+          v-else-if="loadError"
+          class="p-6 text-sm text-muted"
+        >
+          Panel references could not be loaded. Retry from the material library.
+        </p>
+        <div
+          v-else-if="!activeProducts.length"
+          class="space-y-2 p-6"
+        >
+          <h3 class="text-sm font-semibold">
+            {{ activeMaterial ? 'No panel references for this material' : 'No material to view' }}
+          </h3>
+          <p
+            v-if="activeMaterial"
+            class="text-sm text-muted"
+          >
+            You can still select this material for creating Parts. Add panel references in the Catalog when needed for Optimization.
+          </p>
+          <p
+            v-else
+            class="text-sm text-muted"
+          >
+            {{ materials.length ? 'Adjust your search or category filter to view panel references.' : 'No catalog products yet. Add purchasable panels in the Catalogue.' }}
+          </p>
+        </div>
+        <ul
+          v-else
+          class="divide-y divide-line"
+        >
+          <li
+            v-for="product in activeProducts"
+            :key="product.id"
+          >
             <label
-              v-if="activeProducts.length"
-              class="flex min-h-11 items-center gap-2 text-sm"
+              class="flex items-start gap-3 px-4 py-3"
+              :class="selectedProductIds.includes(product.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
             >
               <input
                 type="checkbox"
-                class="size-4 accent-accent"
-                aria-label="Use all visible material panels"
-                :checked="checked(activeProducts)"
-                :indeterminate="mixed(activeProducts)"
-                :aria-checked="mixed(activeProducts) ? 'mixed' : checked(activeProducts)"
-                :disabled="busy || !groupProducts(activeProducts).length"
-                @change="toggleProducts(activeProducts)"
-              >All material panels
+                class="mt-1 size-4 shrink-0 accent-accent"
+                :aria-label="`Use panel ${product.name}`"
+                :checked="selectedProductIds.includes(product.id)"
+                :disabled="busy || (!selectable(product) && !selectedProductIds.includes(product.id))"
+                @change="toggleProducts([product])"
+              >
+              <span class="grid min-w-0 flex-1 gap-2 text-sm">
+                <span class="font-semibold [overflow-wrap:anywhere]">{{ product.name }}</span>
+                <span class="flex items-center gap-2 text-xs text-muted"><SupplierLogo :website-url="suppliers.find(supplier => supplier.id === product.supplierId)?.websiteUrl" />{{ supplierName(product) }}</span>
+                <span class="flex flex-wrap items-center justify-between gap-2 tabular-nums">{{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm<span class="block text-xs text-muted">{{ product.price }} {{ product.currency }} / panel</span></span>
+                <span class="text-xs text-muted">{{ product.grainDirection }} grain · {{ product.availability }}<span v-if="!selectable(product)"> · Not available for new selection</span></span>
+              </span>
             </label>
-          </header>
-          <p
-            v-if="!products.length"
-            class="p-5 text-sm text-muted"
-          >
-            No catalog products yet. Add purchasable panels in the Catalogue.
-          </p>
-          <p
-            v-else-if="!activeProducts.length"
-            class="p-5 text-sm text-muted"
-          >
-            No panel references for this material.
-          </p>
-          <ul
-            v-else
-            class="divide-y divide-line"
-          >
-            <li
-              v-for="product in activeProducts"
-              :key="product.id"
+          </li>
+        </ul>
+        <div
+          v-if="!loading && !loadError && groups.length"
+          class="border-t border-line bg-quiet-surface p-4"
+        >
+          <h3 class="mb-2 text-xs font-semibold text-muted">
+            Bulk panel selection · all catalog references
+          </h3>
+          <div class="space-y-2">
+            <div
+              v-for="group in groups"
+              :key="group.supplierId"
+              class="flex flex-wrap items-center gap-x-4 gap-y-1"
             >
+              <label class="flex min-h-9 items-center gap-2 text-xs font-semibold">
+                <input
+                  type="checkbox"
+                  class="size-4 accent-accent"
+                  :aria-label="`Use all products from ${group.supplierName}`"
+                  :checked="checked(group.categories.flatMap(category => category.products))"
+                  :indeterminate="mixed(group.categories.flatMap(category => category.products))"
+                  :aria-checked="mixed(group.categories.flatMap(category => category.products)) ? 'mixed' : checked(group.categories.flatMap(category => category.products))"
+                  :disabled="busy || !groupProducts(group.categories.flatMap(category => category.products)).length"
+                  @change="toggleProducts(group.categories.flatMap(category => category.products))"
+                >{{ group.supplierName }}
+              </label>
               <label
-                class="flex items-start gap-3 px-5 py-3"
-                :class="selectedProductIds.includes(product.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
+                v-for="category in group.categories"
+                :key="category.name"
+                class="flex min-h-9 items-center gap-2 text-xs text-muted"
               >
                 <input
                   type="checkbox"
-                  class="mt-1 size-4 shrink-0 accent-accent"
-                  :aria-label="`Use panel ${product.name}`"
-                  :checked="selectedProductIds.includes(product.id)"
-                  :disabled="busy || (!selectable(product) && !selectedProductIds.includes(product.id))"
-                  @change="toggleProducts([product])"
-                >
-                <span class="grid min-w-0 flex-1 gap-1 text-sm sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <span class="font-semibold [overflow-wrap:anywhere]">{{ product.name }} <span class="block text-xs font-normal text-muted">{{ supplierName(product) }}</span></span>
-                  <span class="tabular-nums sm:text-right">{{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm<span class="block text-xs text-muted">{{ product.price }} {{ product.currency }} / panel</span></span>
-                  <span class="text-xs text-muted">{{ product.grainDirection }} grain · {{ product.availability }}<span v-if="!selectable(product)"> · Not available for new selection</span></span>
-                </span>
+                  class="size-4 accent-accent"
+                  :aria-label="`Use ${category.name} products from ${group.supplierName}`"
+                  :checked="checked(category.products)"
+                  :indeterminate="mixed(category.products)"
+                  :aria-checked="mixed(category.products) ? 'mixed' : checked(category.products)"
+                  :disabled="busy || !groupProducts(category.products).length"
+                  @change="toggleProducts(category.products)"
+                >{{ category.name }}
               </label>
-            </li>
-          </ul>
-          <div
-            v-if="groups.length"
-            class="border-t border-line bg-quiet-surface p-4"
-          >
-            <h3 class="mb-2 text-xs font-semibold text-muted">
-              Bulk panel selection · all catalog references
-            </h3>
-            <div class="space-y-2">
-              <div
-                v-for="group in groups"
-                :key="group.supplierId"
-                class="flex flex-wrap items-center gap-x-4 gap-y-1"
-              >
-                <label class="flex min-h-9 items-center gap-2 text-xs font-semibold">
-                  <input
-                    type="checkbox"
-                    class="size-4 accent-accent"
-                    :aria-label="`Use all products from ${group.supplierName}`"
-                    :checked="checked(group.categories.flatMap(category => category.products))"
-                    :indeterminate="mixed(group.categories.flatMap(category => category.products))"
-                    :aria-checked="mixed(group.categories.flatMap(category => category.products)) ? 'mixed' : checked(group.categories.flatMap(category => category.products))"
-                    :disabled="busy || !groupProducts(group.categories.flatMap(category => category.products)).length"
-                    @change="toggleProducts(group.categories.flatMap(category => category.products))"
-                  >{{ group.supplierName }}
-                </label>
-                <label
-                  v-for="category in group.categories"
-                  :key="category.name"
-                  class="flex min-h-9 items-center gap-2 text-xs text-muted"
-                >
-                  <input
-                    type="checkbox"
-                    class="size-4 accent-accent"
-                    :aria-label="`Use ${category.name} products from ${group.supplierName}`"
-                    :checked="checked(category.products)"
-                    :indeterminate="mixed(category.products)"
-                    :aria-checked="mixed(category.products) ? 'mixed' : checked(category.products)"
-                    :disabled="busy || !groupProducts(category.products).length"
-                    @change="toggleProducts(category.products)"
-                  >{{ category.name }}
-                </label>
-              </div>
             </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
       <aside
-        class="panel overflow-hidden xl:sticky xl:top-5"
+        class="panel project-selection min-w-0 overflow-hidden"
         aria-labelledby="material-selection-title"
       >
         <div class="border-b border-line p-5">
@@ -450,7 +474,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           <dl class="mt-4 grid grid-cols-2 gap-4 text-sm">
             <div>
               <dt class="text-muted">
-                Materials
+                Materials for Parts
               </dt><dd class="mt-1 text-2xl font-semibold tabular-nums">
                 {{ selectedIds.length }}
               </dd>
@@ -463,127 +487,129 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
             </div>
           </dl>
         </div>
-        <template v-if="!loading && !loadError">
-          <p
-            v-if="!summaryMaterials.length && !missingSelections.length && !orphanProducts.length"
-            class="p-5 text-sm leading-relaxed text-muted"
-          >
-            Choose materials from the library, then add any panel references you want to use.
-          </p>
-          <ul
-            v-else
-            class="divide-y divide-line"
-          >
-            <li
-              v-for="material in summaryMaterials"
-              :key="material.id"
-              class="space-y-3 p-4"
+        <div class="selection-content overflow-y-auto">
+          <template v-if="!loading && !loadError">
+            <p
+              v-if="!summaryMaterials.length && !missingSelections.length && !orphanProducts.length"
+              class="p-5 text-sm leading-relaxed text-muted"
             >
-              <div class="flex items-center gap-3">
-                <MaterialThumbnail :preset-id="material.libraryPresetId" />
+              Choose materials from the library, then add any panel references you want to use.
+            </p>
+            <ul
+              v-else
+              class="divide-y divide-line"
+            >
+              <li
+                v-for="material in summaryMaterials"
+                :key="material.id"
+                class="space-y-3 p-4"
+              >
+                <div class="flex items-center gap-3">
+                  <MaterialThumbnail :preset-id="material.libraryPresetId" />
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold [overflow-wrap:anywhere]">
+                      {{ material.name }}
+                    </p><p class="text-xs text-muted">
+                      {{ selectedIds.includes(material.id) ? material.category : 'Panel references only' }}
+                    </p>
+                  </div>
+                  <button
+                    v-if="selectedIds.includes(material.id)"
+                    type="button"
+                    class="button button-compact px-2"
+                    :aria-label="`Remove material ${material.name}`"
+                    :disabled="busy"
+                    @click="toggle(material)"
+                  >
+                    <AppIcon name="close" />
+                  </button>
+                </div>
+                <ul
+                  v-if="summaryProducts(material).length"
+                  class="space-y-2"
+                >
+                  <li
+                    v-for="product in summaryProducts(material)"
+                    :key="product.id"
+                    class="flex items-center gap-2 rounded-lg bg-quiet-surface p-2"
+                  >
+                    <div class="min-w-0 flex-1 text-xs">
+                      <p class="font-medium [overflow-wrap:anywhere]">
+                        {{ product.name }}
+                      </p><p class="text-muted">
+                        {{ supplierName(product) }} · {{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm
+                      </p><p
+                        v-if="!selectable(product)"
+                        class="text-danger"
+                      >
+                        Unavailable reference retained
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="button button-compact px-2"
+                      :aria-label="`Remove panel ${product.name}`"
+                      :disabled="busy"
+                      @click="removeProduct(product)"
+                    >
+                      <AppIcon name="close" />
+                    </button>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+            <div
+              v-if="orphanProducts.length"
+              class="space-y-2 border-t border-line p-4"
+            >
+              <div
+                v-for="product in orphanProducts"
+                :key="product.id"
+                class="flex items-center gap-2 text-sm"
+              >
                 <div class="min-w-0 flex-1">
-                  <p class="text-sm font-semibold [overflow-wrap:anywhere]">
-                    {{ material.name }}
-                  </p><p class="text-xs text-muted">
-                    {{ selectedIds.includes(material.id) ? material.category : 'Panel references only' }}
+                  <p>{{ product.name }}</p><p class="text-xs text-danger">
+                    Missing material · reference retained
                   </p>
                 </div>
                 <button
-                  v-if="selectedIds.includes(material.id)"
                   type="button"
-                  class="button button-compact px-2"
-                  :aria-label="`Remove material ${material.name}`"
+                  class="button button-compact"
+                  :aria-label="`Remove panel ${product.name}`"
                   :disabled="busy"
-                  @click="toggle(material)"
+                  @click="removeProduct(product)"
                 >
                   <AppIcon name="close" />
                 </button>
               </div>
-              <ul
-                v-if="summaryProducts(material).length"
-                class="space-y-2"
-              >
+            </div>
+            <div
+              v-if="missingSelections.length"
+              class="space-y-2 border-t border-line p-4 text-sm"
+            >
+              <p class="text-danger">
+                Some selected catalog references are missing. They have been retained; remove them explicitly to save valid choices.
+              </p>
+              <ul class="text-xs text-muted">
                 <li
-                  v-for="product in summaryProducts(material)"
-                  :key="product.id"
-                  class="flex items-center gap-2 rounded-lg bg-quiet-surface p-2"
+                  v-for="id in missingSelections"
+                  :key="id"
+                  class="[overflow-wrap:anywhere]"
                 >
-                  <div class="min-w-0 flex-1 text-xs">
-                    <p class="font-medium [overflow-wrap:anywhere]">
-                      {{ product.name }}
-                    </p><p class="text-muted">
-                      {{ supplierName(product) }} · {{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm
-                    </p><p
-                      v-if="!selectable(product)"
-                      class="text-danger"
-                    >
-                      Unavailable reference retained
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    class="button button-compact px-2"
-                    :aria-label="`Remove panel ${product.name}`"
-                    :disabled="busy"
-                    @click="removeProduct(product)"
-                  >
-                    <AppIcon name="close" />
-                  </button>
+                  Missing reference: {{ id }}
                 </li>
               </ul>
-            </li>
-          </ul>
-          <div
-            v-if="orphanProducts.length"
-            class="space-y-2 border-t border-line p-4"
-          >
-            <div
-              v-for="product in orphanProducts"
-              :key="product.id"
-              class="flex items-center gap-2 text-sm"
-            >
-              <div class="min-w-0 flex-1">
-                <p>{{ product.name }}</p><p class="text-xs text-danger">
-                  Missing material · reference retained
-                </p>
-              </div>
               <button
                 type="button"
                 class="button button-compact"
-                :aria-label="`Remove panel ${product.name}`"
-                :disabled="busy"
-                @click="removeProduct(product)"
+                :disabled="busy || loading"
+                @click="removeMissing"
               >
-                <AppIcon name="close" />
+                Remove missing selections
               </button>
             </div>
-          </div>
-          <div
-            v-if="missingSelections.length"
-            class="space-y-2 border-t border-line p-4 text-sm"
-          >
-            <p class="text-danger">
-              Some selected catalog references are missing. They have been retained; remove them explicitly to save valid choices.
-            </p>
-            <ul class="text-xs text-muted">
-              <li
-                v-for="id in missingSelections"
-                :key="id"
-                class="[overflow-wrap:anywhere]"
-              >
-                Missing reference: {{ id }}
-              </li>
-            </ul>
-            <button
-              type="button"
-              class="button button-compact"
-              :disabled="busy || loading"
-              @click="removeMissing"
-            >
-              Remove missing selections
-            </button>
-          </div>
-        </template>
+          </template>
+        </div>
         <footer class="space-y-3 border-t border-line bg-quiet-surface p-4">
           <p
             role="status"
@@ -619,3 +645,17 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
     </div>
   </section>
 </template>
+
+<style scoped>
+.materials-workspace { display: grid; align-items: start; gap: 1rem; }
+.material-list { max-height: 460px; }
+@media (min-width: 768px) {
+  .materials-workspace { grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.3fr); }
+  .project-selection { grid-column: 1 / -1; }
+}
+@media (min-width: 1280px) {
+  .materials-workspace { grid-template-columns: minmax(0, 25fr) minmax(0, 45fr) minmax(0, 30fr); }
+  .project-selection { grid-column: auto; position: sticky; top: 1rem; }
+  .material-list, .selection-content { max-height: max(300px, calc(100dvh - 490px)); }
+}
+</style>
