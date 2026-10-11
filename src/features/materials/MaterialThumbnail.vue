@@ -12,8 +12,8 @@ function imageError(event: Event): void {
 </script>
 <template>
   <span
-    class="inline-flex shrink-0 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border border-line bg-subtle text-muted"
-    :class="variant === 'preview' ? 'aspect-video w-full' : 'size-10'"
+    class="inline-flex shrink-0 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg bg-subtle text-muted"
+    :class="variant === 'preview' ? 'aspect-[2/1] max-h-40 w-full' : 'size-10 border border-line'"
   >
     <img
       v-if="source && !failed"

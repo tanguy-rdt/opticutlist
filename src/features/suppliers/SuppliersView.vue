@@ -314,7 +314,7 @@ onMounted(load)
     </div>
     <div
       v-else
-      class="catalog-workspace grid min-w-0 items-start gap-4 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_285px]"
+      class="catalog-workspace grid min-w-0 items-start gap-4 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_300px] 2xl:grid-cols-[220px_minmax(0,1fr)_330px]"
     >
       <aside
         class="panel catalog-supplier-nav space-y-4 p-4 md:sticky md:top-5"
@@ -390,13 +390,13 @@ onMounted(load)
       >
         <div class="panel catalog-supplier-header space-y-3 p-4">
           <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="flex min-w-0 items-start gap-4">
+            <div class="flex min-w-0 items-center gap-3">
               <SupplierLogo
                 :website-url="selectedSupplier?.websiteUrl"
                 size="large"
-                class="hidden xl:flex"
+                class="hidden sm:flex"
               />
-              <div class="min-w-0 pt-2">
+              <div class="min-w-0">
                 <h2
                   id="supplier-content-title"
                   class="text-xl font-semibold"

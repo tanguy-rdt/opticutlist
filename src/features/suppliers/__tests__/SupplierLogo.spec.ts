@@ -28,6 +28,17 @@ describe('supplier favicon', () => {
     expect(wrapper.find('img').exists()).toBe(false); expect(wrapper.find('svg').exists()).toBe(true)
     wrapper.unmount()
   })
+  it.each(['small', 'large'] as const)('renders an aspect-preserving %s logo without a loaded frame', async size => {
+    const wrapper = mount(SupplierLogo, { props: { websiteUrl: 'https://supplier.example', size } })
+    expect(wrapper.classes()).toContain('bg-subtle')
+    expect(wrapper.classes()).not.toContain('border')
+    await wrapper.get('img').trigger('load')
+    expect(wrapper.classes()).not.toContain('bg-subtle')
+    expect(wrapper.get('img').classes()).toContain('object-contain')
+    expect(wrapper.get('img').classes()).not.toContain('object-cover')
+    expect(wrapper.classes()).toContain(size === 'large' ? 'size-12' : 'size-8')
+    wrapper.unmount()
+  })
   it('retries for a changed website origin and ignores old image events', async () => {
     const wrapper = mount(SupplierLogo, { props: { websiteUrl: 'https://first.example' } })
     const oldImage = wrapper.get('img'); await oldImage.trigger('error')

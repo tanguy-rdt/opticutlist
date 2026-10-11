@@ -15,8 +15,8 @@ function imageState(event: Event, successful: boolean): void {
 </script>
 <template>
   <span
-    class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-line bg-quiet-surface text-accent"
-    :class="size === 'large' ? 'size-20' : 'size-8'"
+    class="relative inline-flex shrink-0 items-center justify-center rounded-lg text-accent"
+    :class="[size === 'large' ? 'size-12' : 'size-8', { 'bg-subtle': !loaded }]"
     aria-hidden="true"
   >
     <AppIcon
@@ -34,7 +34,7 @@ function imageState(event: Event, successful: boolean): void {
       decoding="async"
       referrerpolicy="no-referrer"
       class="absolute object-contain"
-      :class="[size === 'large' ? 'size-10' : 'size-5', loaded ? 'visible' : 'invisible']"
+      :class="[size === 'large' ? 'size-10' : 'size-7', loaded ? 'visible' : 'invisible']"
       @load="imageState($event, true)"
       @error="imageState($event, false)"
     >

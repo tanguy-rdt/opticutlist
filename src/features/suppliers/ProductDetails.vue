@@ -17,56 +17,73 @@ function availability(product: SupplierProduct): string { return product.availab
 <template>
   <aside
     id="product-details"
-    class="panel catalog-details min-w-0 p-4 md:col-start-2 xl:sticky xl:top-5 xl:col-start-3 xl:row-start-1"
+    class="panel catalog-details min-w-0 p-5 md:col-start-2 xl:sticky xl:top-5 xl:col-start-3 xl:row-start-1"
     aria-labelledby="product-details-title"
   >
     <h2
       id="product-details-title"
       tabindex="-1"
-      class="border-b border-line pb-3 font-semibold"
+      class="sr-only"
     >
       Product details
     </h2>
     <template v-if="product">
-      <header class="catalog-product-header my-3 rounded-lg bg-quiet-surface px-4 py-2">
-        <h3 class="text-base font-semibold [overflow-wrap:anywhere]">
-          {{ product.name }}
-        </h3>
-        <p class="mt-1 text-xs text-muted">
-          {{ materialName }}
-        </p>
-        <span class="mt-2 inline-flex rounded-md border border-selection-line bg-icon-surface px-2.5 py-0.5 text-xs font-medium text-accent">Supplier product</span>
-      </header>
       <figure
-        class="my-4"
+        class="mb-4"
         aria-label="Material preview"
       >
         <MaterialThumbnail
           :preset-id="material?.libraryPresetId"
           variant="preview"
         />
-        <figcaption class="mt-2 text-xs text-muted">
+        <figcaption class="sr-only">
           {{ materialName }} · Material preview
         </figcaption>
       </figure>
+      <header class="catalog-product-header">
+        <h3 class="text-lg font-semibold leading-snug [overflow-wrap:anywhere]">
+          {{ product.name }}
+        </h3>
+        <p class="mt-1 text-sm text-muted">
+          {{ materialName }}
+        </p>
+      </header>
+      <dl
+        class="catalog-product-overview mt-4 space-y-3 rounded-lg bg-subtle p-3 text-sm"
+        aria-label="Panel dimensions and price"
+      >
+        <div>
+          <dt class="text-xs text-muted">
+            Dimensions
+          </dt>
+          <dd class="mt-1 font-semibold tabular-nums">
+            {{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm
+          </dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-3">
+          <dt class="text-muted">
+            Price per panel
+          </dt>
+          <dd class="text-lg font-semibold tabular-nums text-accent">
+            {{ product.price }} <span class="text-sm">{{ product.currency }}</span>
+          </dd>
+        </div>
+      </dl>
       <section
         aria-label="Product specifications"
-        class="mt-4"
+        class="mt-5"
       >
         <h3 class="mb-3 font-semibold">
           Specifications
         </h3>
-        <dl class="catalog-specifications text-xs">
+        <dl class="catalog-specifications text-sm">
           <div><dt>Supplier</dt><dd>{{ suppliers.find(item => item.id === product?.supplierId)?.name ?? 'Missing supplier' }}</dd></div>
-          <div><dt>Material</dt><dd>{{ materialName }}</dd></div>
-          <div><dt>Dimensions</dt><dd>{{ product.lengthMm }} × {{ product.widthMm }} mm</dd></div>
           <div><dt>Thickness</dt><dd>{{ product.thicknessMm }} mm</dd></div>
-          <div><dt>Price per panel</dt><dd>{{ product.price }} {{ product.currency }}</dd></div>
           <div><dt>Grain direction</dt><dd>{{ grain(product) }}</dd></div>
           <div>
             <dt>Availability</dt><dd>
               <span
-                class="catalog-badge py-1"
+                class="inline-flex rounded-md px-2 py-1 text-xs font-medium"
                 :class="product.availability === 'available' ? 'bg-success-surface text-success' : 'bg-quiet-surface text-muted'"
               >{{ availability(product) }}</span>
             </dd>
@@ -87,7 +104,7 @@ function availability(product: SupplierProduct): string { return product.availab
         </dl>
       </section>
       <section
-        class="mt-4"
+        class="mt-5 border-t border-line pt-5"
         aria-label="Owned inventory"
       >
         <h3 class="mb-3 font-semibold">
@@ -107,16 +124,12 @@ function availability(product: SupplierProduct): string { return product.availab
           {{ stockError }}
         </p>
         <template v-else>
-          <div class="flex items-center gap-3">
-            <span class="catalog-icon"><AppIcon name="stock" /></span>
-            <div>
-              <p class="text-sm font-semibold">
-                {{ ownedQuantity }} owned units
-              </p><p class="mt-1 text-xs text-muted">
-                Purchase-linked inventory
-              </p>
-            </div>
-          </div>
+          <p class="text-base font-semibold tabular-nums">
+            {{ ownedQuantity }} owned units
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Purchase-linked inventory
+          </p>
           <p
             v-if="!stock.length"
             class="sr-only"
@@ -125,7 +138,7 @@ function availability(product: SupplierProduct): string { return product.availab
           </p>
           <ul
             v-else
-            class="mt-3 space-y-2 text-xs text-muted"
+            class="mt-3 space-y-2 text-sm text-muted"
           >
             <li
               v-for="item in stock"
@@ -135,21 +148,21 @@ function availability(product: SupplierProduct): string { return product.availab
             </li>
           </ul>
         </template>
-        <p class="mt-3 flex items-start gap-2 rounded-md border border-selection-line bg-icon-surface p-2.5 text-xs leading-snug text-accent">
-          <AppIcon name="info" /><span>Actual owned stock only. Catalog references are not owned panels.</span>
+        <p class="mt-3 text-xs leading-relaxed text-muted">
+          Actual owned stock only. Catalog references are not owned panels.
         </p>
       </section>
       <section
-        class="mt-4 border-t border-line pt-4"
+        class="mt-5 border-t border-line pt-5"
         aria-label="Product actions"
       >
-        <h3 class="mb-3 font-semibold">
+        <h3 class="sr-only">
           Actions
         </h3>
         <div class="grid gap-2">
           <button
             type="button"
-            class="button catalog-action w-full"
+            class="button w-full"
             :disabled="disabled"
             :aria-label="`Edit product ${product.name}`"
             @click="emit('edit', product)"
@@ -158,7 +171,7 @@ function availability(product: SupplierProduct): string { return product.availab
           </button>
           <button
             type="button"
-            class="button catalog-action button-danger w-full border-danger"
+            class="button button-danger w-full"
             :disabled="disabled"
             :aria-label="`Delete product ${product.name}`"
             @click="emit('delete', product)"

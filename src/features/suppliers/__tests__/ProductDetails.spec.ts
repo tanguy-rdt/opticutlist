@@ -2,7 +2,8 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { materialSchema } from '../../../domain/model/material'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
-import { validMaterialInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
+import { stockItemSchema } from '../../../domain/model/stock-item'
 import { materialPresets, materialThumbnail } from '../../materials/material-library'
 import ProductDetails from '../ProductDetails.vue'
 const material = materialSchema.parse(validMaterialInput)
@@ -17,6 +18,28 @@ describe('product material preview', () => {
     expect(preview.get('img').attributes('src')).toBe(materialThumbnail(preset.id))
     expect(preview.get('img').attributes('loading')).toBe('lazy')
     expect(preview.element.compareDocumentPosition(wrapper.get('[aria-label="Product specifications"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    wrapper.unmount()
+  })
+  it('orders the preview, identity, key values, specifications, stock and accessible actions', async () => {
+    const stock = stockItemSchema.parse({ ...validStockItemInput, quantity: 4 })
+    const wrapper = mount(ProductDetails, { props: { ...props, stock: [stock], materials: [materialSchema.parse({ ...material, libraryPresetId: 'pin' })] } })
+    const sections = ['figure', '.catalog-product-header', '.catalog-product-overview', '[aria-label="Product specifications"]', '[aria-label="Owned inventory"]', '[aria-label="Product actions"]']
+    for (let index = 1; index < sections.length; index += 1) {
+      const previous = sections[index - 1]; const current = sections[index]
+      if (!previous || !current) throw new Error('Missing section')
+      expect(wrapper.get(previous).element.compareDocumentPosition(wrapper.get(current).element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    expect(wrapper.get('.catalog-product-overview').text()).toContain(`${String(product.lengthMm)} × ${String(product.widthMm)} × ${String(product.thicknessMm)} mm`)
+    expect(wrapper.get('.catalog-product-overview').text()).toContain(String(product.price))
+    expect(wrapper.get('.catalog-product-overview').text()).toContain(product.currency)
+    expect(wrapper.get('[aria-label="Product specifications"]').text()).toContain('Along length')
+    expect(wrapper.get('[aria-label="Owned inventory"]').text()).toContain('4 owned units')
+    expect(wrapper.get('[aria-label="Owned inventory"]').text()).toContain(`${String(stock.lengthMm)} × ${String(stock.widthMm)} × ${String(stock.thicknessMm)} mm`)
+    await wrapper.get('button[aria-label^="Edit product"]').trigger('click')
+    await wrapper.get('button[aria-label^="Delete product"]').trigger('click')
+    expect(wrapper.emitted('edit')).toEqual([[product]]); expect(wrapper.emitted('delete')).toEqual([[product]])
+    await wrapper.setProps({ stock: [], product: supplierProductSchema.parse({ ...product, availability: 'available' }) })
+    expect(wrapper.get('[aria-label="Owned inventory"]').text()).toContain('0 owned units')
     wrapper.unmount()
   })
   it('retains a renamed preset texture and immediately follows selected product material IDs', async () => {
