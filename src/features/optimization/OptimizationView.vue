@@ -9,6 +9,7 @@ import type { OptimizePanelSelection } from '../../domain/optimizer/optimize-pan
 import type { PanelCuttingPlan, UnplacedReason } from '../../domain/optimizer/plan-with-strategy'
 import FormField from '../../shared/ui/FormField.vue'
 import CuttingPlanViewer from './CuttingPlanViewer.vue'
+import PdfExportControls from './PdfExportControls.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useMaterialRepository } from '../materials/material-repository'
 import { useProjectId, useProjectService } from '../projects/project-service'
@@ -21,12 +22,13 @@ const catalogs = useCatalogRepositories()
 const materials = useMaterialRepository()
 const optimizer = useOptimizationService()
 type State = 'loading' | 'ready' | 'running' | 'success' | 'failure' | 'cancelled'
-interface PanelChoice { product: SupplierProduct; label: string; problem: string }
+interface PanelChoice { product: SupplierProduct; materialName: string; label: string; problem: string }
 interface RunResult {
   selection: Extract<OptimizePanelSelection, { ok: true }>
   panel: SupplierProduct
   parts: readonly Part[]
   settings: CuttingSettings
+  materialName: string
 }
 const state = ref<State>('loading')
 const parts = shallowRef<readonly Part[]>([])
@@ -83,7 +85,7 @@ async function readInputs() {
     const problem = supplier === undefined || material === undefined ? 'Missing catalog reference'
       : product.availability === 'unavailable' ? 'Unavailable'
         : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : ''
-    return { product, label: `${supplier?.name ?? 'Missing supplier'} / ${material?.name ?? 'Missing material'} / ${product.name}`, problem }
+    return { product, materialName: material?.name ?? product.materialId, label: `${supplier?.name ?? 'Missing supplier'} / ${material?.name ?? 'Missing material'} / ${product.name}`, problem }
   })
   return {
     parts: scopedParts.value,
@@ -145,7 +147,7 @@ async function start(): Promise<void> {
       error.value = outcome.selection.error.kind === 'noUsableArea' ? 'Margins leave no usable panel area.' : 'No independently valid cutting plan could be generated.'
       state.value = 'failure'
     } else {
-      result.value = { selection: outcome.selection, panel: choice.product, parts: inputs.parts, settings: settings.data }
+      result.value = { selection: outcome.selection, panel: choice.product, parts: inputs.parts, settings: settings.data, materialName: choice.materialName }
       state.value = 'success'
     }
   } catch (cause) {
@@ -400,6 +402,14 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
           :parts="result.parts"
           :settings="result.settings"
           @plan-change="planChanged"
+        />
+        <PdfExportControls
+          :plan="displayedPlan"
+          :panel="result.panel"
+          :parts="result.parts"
+          :settings="result.settings"
+          :material-name="result.materialName"
+          :edited="editedPlan !== null"
         />
         <dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>

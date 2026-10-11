@@ -9,6 +9,8 @@ import { createProjectService } from './application/projects/project-service'
 import { projectServiceKey } from './features/projects/project-service'
 import { materialRepositoryKey } from './features/materials/material-repository'
 import { createLocalPersistence } from './infrastructure/persistence/local-database'
+import { createCuttingPlanPdfService } from './application/export/cutting-plan-pdf-service'
+import { cuttingPlanPdfServiceKey } from './features/optimization/pdf-export-service'
 
 import App from './app/App.vue'
 import { createAppPinia } from './app/pinia'
@@ -23,6 +25,10 @@ app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
 app.provide(projectServiceKey, createProjectService(persistence))
 app.provide(optimizationServiceFactoryKey, () => createOptimizationService(createOptimizationWorker))
+app.provide(cuttingPlanPdfServiceKey, createCuttingPlanPdfService({ generate: async document => {
+  const { generateCuttingPlanPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
+  return generateCuttingPlanPdf(document)
+} }))
 app.onUnmount(() => { persistence.close() })
 
 app.use(createAppPinia())

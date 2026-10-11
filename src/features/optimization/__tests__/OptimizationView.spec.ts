@@ -18,8 +18,12 @@ import { projectIdKey, projectServiceKey } from '../../projects/project-service'
 import { supplierProductRepositoryKey, supplierRepositoryKey } from '../../suppliers/catalog-repositories'
 import OptimizationView from '../OptimizationView.vue'
 import { optimizationServiceFactoryKey } from '../optimization-service'
+import { createCuttingPlanPdfService, type CuttingPlanPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
+import { cuttingPlanPdfServiceKey } from '../pdf-export-service'
+import type * as PdfExportModule from '../pdf-export-service'
 
 vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
+vi.mock('../pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn() }))
 
 class FakeWorker implements OptimizationWorkerPort {
   onmessage: OptimizationWorkerPort['onmessage'] = null
@@ -62,6 +66,7 @@ async function setup() {
   await catalog.supplierProducts.create({ ...product, id: 'unselected-panel', name: 'Unselected panel' })
   const workers: FakeWorker[] = []
   const factory = () => createOptimizationService(() => { const worker = new FakeWorker(); workers.push(worker); return worker })
+  const pdfGenerate = vi.fn<(document: CuttingPlanPdfDocument) => Promise<Uint8Array<ArrayBuffer>>>().mockResolvedValue(new Uint8Array([1]))
   const router = createAppRouter(createMemoryHistory())
   await router.push('/')
   await router.isReady()
@@ -71,6 +76,7 @@ async function setup() {
       [projectIdKey]: project.id, [projectServiceKey]: service,
       [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers,
       [supplierProductRepositoryKey]: catalog.supplierProducts, [optimizationServiceFactoryKey]: factory,
+      [cuttingPlanPdfServiceKey]: createCuttingPlanPdfService({ generate: pdfGenerate }),
     } },
   })
   wrappers.push(wrapper)
@@ -83,11 +89,11 @@ async function setup() {
     if (worker === undefined) throw new Error('Missing worker')
     return worker
   }
-  return { wrapper, persistence, catalog, service, project, other, product, part, workers, start }
+  return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate }
 }
 describe('Project single-panel optimization', () => {
-  it('edits the displayed plan with undo/reset while leaving saved parts, selections and inventory unchanged', async () => {
-    const { wrapper, persistence, service, project, workers, start } = await setup()
+  it('edits and exports the displayed plan with undo/reset while leaving saved parts, selections and inventory unchanged', async () => {
+    const { wrapper, persistence, service, project, workers, start, pdfGenerate } = await setup()
     const stock = await persistence.stockItems.list()
     const savedProject = await service.projects.get(project.id)
     const savedParts = await service.parts(project.id).list()
@@ -99,6 +105,9 @@ describe('Project single-panel optimization', () => {
       if (button === undefined) throw new Error(`Missing ${label}`)
       await button.trigger('click')
     }
+    await click('Export PDF'); await flushPromises()
+    expect(pdfGenerate.mock.calls[0]?.[0]).toMatchObject({ edited: false, materialName: validMaterialInput.name })
+    expect(pdfGenerate.mock.calls[0]?.[0].scene.parts[0]?.copyIndex).toBe(0)
     await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
     await click('Enter Edit Mode')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
@@ -107,9 +116,16 @@ describe('Project single-panel optimization', () => {
     expect(wrapper.text()).toContain('Validated edited single-panel plan')
     expect(wrapper.text()).toContain('Optimizer baseline strategy')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
+    await wrapper.get('#pdf-page-orientation').setValue('portrait')
+    await click('Export PDF'); await flushPromises()
+    expect(pdfGenerate.mock.calls[1]?.[0]).toMatchObject({ edited: true, orientation: 'portrait' })
+    expect(pdfGenerate.mock.calls[1]?.[0].scene.parts[0]?.copyIndex).toBe(1)
     await click('Undo edit')
     expect(wrapper.text()).toContain('Validated single-panel plan')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
+    await click('Export PDF'); await flushPromises()
+    expect(pdfGenerate.mock.calls[2]?.[0].edited).toBe(false)
+    expect(pdfGenerate.mock.calls[2]?.[0].scene).toEqual(pdfGenerate.mock.calls[0]?.[0].scene)
     await click('Redo edit')
     await click('Reset to Optimized Plan')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
