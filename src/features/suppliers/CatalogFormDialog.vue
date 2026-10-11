@@ -1,16 +1,27 @@
 <script setup lang="ts">
 import AppIcon from '../../shared/ui/AppIcon.vue'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-const props = defineProps<{ title: string; busy: boolean; closeLabel?: string; drawer?: boolean }>()
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+const props = withDefaults(defineProps<{ title: string; busy: boolean; closeLabel?: string; drawer?: boolean; open?: boolean }>(), { open: true, closeLabel: 'Close form', drawer: false })
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 let previousFocus: HTMLElement | null = null
 function close(): void { if (!props.busy) emit('close') }
-onMounted(() => {
-  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-  if (typeof dialog.value?.showModal === 'function') dialog.value.showModal()
-  else if (dialog.value) dialog.value.open = true
-})
+function syncOpen(): void {
+  if (!dialog.value) return
+  if (props.open) {
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    if (!dialog.value.open) {
+      if (typeof dialog.value.showModal === 'function') dialog.value.showModal()
+      else dialog.value.open = true
+    }
+  } else {
+    if (typeof dialog.value.close === 'function') dialog.value.close()
+    else dialog.value.open = false
+    previousFocus?.focus()
+  }
+}
+onMounted(syncOpen)
+watch(() => props.open, syncOpen)
 onBeforeUnmount(() => { if (typeof dialog.value?.close === 'function') dialog.value.close(); previousFocus?.focus() })
 </script>
 <template>

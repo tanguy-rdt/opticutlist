@@ -10,6 +10,8 @@ import HomeView from '../views/HomeView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
 import ProjectImport from '../../features/projects/ProjectImport.vue'
 
+const OptimizationView = () => import('../../features/optimization/OptimizationView.vue')
+
 // Hash history keeps deep links working on static hosting (GitHub Pages).
 export function createAppRouter(history: RouterHistory = createWebHashHistory()): Router {
   return createRouter({
@@ -26,7 +28,8 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
         { path: '', redirect: to => ({ name: 'project-materials', params: to.params }) },
         { path: 'parts', name: 'project-parts', component: ProjectPartsView },
         { path: 'materials', name: 'project-materials', component: MaterialsView },
-        { path: 'optimization', name: 'project-optimization', component: () => import('../../features/optimization/OptimizationView.vue') },
+        { path: 'optimization', name: 'project-optimization', component: OptimizationView, props: { exportStep: false } },
+        { path: 'export', name: 'project-cutting-export', component: OptimizationView, props: { exportStep: true } },
       ] },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
     ],

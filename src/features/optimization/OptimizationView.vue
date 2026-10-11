@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { stockPanel } from '../../domain/optimizer/panel-source'
 import { useStockRepository } from '../inventory/stock-repository'
 import { isCompatible } from '../../domain/compatibility'
@@ -14,6 +14,8 @@ import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy
 import { useCurrentResultService } from './current-result-service'
 import { useCuttingConfirmationService } from '../inventory/cutting-confirmation-service'
 import CuttingFinalization from './CuttingFinalization.vue'
+import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
+import { useCuttingWorkspaceState } from '../projects/cutting-workspace-state'
 import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import FormField from '../../shared/ui/FormField.vue'
 import PanelPlanView from './PanelPlanView.vue'
@@ -23,6 +25,11 @@ import { useProjectId, useProjectService } from '../projects/project-service'
 import { useCatalogRepositories } from '../suppliers/catalog-repositories'
 import { useOptimizationService } from './optimization-service'
 
+const { exportStep } = defineProps<{ exportStep?: boolean }>()
+const router = useRouter()
+const cuttingState = useCuttingWorkspaceState()
+const inventoryWorking = ref(false)
+const selectedCopies = ref<Record<number, string>>({})
 const projectId = useProjectId()
 const projects = useProjectService()
 const catalogs = useCatalogRepositories()
@@ -31,9 +38,7 @@ const stockRepository = useStockRepository()
 const optimizer = useOptimizationService()
 const currentResults = useCurrentResultService()?.forProject(projectId)
 const cutting = useCuttingConfirmationService()?.forProject(projectId)
-const confirmationOpen = ref(false)
 const settingsOpen = ref(false)
-function settingsToggled(event: Event): void { if (event.target instanceof HTMLDetailsElement) settingsOpen.value = event.target.open }
 const confirmed = ref(false)
 const planBusy = ref(false)
 const planError = ref('')
@@ -89,13 +94,27 @@ function planChanged(index: number, plan: PanelCuttingPlan, modified: boolean): 
   editedPlans.value = next
   if (fingerprint.value !== previous) persistCurrent()
 }
-const totalCopies = computed(() => parts.value.reduce((sum, part) => sum + part.quantity, 0))
+function panelPlan(index: number): PanelCuttingPlan | undefined { return editedPlans.value.get(index) ?? result.value?.selection.plan.panels[index]?.plan }
+function selectCopy(index: number, key: string): void { panelIndex.value = index; selectedCopies.value[index] = key }
+const exportAvailable = computed(() => !!result.value && !planBusy.value && !planError.value && fingerprint.value === savedFingerprint.value)
+watch(exportAvailable, available => { if (cuttingState) cuttingState.available.value = available }, { flush: 'sync' })
+async function leaveWorkspace(to: { name?: unknown }): Promise<boolean> {
+  if (inventoryWorking.value) return false
+  if (to.name === 'project-cutting-export') {
+    if (!result.value) return true
+    await persistenceQueue
+    if (!exportAvailable.value) { planError.value ||= 'The current result is not ready for Export. Optimize again or resolve the persistence error.'; return false }
+  }
+  return canDiscard()
+}
+async function continueToExport(): Promise<void> { await router.push({ name: 'project-cutting-export', params: { projectId } }) }
 
-function invalidate(): void {
+function invalidate(markStale = true): void {
   generation += 1
+  if (cuttingState) { if (markStale) cuttingState.invalidated.value = true; cuttingState.available.value = false }
+  selectedCopies.value = {}
   persistenceController.abort()
   persistenceController = new AbortController()
-  confirmationOpen.value = false
   confirmed.value = false
   optimizer.cancel()
   result.value = null
@@ -165,7 +184,7 @@ function applyInputs(inputs: Awaited<ReturnType<typeof readInputs>>): void {
 }
 async function load(): Promise<void> {
   if (!canDiscard()) return
-  invalidate()
+  invalidate(false)
   const current = generation
   state.value = 'loading'
   inputError.value = ''
@@ -199,6 +218,7 @@ async function start(): Promise<void> {
     state.value = 'ready'
     return
   }
+  settingsOpen.value = false
   state.value = 'running'
   try {
     const inputs = await readInputs()
@@ -251,7 +271,6 @@ async function start(): Promise<void> {
 }
 function cancel(): void { invalidate(); state.value = 'cancelled' }
 function partName(id: string): string { return result.value?.parts.find(part => part.id === id)?.name ?? id }
-const reasons = { noCompatiblePanel: 'No selected panel matches the material and exact thickness', constraintsPreventPlacement: 'Dimensions, grain, rotation, kerf or margins prevent placement', panelLimitReached: 'Available panel quantity or remaining usable space is insufficient' }
 function persistCurrent(): void {
   const currentResult = result.value
   if (!currentResults || !currentResult) return
@@ -262,7 +281,6 @@ function persistCurrent(): void {
   if (!input) return
   // Serialize accepted edits, including undo/reset and edits on inactive layouts.
   planBusy.value = true
-  confirmationOpen.value = false
   confirmed.value = false
   persistenceQueue = persistenceQueue.then(async () => {
     if (signal.aborted) return
@@ -270,6 +288,7 @@ function persistCurrent(): void {
       const saved = await currentResults.replace(input, signal)
       if (current !== generation) return
       if (!saved.ok) { planError.value = persistenceErrorMessage(saved.error, 'Current cutting result'); return }
+      if (cuttingState) cuttingState.invalidated.value = false
       savedSummary.value = saved.value.summary
       savedFingerprint.value = currentFingerprint
       confirmed.value = false
@@ -290,7 +309,7 @@ async function refreshConfirmation(): Promise<void> {
   confirmed.value = receipts.value.some(receipt => receipt.id === savedSummary.value?.id)
 }
 async function restoreCurrent(current: number): Promise<void> {
-  if (!currentResults) return
+  if (!currentResults || cuttingState?.invalidated.value) return
   try {
     const opened = await currentResults.load()
     if (current !== generation) return
@@ -314,25 +333,28 @@ async function restoreCurrent(current: number): Promise<void> {
 }
 function beforeUnload(event: BeforeUnloadEvent): void { if (unsavedManualChanges.value) event.preventDefault() }
 if (inject(matchedRouteKey, undefined) !== undefined) {
-  onBeforeRouteLeave(canDiscard)
-  onBeforeRouteUpdate(canDiscard)
+  onBeforeRouteLeave(leaveWorkspace)
+  onBeforeRouteUpdate(leaveWorkspace)
 }
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
 onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload); generation += 1; persistenceController.abort(); optimizer.dispose() })
 </script>
 
 <template>
-  <section class="optimization-workspace space-y-4">
+  <section class="optimization-workspace space-y-3">
     <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-semibold">
-          Optimization
-        </h1>
-        <p class="text-sm text-muted">
-          Prepare and inspect your project’s cutting layouts.
-        </p>
-      </div>
+      <h1 class="text-xl font-semibold">
+        {{ exportStep ? 'Export' : 'Optimization' }}
+      </h1>
+      <RouterLink
+        v-if="exportStep"
+        :to="{ name: 'project-optimization', params: { projectId } }"
+        class="button button-compact"
+      >
+        Back to Optimization
+      </RouterLink>
       <button
+        v-else
         type="button"
         class="button button-compact"
         :disabled="busy"
@@ -344,7 +366,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
     <p
       v-if="planError"
       role="alert"
-      class="text-danger"
+      class="text-sm text-danger"
     >
       {{ planError }}
     </p>
@@ -362,176 +384,188 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
     >
       Loading project inputs…
     </p>
-    <div
-      v-else-if="inputError"
-      class="panel space-y-3 p-4"
-    >
-      <p
-        role="alert"
-        class="text-danger"
-      >
-        {{ inputError }}
-      </p>
-      <button
-        type="button"
-        class="button"
-        @click="load"
-      >
-        Retry loading
-      </button>
-    </div>
-    <template v-else>
+    <template v-if="!exportStep">
       <form
-        class="panel p-3 sm:p-4"
+        id="optimization-controls"
         novalidate
-        aria-label="Optimization settings"
+        class="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface p-3"
         @submit.prevent="start"
       >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="text-sm text-muted">
-            {{ parts.length }} part definitions · {{ totalCopies }} requested copies
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              type="submit"
-              class="button button-primary"
-              :disabled="busy || !parts.length || !panels.length"
-            >
-              Optimize
-            </button>
-            <button
-              v-if="state === 'running'"
-              type="button"
-              class="button"
-              @click="cancel"
-            >
-              Cancel optimization
-            </button>
-          </div>
-        </div>
-        <details
-          :open="settingsOpen"
-          class="mt-3 border-t border-line pt-3"
-          @toggle="settingsToggled"
+        <button
+          type="submit"
+          class="button button-primary"
+          :disabled="busy || !!inputError || !parts.length || !panels.length"
         >
-          <summary class="w-fit cursor-pointer rounded text-sm font-semibold text-accent">
-            Cutting settings · Kerf {{ kerf }} mm · Margin {{ margin }} mm
-          </summary>
-          <div class="mt-3 space-y-3">
-            <p class="text-xs text-muted">
-              Catalog quantities are planning limits (default 1; 0 excludes). Stock quantities reflect owned inventory.
-            </p>
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <div
-                v-for="choice in panels"
-                :key="choice.product.id"
-                class="space-y-2 rounded-lg bg-canvas p-3"
-              >
-                <p class="font-semibold">
-                  {{ choice.label }}
-                </p>
-                <p class="text-sm text-muted">
-                  {{ choice.product.lengthMm }} × {{ choice.product.widthMm }} × {{ choice.product.thicknessMm }} mm · Grain: {{ choice.product.grainDirection }} · {{ choice.availability }}
-                </p>
-                <p
-                  v-if="choice.problem"
-                  class="text-sm text-muted"
-                >
-                  {{ choice.problem }}
-                </p>
-                <FormField
-                  :id="`panel-quantity-${choice.product.id}`"
-                  :label="`Available quantity: ${choice.product.name}`"
-                  :error="quantityErrors[choice.product.id] ?? ''"
-                  required
-                >
-                  <template #default="{ controlAttrs }">
-                    <input
-                      v-bind="controlAttrs"
-                      v-model.number="quantities[choice.product.id]"
-                      :data-panel-id="choice.product.id"
-                      type="number"
-                      min="0"
-                      step="1"
-                      class="field"
-                      :disabled="busy || choice.stockQuantity !== undefined || choice.broken || choice.availability === 'unavailable'"
-                    >
-                  </template>
-                </FormField>
-              </div>
-            </div>
-            <div class="grid max-w-xl gap-3 sm:grid-cols-2">
-              <FormField
-                id="optimization-kerf"
-                label="Saw kerf (mm)"
-                :error="fieldErrors.kerfMm ?? ''"
-                required
-              >
-                <template #default="{ controlAttrs }">
-                  <input
-                    v-bind="controlAttrs"
-                    v-model.number="kerf"
-                    type="number"
-                    min="0"
-                    step="any"
-                    class="field"
-                    :disabled="busy"
-                  >
-                </template>
-              </FormField>
-              <FormField
-                id="optimization-margin"
-                label="Margin on every edge (mm)"
-                :error="fieldErrors.edgeMarginMm ?? ''"
-                required
-              >
-                <template #default="{ controlAttrs }">
-                  <input
-                    v-bind="controlAttrs"
-                    v-model.number="margin"
-                    type="number"
-                    min="0"
-                    step="any"
-                    class="field"
-                    :disabled="busy"
-                  >
-                </template>
-              </FormField>
-            </div>
-          </div>
-        </details>
-        <p
-          v-if="!parts.length"
-          role="status"
-          class="mt-3 text-sm text-muted"
+          Optimize
+        </button>
+        <button
+          v-if="state === 'running'"
+          type="button"
+          class="button button-compact"
+          @click="cancel"
         >
-          No parts in this project. <RouterLink
-            :to="{ name: 'project-parts', params: { projectId } }"
-            class="text-accent underline"
-          >
-            Add project parts
-          </RouterLink>.
-        </p>
-        <p
-          v-if="!panels.length"
-          role="status"
-          class="mt-3 text-sm text-muted"
+          Cancel optimization
+        </button>
+        <output
+          v-if="result"
+          aria-label="Overall utilization"
+          class="text-sm font-semibold tabular-nums text-accent"
+        >{{ result.selection.plan.metrics.utilizationPercent.toFixed(2) }}% utilization</output>
+        <button
+          type="button"
+          class="button button-compact ml-auto"
+          :disabled="busy"
+          @click="settingsOpen = true"
         >
-          No selected panels. <RouterLink
-            :to="{ name: 'project-materials', params: { projectId } }"
-            class="text-accent underline"
-          >
-            Select panels in Materials
-          </RouterLink>.
-        </p>
-        <p
-          v-if="missingIds.length"
-          role="alert"
-          class="mt-3 text-sm text-danger"
-        >
-          Missing selected products: {{ missingIds.join(', ') }}. Review Materials; selections have not been changed.
-        </p>
+          Cutting settings
+        </button>
       </form>
+      <CatalogFormDialog
+        :open="settingsOpen"
+        title="Cutting settings"
+        close-label="Close cutting settings"
+        :busy="busy"
+        @close="settingsOpen = false"
+      >
+        <div class="space-y-4">
+          <p class="text-xs text-muted">
+            Catalog quantities are planning limits. Stock quantities reflect owned inventory.
+          </p>
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div
+              v-for="choice in panels"
+              :key="choice.product.id"
+              class="space-y-2 rounded-lg bg-canvas p-3"
+            >
+              <p class="font-semibold">
+                {{ choice.label }}
+              </p>
+              <p class="text-sm text-muted">
+                {{ choice.product.lengthMm }} × {{ choice.product.widthMm }} × {{ choice.product.thicknessMm }} mm · Grain: {{ choice.product.grainDirection }} · {{ choice.availability }}
+              </p>
+              <p
+                v-if="choice.problem"
+                class="text-sm text-muted"
+              >
+                {{ choice.problem }}
+              </p>
+              <FormField
+                :id="`panel-quantity-${choice.product.id}`"
+                :label="`Available quantity: ${choice.product.name}`"
+                :error="quantityErrors[choice.product.id] ?? ''"
+                required
+              >
+                <template #default="{ controlAttrs }">
+                  <input
+                    v-bind="controlAttrs"
+                    v-model.number="quantities[choice.product.id]"
+                    form="optimization-controls"
+                    :data-panel-id="choice.product.id"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="field"
+                    :disabled="busy || choice.stockQuantity !== undefined || choice.broken || choice.availability === 'unavailable'"
+                  >
+                </template>
+              </FormField>
+            </div>
+          </div>
+          <div class="grid max-w-xl gap-3 sm:grid-cols-2">
+            <FormField
+              id="optimization-kerf"
+              label="Saw kerf (mm)"
+              :error="fieldErrors.kerfMm ?? ''"
+              required
+            >
+              <template #default="{ controlAttrs }">
+                <input
+                  v-bind="controlAttrs"
+                  v-model.number="kerf"
+                  form="optimization-controls"
+                  type="number"
+                  min="0"
+                  step="any"
+                  class="field"
+                  :disabled="busy"
+                >
+              </template>
+            </FormField>
+            <FormField
+              id="optimization-margin"
+              label="Margin on every edge (mm)"
+              :error="fieldErrors.edgeMarginMm ?? ''"
+              required
+            >
+              <template #default="{ controlAttrs }">
+                <input
+                  v-bind="controlAttrs"
+                  v-model.number="margin"
+                  form="optimization-controls"
+                  type="number"
+                  min="0"
+                  step="any"
+                  class="field"
+                  :disabled="busy"
+                >
+              </template>
+            </FormField>
+          </div>
+
+          <button
+            type="submit"
+            form="optimization-controls"
+            class="button button-primary"
+            :disabled="busy || !!inputError || !parts.length || !panels.length"
+          >
+            Optimize with these settings
+          </button>
+        </div>
+      </CatalogFormDialog>
+      <p
+        v-if="inputError"
+        role="alert"
+        class="text-sm text-danger"
+      >
+        {{ inputError }} <button
+          type="button"
+          class="button button-compact"
+          @click="load"
+        >
+          Retry loading
+        </button>
+      </p>
+      <p
+        v-if="!parts.length && state !== 'loading'"
+        role="status"
+        class="text-sm text-muted"
+      >
+        No parts in this project. <RouterLink
+          :to="{ name: 'project-parts', params: { projectId } }"
+          class="text-accent underline"
+        >
+          Add project parts
+        </RouterLink>.
+      </p>
+      <p
+        v-if="!panels.length && state !== 'loading'"
+        role="status"
+        class="text-sm text-muted"
+      >
+        No selected panels. <RouterLink
+          :to="{ name: 'project-materials', params: { projectId } }"
+          class="text-accent underline"
+        >
+          Select panels in Materials
+        </RouterLink>.
+      </p>
+      <p
+        v-if="missingIds.length"
+        role="alert"
+        class="text-sm text-danger"
+      >
+        Missing selected products: {{ missingIds.join(', ') }}. Review Materials; selections have not been changed.
+      </p>
       <p
         v-if="state === 'running'"
         role="status"
@@ -549,181 +583,173 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       <p
         v-if="error"
         role="alert"
-        class="text-danger"
+        class="text-sm text-danger"
       >
         {{ error }}
       </p>
-    </template>
-    <section
-      v-if="result"
-      aria-label="Cutting results"
-      class="space-y-3"
-    >
-      <dl
-        class="grid grid-cols-2 gap-3 rounded-xl border border-line bg-surface px-4 py-3 sm:grid-cols-4"
-        aria-label="Cutting statistics"
-      >
-        <div>
-          <dt class="text-xs text-muted">
-            Placed parts
-          </dt><dd class="text-lg font-semibold tabular-nums">
-            {{ result.selection.plan.metrics.placedCount }}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs text-muted">
-            Unplaced parts
-          </dt><dd
-            class="text-lg font-semibold tabular-nums"
-            :class="result.selection.plan.metrics.unplacedCount ? 'text-danger' : ''"
-          >
-            {{ result.selection.plan.metrics.unplacedCount }}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs text-muted">
-            Panels used
-          </dt><dd class="text-lg font-semibold tabular-nums">
-            {{ result.selection.plan.panels.length }}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-xs text-muted">
-            Overall utilization
-          </dt><dd class="text-lg font-semibold tabular-nums">
-            {{ result.selection.plan.metrics.utilizationPercent.toFixed(2) }}%
-          </dd>
-        </div>
-      </dl>
       <p
-        v-if="confirmed"
-        class="text-sm text-success"
+        v-if="result?.selection.plan.unplaced.length"
         role="status"
+        class="text-sm text-danger"
       >
-        Cutting confirmed · Inventory movements recorded
+        Incomplete cutting result — some parts remain unplaced. Review them in Export.
       </p>
-      <details
-        v-if="result.selection.plan.unplaced.length"
-        class="rounded-lg border border-line bg-danger-surface p-3"
+    </template>
+    <div
+      v-show="!exportStep"
+      class="cutting-workspace-grid items-start gap-3"
+    >
+      <aside
+        class="panel min-w-0 space-y-3 p-3 lg:max-h-[70dvh] lg:overflow-y-auto"
+        aria-label="Panels used"
       >
-        <summary class="cursor-pointer rounded text-sm font-semibold text-danger">
-          Incomplete cutting result — review unplaced parts
-        </summary>
-        <ul class="mt-2 space-y-1 text-sm">
+        <h2 class="text-sm font-semibold">
+          Panels used
+        </h2>
+        <ul
+          v-if="result?.selection.plan.panels.length"
+          class="space-y-3"
+        >
           <li
-            v-for="item in result.selection.plan.unplaced"
-            :key="`${item.partId}-${item.firstCopyIndex}`"
+            v-for="(allocation, index) in result.selection.plan.panels"
+            :key="index"
           >
-            {{ partName(item.partId) }} · {{ item.count }} copies · {{ reasons[item.reason] }}
+            <button
+              type="button"
+              class="w-full rounded-lg p-2 text-left text-sm"
+              :class="panelIndex === index ? 'bg-subtle text-accent' : 'hover:bg-subtle'"
+              :data-panel-index="index"
+              :aria-pressed="panelIndex === index"
+              @click="panelIndex = index"
+            >
+              <span class="block font-semibold">Panel {{ index + 1 }} · {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.name }}</span>
+              <span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.materialName }}</span>
+            </button>
+            <ul
+              class="ml-2 border-l border-line pl-2"
+              :aria-label="`Parts on panel ${index + 1}`"
+            >
+              <li
+                v-for="placed in panelPlan(index)?.placements ?? []"
+                :key="JSON.stringify([placed.partId, placed.copyIndex])"
+              >
+                <button
+                  type="button"
+                  class="my-1 w-full rounded-md p-2 text-left text-xs hover:bg-subtle"
+                  :class="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex]) ? 'bg-success-surface text-accent' : ''"
+                  :data-copy-key="JSON.stringify([placed.partId, placed.copyIndex])"
+                  :aria-pressed="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex])"
+                  @click="selectCopy(index, JSON.stringify([placed.partId, placed.copyIndex]))"
+                >
+                  <span class="block font-medium">{{ partName(placed.partId) }} / {{ placed.copyIndex + 1 }}</span>
+                  <span class="block text-muted">{{ placed.dimensions.lengthMm }} × {{ placed.dimensions.widthMm }} × {{ placed.dimensions.thicknessMm }} mm · Qty 1</span>
+                </button>
+              </li>
+            </ul>
           </li>
         </ul>
-      </details>
-      <div
-        v-if="result.selection.plan.panels.length"
-        class="flex flex-wrap items-center justify-between gap-3"
-      >
+        <p
+          v-else
+          class="text-xs text-muted"
+        >
+          No panels allocated{{ result ? ': none can place a requested copy within the available quantities and constraints.' : ' yet.' }}
+        </p>
+      </aside>
+      <div class="min-w-0">
         <div
           v-if="activeChoice"
-          class="min-w-0 text-sm"
+          class="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm"
+          aria-label="Selected panel"
         >
-          <h2 class="font-semibold [overflow-wrap:anywhere]">
+          <h2 class="font-semibold">
             {{ activeChoice.materialName }} · {{ activeChoice.product.lengthMm }} × {{ activeChoice.product.widthMm }} × {{ activeChoice.product.thicknessMm }} mm
           </h2>
-          <p class="text-xs text-muted">
-            {{ activeChoice.product.stockItemId ? 'Stock' : 'Catalog' }} · {{ activeChoice.supplierName }} · {{ activeChoice.product.name }}
-          </p>
+          <span class="text-xs text-muted">{{ activeChoice.product.stockItemId ? 'Stock' : 'Catalog' }} · {{ activeChoice.supplierName }}</span>
         </div>
-        <div class="w-full sm:w-auto sm:max-w-md">
-          <FormField
-            id="optimization-layout"
-            label="Panel layout"
-          >
-            <template #default="{ controlAttrs }">
-              <select
-                v-bind="controlAttrs"
-                v-model.number="panelIndex"
-                class="field"
-              >
-                <option
-                  v-for="(allocation, index) in result.selection.plan.panels"
-                  :key="index"
-                  :value="index"
-                >
-                  Panel {{ index + 1 }} · {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.name }} · Reference copy {{ allocation.panelCopyIndex + 1 }}
-                </option>
-              </select>
-            </template>
-          </FormField>
+        <KeepAlive
+          v-if="result"
+          :key="result.requestId"
+        >
+          <PanelPlanView
+            v-if="!exportStep && activePanel && activeChoice"
+            :key="panelIndex"
+            :allocation="activePanel"
+            :panel="activeChoice.product"
+            :parts="result.parts"
+            :settings="result.settings"
+            :material-name="activeChoice.materialName"
+            :saved-edited="result.savedEdited.includes(panelIndex)"
+            :saved-baseline="result.savedBaseline"
+            :confirm-reset="canDiscard"
+            :selected-copy-key="selectedCopies[panelIndex] ?? ''"
+            @select-copy="selectedCopies[panelIndex] = $event"
+            @plan-change="(plan, modified) => planChanged(panelIndex, plan, modified)"
+          />
+        </KeepAlive>
+        <div
+          v-if="!result"
+          class="panel flex min-h-80 items-center justify-center p-6 text-center"
+          aria-label="Empty cutting workspace"
+        >
+          <div class="max-w-sm space-y-2">
+            <h2 class="font-semibold">
+              Your cutting layout will appear here
+            </h2><p class="text-sm text-muted">
+              Select panels in Materials, add Parts, then Optimize.
+            </p>
+          </div>
         </div>
-      </div>
-      <p
-        v-else
-        class="panel p-6 text-sm text-muted"
-      >
-        No panels allocated: none can place a requested copy within the available quantities and constraints.
-      </p>
-    </section>
-    <KeepAlive
-      v-if="result && activePanel && activeChoice"
-      :key="result.requestId"
-    >
-      <PanelPlanView
-        :key="panelIndex"
-        :allocation="activePanel"
-        :panel="activeChoice.product"
-        :parts="result.parts"
-        :settings="result.settings"
-        :material-name="activeChoice.materialName"
-        :saved-edited="result.savedEdited.includes(panelIndex)"
-        :saved-baseline="result.savedBaseline"
-        :confirm-reset="canDiscard"
-        @plan-change="(plan, modified) => planChanged(panelIndex, plan, modified)"
-      />
-    </KeepAlive>
-    <div
-      v-if="!result && state !== 'loading'"
-      class="panel flex min-h-64 items-center justify-center bg-surface p-8 text-center"
-      aria-label="Empty cutting workspace"
-    >
-      <div class="max-w-sm space-y-2">
-        <h2 class="text-lg font-semibold">
-          Your cutting layout will appear here
-        </h2>
-        <p class="text-sm text-muted">
-          Select panels in Materials, add Parts, then use Optimize above to prepare the cutting layout.
-        </p>
       </div>
     </div>
     <div
-      v-if="result"
-      class="flex justify-end border-t border-line pt-4"
+      v-if="result && !exportStep"
+      class="flex justify-end"
     >
       <button
         type="button"
         class="button button-primary"
-        data-finalization-action
-        @click="confirmationOpen = true"
+        :disabled="!exportAvailable"
+        data-export-action
+        @click="continueToExport"
       >
-        Finalize cutting
+        Continue to Export
       </button>
     </div>
     <CuttingFinalization
-      v-if="confirmationOpen && displayedInput"
+      v-if="exportStep && displayedInput && exportAvailable"
       :key="savedSummary?.id ?? result?.requestId ?? 0"
       :input="displayedInput"
       :summary="savedSummary"
       :cutting="cutting"
       :inventory-problem="inventoryProblem"
-      @close="confirmationOpen = false"
+      embedded
+      @working="inventoryWorking = $event"
       @confirmed="refreshConfirmation"
     />
+    <div
+      v-else-if="exportStep && state !== 'loading'"
+      class="panel space-y-3 p-6"
+      role="status"
+    >
+      <h2 class="font-semibold">
+        No current cutting document available
+      </h2>
+      <p class="text-sm text-muted">
+        Create a valid, automatically persisted cutting result in Optimization before exporting.
+      </p>
+      <RouterLink
+        :to="{ name: 'project-optimization', params: { projectId } }"
+        class="button button-primary"
+      >
+        Go to Optimization
+      </RouterLink>
+    </div>
   </section>
 </template>
-
 <style scoped>
-.optimization-workspace :deep(summary:focus-visible) {
-  outline: 3px solid var(--accent);
-  outline-offset: 3px;
-}
 .optimization-workspace :deep(.field) { min-height: 2.25rem; padding-block: 0.375rem; font-size: 0.875rem; }
+.cutting-workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) {
+  .cutting-workspace-grid { grid-template-columns: 210px minmax(0, 1fr); }
+}
 </style>

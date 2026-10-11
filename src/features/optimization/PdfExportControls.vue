@@ -5,7 +5,7 @@ import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import FormField from '../../shared/ui/FormField.vue'
 import { downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-service'
 
-const props = defineProps<{ input: SavePlanInput; title: string }>()
+const props = defineProps<{ input: SavePlanInput; title: string; workspace?: boolean }>()
 const service = useCuttingPlanPdfService()
 const orientation = ref<PdfOrientation>('landscape')
 const exporting = ref(false)
@@ -38,84 +38,113 @@ async function exportPdf(download: boolean): Promise<void> {
 </script>
 <template>
   <section
-    class="space-y-3 rounded-lg border border-line bg-surface p-4"
+    class="pdf-export space-y-3"
+    :class="workspace ? 'export-grid' : 'rounded-lg border border-line bg-surface p-4'"
     aria-label="Complete vector PDF export"
   >
-    <div class="flex flex-wrap items-end gap-3">
-      <FormField
-        id="pdf-page-orientation"
-        label="PDF page"
+    <div :class="workspace ? 'export-sidebar panel space-y-4 p-4' : 'space-y-3'">
+      <h2
+        v-if="workspace"
+        class="text-sm font-semibold"
       >
-        <template #default="{ controlAttrs }">
-          <select
-            v-bind="controlAttrs"
-            v-model="orientation"
-            class="field"
-            :disabled="exporting"
-          >
-            <option value="landscape">
-              A4 landscape
-            </option>
-            <option value="portrait">
-              A4 portrait
-            </option>
-          </select>
-        </template>
-      </FormField>
-      <button
-        type="button"
-        class="button"
-        :disabled="exporting || service === undefined"
-        @click="exportPdf(false)"
+        Document export
+      </h2>
+      <div class="flex flex-wrap items-end gap-3">
+        <FormField
+          id="pdf-page-orientation"
+          label="PDF page"
+        >
+          <template #default="{ controlAttrs }">
+            <select
+              v-bind="controlAttrs"
+              v-model="orientation"
+              class="field"
+              :disabled="exporting"
+            >
+              <option value="landscape">
+                A4 landscape
+              </option>
+              <option value="portrait">
+                A4 portrait
+              </option>
+            </select>
+          </template>
+        </FormField>
+        <button
+          type="button"
+          class="button"
+          :disabled="exporting || service === undefined"
+          @click="exportPdf(false)"
+        >
+          Preview PDF
+        </button>
+        <button
+          type="button"
+          class="button"
+          :disabled="exporting || service === undefined"
+          :aria-busy="exporting"
+          aria-describedby="pdf-export-help"
+          @click="exportPdf(true)"
+        >
+          {{ exporting ? 'Generating PDF…' : 'Export PDF' }}
+        </button>
+      </div>
+      <p
+        id="pdf-export-help"
+        class="text-sm text-muted"
       >
-        Preview PDF
-      </button>
-      <button
-        type="button"
-        class="button"
-        :disabled="exporting || service === undefined"
-        :aria-busy="exporting"
-        aria-describedby="pdf-export-help"
-        @click="exportPdf(true)"
+        One vector document includes the global summary, all panel layouts and accepted edits. PDF generation and preview never change inventory.
+      </p>
+      <p
+        v-if="service === undefined"
+        role="status"
+        class="text-sm text-muted"
       >
-        {{ exporting ? 'Generating PDF…' : 'Export PDF' }}
-      </button>
+        PDF export is unavailable.
+      </p>
+      <p
+        v-if="error"
+        role="alert"
+        class="text-danger"
+      >
+        {{ error }}
+      </p>
+      <p
+        v-if="feedback"
+        role="status"
+        class="text-success"
+      >
+        {{ feedback }}
+      </p>
+      <slot name="sidebar" />
     </div>
-    <p
-      id="pdf-export-help"
-      class="text-sm text-muted"
-    >
-      One vector document includes the global summary, all panel layouts and accepted edits. PDF generation and preview never change inventory.
-    </p>
-    <object
-      v-if="previewUrl"
-      :data="previewUrl"
-      type="application/pdf"
-      class="h-[32rem] w-full rounded-lg border border-line"
-      aria-label="Complete cutting document preview"
-    >
-      <p>Your browser cannot display a PDF preview. Use Export PDF to open the complete document in a PDF reader.</p>
-    </object>
-    <p
-      v-if="service === undefined"
-      role="status"
-      class="text-sm text-muted"
-    >
-      PDF export is unavailable.
-    </p>
-    <p
-      v-if="error"
-      role="alert"
-      class="text-danger"
-    >
-      {{ error }}
-    </p>
-    <p
-      v-if="feedback"
-      role="status"
-      class="text-success"
-    >
-      {{ feedback }}
-    </p>
+    <div :class="workspace ? 'export-preview panel min-w-0 p-3' : ''">
+      <object
+        v-if="previewUrl"
+        :data="previewUrl"
+        type="application/pdf"
+        class="h-[70dvh] min-h-96 w-full rounded-lg border border-line"
+        aria-label="Complete cutting document preview"
+      >
+        <p>Your browser cannot display a PDF preview. Use Export PDF to open the complete document in a PDF reader.</p>
+      </object>
+      <p
+        v-if="workspace && !previewUrl"
+        class="flex min-h-96 items-center justify-center p-8 text-center text-sm text-muted"
+      >
+        Use Preview PDF to view the complete cutting document. No inventory changes are made.
+      </p>
+    </div>
   </section>
 </template>
+
+<style scoped>
+.export-grid { display: grid; gap: 1rem; align-items: start; }
+.export-grid > * { margin: 0; }
+.export-preview { grid-row: 1; }
+@media (min-width: 1024px) {
+  .export-grid { grid-template-columns: minmax(0, 1fr) 340px; }
+  .export-preview { grid-column: 1; }
+  .export-sidebar { grid-column: 2; grid-row: 1; }
+}
+</style>

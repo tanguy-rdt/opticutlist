@@ -11,8 +11,8 @@ import FormField from '../../shared/ui/FormField.vue'
 import { createPlanCanvas, type PlanCanvas, type PlanPalette } from './viewer/plan-canvas'
 import { fitViewport, panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
 
-const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; confirmReset?: (() => boolean) | undefined }>()
-const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean] }>()
+const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; selectedCopyKey?: string | undefined; confirmReset?: (() => boolean) | undefined }>()
+const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean]; 'select-copy': [key: string] }>()
 const session = shallowRef<PlanEditingSession | null>(null)
 const editMode = ref(false)
 const editFeedback = ref('')
@@ -32,7 +32,8 @@ watch([() => props.plan, () => props.panel, () => props.parts, () => props.setti
 const displayedPlan = computed(() => session.value === null ? props.plan : currentEditingPlan(session.value))
 const projection = computed(() => createCuttingPlanScene(displayedPlan.value, { panel: props.panel, parts: props.parts, settings: props.settings }))
 const host = ref<HTMLDivElement | null>(null)
-const selectedKey = ref('')
+const selectedKey = ref(props.selectedCopyKey ?? '')
+watch(() => props.selectedCopyKey, key => { if (key !== undefined) selectedKey.value = key })
 const selectedPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === selectedKey.value) : undefined)
 const swapPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === swapKey.value) : undefined)
 const rotationEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === undefined ? null : { kind: 'rotate', copy: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex } })
@@ -136,7 +137,7 @@ function render(): void {
   }
 }
 watch(projection, render, { flush: 'post' })
-watch(selectedKey, key => { canvas?.setSelection(key) })
+watch(selectedKey, key => { canvas?.setSelection(key); emit('select-copy', key) })
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined') resizeObserver = new ResizeObserver(resize)
   else window.addEventListener('resize', resize)
@@ -233,7 +234,7 @@ onBeforeUnmount(() => {
       role="status"
       class="text-muted"
     >
-      No cutting plan to display. Optimize a panel first.
+      No cutting plan to display. Optimize the project first.
     </p>
     <p
       v-else-if="projection.status === 'invalid'"
@@ -262,8 +263,14 @@ onBeforeUnmount(() => {
       >
         {{ canvasError }}
       </p>
-      <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_16rem]">
+      <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_15rem]">
         <figure class="min-w-0 space-y-3">
+          <p
+            v-if="!projection.scene.parts.length"
+            class="text-sm text-muted"
+          >
+            No parts were placed. The panel contains only waste and margins.
+          </p>
           <div
             tabindex="0"
             role="region"
@@ -278,50 +285,20 @@ onBeforeUnmount(() => {
               class="cutting-canvas-host w-full touch-none"
             />
           </div>
-          <figcaption class="text-xs text-muted">
-            <details>
-              <summary class="w-fit cursor-pointer rounded">
-                Legend and canvas shortcuts
-              </summary>
-              <div class="mt-2 space-y-2">
-                <p>{{ projection.scene.waste.length }} waste regions · {{ projection.scene.kerfs.length }} guillotine cuts.</p>
-                <p>Drag to pan · Click to inspect · Arrow keys to pan · +/− to zoom · 0 to fit</p>
-                <p v-if="!projection.scene.parts.length">
-                  No parts were placed. The panel contains only waste and margins.
-                </p>
-                <p>Panel: {{ panel.lengthMm }} × {{ panel.widthMm }} × {{ panel.thicknessMm }} mm · Grain: {{ panel.grainDirection }}{{ panel.grainDirection === 'length' ? ' ↔' : panel.grainDirection === 'width' ? ' ↕' : '' }}.</p>
-                <ul
-                  class="flex flex-wrap gap-x-4 gap-y-2"
-                  aria-label="Layout legend"
-                >
-                  <li>
-                    <span
-                      aria-hidden="true"
-                      class="mr-1 inline-block h-3 w-3 border border-success bg-success-surface"
-                    />Placed part
-                  </li>
-                  <li>
-                    <span
-                      aria-hidden="true"
-                      class="mr-1 inline-block h-3 w-3 border border-dashed border-muted bg-subtle"
-                    />Waste
-                  </li>
-                  <li>
-                    <span
-                      aria-hidden="true"
-                      class="mr-1 inline-block h-3 w-3 border border-danger bg-danger"
-                    />Saw kerf (zero kerf is a line)
-                  </li>
-                  <li>Outer outline: full panel · Dashed outline: usable area · Edge band: margins · Arrows: grain</li>
-                </ul>
-              </div>
-            </details>
+          <figcaption
+            class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted"
+            aria-label="Layout legend"
+          >
+            <span>Green: placed parts</span><span>Dashed: waste / usable area</span><span>Red: saw kerf</span><span>Arrows: grain</span>
           </figcaption>
         </figure>
         <aside
-          class="space-y-4 rounded-lg border border-line bg-surface p-4"
+          class="min-w-0 space-y-3 rounded-lg border border-line bg-surface p-3"
           aria-label="Part inspection"
         >
+          <h3 class="text-sm font-semibold">
+            Inspector
+          </h3>
           <FormField
             id="cutting-viewer-part"
             label="Inspect a placed copy"

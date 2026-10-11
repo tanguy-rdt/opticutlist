@@ -24,13 +24,25 @@ function button(wrapper: VueWrapper, label: string) {
   return control
 }
 describe('Read-only cutting plan viewer', () => {
+  it('synchronizes external sidebar selection with the canvas and reports canvas selection', async () => {
+    const wrapper = setup()
+    const call = vi.mocked(createPlanCanvas).mock.calls[0]
+    const part = call?.[1].parts[0]
+    if (!call || !part) throw new Error('Missing rendered part')
+    await wrapper.setProps({ selectedCopyKey: part.key })
+    expect(canvas.setSelection).toHaveBeenLastCalledWith(part.key)
+    expect(wrapper.get('aside dl').text()).toContain('Shelf / 1')
+    call[4]('')
+    await flushPromises()
+    expect(wrapper.emitted('select-copy')?.at(-1)).toEqual([''])
+    expect(wrapper.find('aside dl').exists()).toBe(false)
+  })
   it('creates a validated scene and a readable summary alongside the canvas', async () => {
     const wrapper = setup()
     await flushPromises()
     expect(createPlanCanvas).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain('2 waste regions · 2 guillotine cuts')
-    expect(wrapper.text()).toContain('100 × 80 × 18 mm')
-    expect(wrapper.text()).toContain('Grain: width ↕')
+    expect(wrapper.get('[aria-label="Layout legend"]').text()).toContain('Red: saw kerf')
+    expect(wrapper.get('[aria-label="Layout legend"]').text()).toContain('Arrows: grain')
     expect(wrapper.get('[role="region"]').attributes('tabindex')).toBe('0')
     expect(wrapper.get('output').text()).toBe('100% of fit')
   })

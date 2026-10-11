@@ -7,6 +7,8 @@ import { persistenceErrorMessage } from '../../shared/ui/persistence-error-messa
 import { partRepositoryKey } from '../parts/part-repository'
 import { projectIdKey, useProjectService } from './project-service'
 import ProjectExport from './ProjectExport.vue'
+import { cuttingWorkspaceStateKey } from './cutting-workspace-state'
+import { useCurrentResultService } from '../optimization/current-result-service'
 
 const props = defineProps<{ projectId: string }>()
 const service = useProjectService()
@@ -14,6 +16,9 @@ const parsedId = cuttingProjectIdSchema.safeParse(props.projectId)
 const project = shallowRef<CuttingProject | null>(null)
 const loading = ref(true)
 const error = ref('')
+const cuttingState = { available: ref(false), invalidated: ref(false) }
+provide(cuttingWorkspaceStateKey, cuttingState)
+const currentResults = useCurrentResultService()
 if (parsedId.success) {
   provide(projectIdKey, parsedId.data)
   provide(partRepositoryKey, service.parts(parsedId.data))
@@ -25,7 +30,11 @@ async function load(): Promise<void> {
   if (!parsedId.success) error.value = 'Invalid project ID. Open an existing project from Home.'
   else {
     const result = await service.projects.get(parsedId.data)
-    if (result.ok) project.value = result.value
+    if (result.ok) {
+      project.value = result.value
+      const current = await currentResults?.forProject(parsedId.data).load()
+      cuttingState.available.value = current?.ok === true && current.value.result !== null
+    }
     else error.value = persistenceErrorMessage(result.error, 'Project')
   }
   loading.value = false
@@ -100,6 +109,19 @@ onMounted(load)
           >
             Optimization
           </RouterLink>
+          <RouterLink
+            v-if="cuttingState.available.value"
+            :to="{ name: 'project-cutting-export', params: { projectId: project.id } }"
+            class="nav-link"
+          >
+            Export
+          </RouterLink>
+          <span
+            v-else
+            class="nav-link cursor-not-allowed opacity-60"
+            aria-disabled="true"
+            title="Optimize a valid cutting plan first"
+          >Export</span>
         </nav>
         <ProjectExport :project-id="project.id" />
       </div>
