@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
@@ -44,17 +44,19 @@ const summaryMaterials = computed(() => materials.value.filter(material => selec
 function materialProducts(material: Material): readonly SupplierProduct[] { return products.value.filter(product => product.materialId === material.id) }
 function summaryProducts(material: Material): readonly SupplierProduct[] { return materialProducts(material).filter(product => selectedProductIds.value.includes(product.id)) }
 function supplierName(product: SupplierProduct): string { return suppliers.value.find(supplier => supplier.id === product.supplierId)?.name ?? 'Missing supplier' }
-function removeProduct(product: SupplierProduct): void { selectedProductIds.value = selectedProductIds.value.filter(id => id !== product.id); notice.value = '' }
+function removeProduct(product: SupplierProduct): void { selectedProductIds.value = selectedProductIds.value.filter(id => id !== product.id) }
 function removeMissing(): void {
   selectedIds.value = selectedIds.value.filter(id => materials.value.some(material => material.id === id))
   selectedProductIds.value = selectedProductIds.value.filter(id => products.value.some(product => product.id === id))
-  notice.value = ''
 }
-function canDiscard(): boolean { return !busy.value && (!dirty.value || window.confirm('Discard unsaved project material selections?')) }
-async function refresh(): Promise<void> { if (canDiscard()) await load() }
+async function canDiscard(): Promise<boolean> {
+  await save()
+  return !dirty.value || window.confirm('Selections could not be saved. Discard unsaved project material selections?')
+}
+async function refresh(): Promise<void> { if (await canDiscard()) await load() }
 function beforeUnload(event: BeforeUnloadEvent): void { if (dirty.value || busy.value) { event.preventDefault() } }
 if (inject(matchedRouteKey, undefined)) { onBeforeRouteLeave(canDiscard); onBeforeRouteUpdate(canDiscard) }
-onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload) })
+onBeforeUnmount(() => { disposed = true; window.removeEventListener('beforeunload', beforeUnload) })
 const missingSelections = computed(() => [
   ...selectedIds.value.filter(id => !materials.value.some(material => material.id === id)),
   ...selectedProductIds.value.filter(id => !products.value.some(product => product.id === id)),
@@ -63,7 +65,6 @@ const loading = ref(true)
 const busy = ref(false)
 const loadError = ref('')
 const saveError = ref('')
-const notice = ref('')
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
@@ -89,7 +90,6 @@ function toggle(material: Material): void {
   selectedIds.value = selectedIds.value.includes(material.id)
     ? selectedIds.value.filter(id => id !== material.id)
     : [...selectedIds.value, material.id]
-  notice.value = ''
 }
 function selectable(product: SupplierProduct): boolean {
   return product.availability !== 'unavailable' && materials.value.some(material => material.id === product.materialId)
@@ -99,23 +99,40 @@ function toggleProduct(product: SupplierProduct): void {
   if (selectedProductIds.value.includes(product.id)) removeProduct(product)
   else if (selectable(product)) {
     selectedProductIds.value = [...selectedProductIds.value, product.id]
-    notice.value = ''
+    }
+}
+let pendingSave: Promise<void> | undefined
+let disposed = false
+function save(): Promise<void> {
+  if (pendingSave) return pendingSave
+  if (disposed || loading.value || loadError.value) return Promise.resolve()
+  if (!dirty.value) { saveError.value = ''; return Promise.resolve() }
+  busy.value = true
+  saveError.value = ''
+  pendingSave = persistSelections().finally(() => { busy.value = false; pendingSave = undefined; if (!dirty.value) saveError.value = '' })
+  return pendingSave
+}
+async function persistSelections(): Promise<void> {
+  try {
+    while (dirty.value && !disposed) {
+      const materialIds = [...selectedIds.value]
+      const supplierProductIds = [...selectedProductIds.value]
+      // Snapshot each write; newer changes stay in the draft and are saved next.
+      // Reread ownership so a concurrent Part write cannot be overwritten.
+      const project = await service.projects.get(projectId)
+      const result = project.ok ? await service.projects.update(projectId, {
+        ...project.value, materialIds, supplierProductIds,
+        ...(project.value.panelQuantities === undefined ? {} : { panelQuantities: project.value.panelQuantities.filter(item => supplierProductIds.includes(item.supplierProductId)) }),
+      }) : project
+      if (!result.ok) { saveError.value = persistenceErrorMessage(result.error, 'Project'); return }
+      savedMaterialIds.value = materialIds
+      savedProductIds.value = supplierProductIds
+    }
+  } catch {
+    saveError.value = 'Could not save project selections to local storage.'
   }
 }
-async function save(): Promise<void> {
-  if (busy.value || loading.value || loadError.value) return
-  busy.value = true
-  saveError.value = ''; notice.value = ''
-  // Reread ownership so a concurrent Part write cannot be overwritten by this draft.
-  const project = await service.projects.get(projectId)
-  const result = project.ok ? await service.projects.update(projectId, {
-    ...project.value, materialIds: selectedIds.value, supplierProductIds: selectedProductIds.value,
-    ...(project.value.panelQuantities === undefined ? {} : { panelQuantities: project.value.panelQuantities.filter(item => selectedProductIds.value.includes(item.supplierProductId)) }),
-  }) : project
-  if (result.ok) { await load(); notice.value = 'Project selections saved.' }
-  else saveError.value = persistenceErrorMessage(result.error, 'Project')
-  busy.value = false
-}
+watch([selectedIds, selectedProductIds], () => { if (!loading.value) void save() })
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
 </script>
 
@@ -170,14 +187,14 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                 aria-label="Search materials"
                 placeholder="Search materials…"
                 class="min-h-10 min-w-0 w-full bg-transparent text-sm outline-none"
-                :disabled="loading || busy"
+                :disabled="loading"
               >
             </label>
             <select
               v-model="categoryFilter"
               aria-label="Filter material category"
               class="field min-h-10 py-1.5 text-sm"
-              :disabled="loading || busy"
+              :disabled="loading"
             >
               <option value="">
                 All categories
@@ -263,7 +280,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                   class="size-4 accent-accent"
                   :aria-label="`Use ${material.name}`"
                   :checked="selectedIds.includes(material.id)"
-                  :disabled="busy"
+                  :disabled="loading || Boolean(loadError)"
                   @change="toggle(material)"
                 >
               </label>
@@ -359,7 +376,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                 class="mt-1 size-4 shrink-0 accent-accent"
                 :aria-label="`Use panel ${product.name}`"
                 :checked="selectedProductIds.includes(product.id)"
-                :disabled="busy || (!selectable(product) && !selectedProductIds.includes(product.id))"
+                :disabled="loading || (!selectable(product) && !selectedProductIds.includes(product.id))"
                 @change="toggleProduct(product)"
               >
               <span class="grid min-w-0 flex-1 gap-2 text-sm">
@@ -430,7 +447,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                     type="button"
                     class="button button-compact px-2"
                     :aria-label="`Remove material ${material.name}`"
-                    :disabled="busy"
+                    :disabled="loading || Boolean(loadError)"
                     @click="toggle(material)"
                   >
                     <AppIcon name="close" />
@@ -461,7 +478,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                       type="button"
                       class="button button-compact px-2"
                       :aria-label="`Remove panel ${product.name}`"
-                      :disabled="busy"
+                      :disabled="loading || Boolean(loadError)"
                       @click="removeProduct(product)"
                     >
                       <AppIcon name="close" />
@@ -488,7 +505,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                   type="button"
                   class="button button-compact"
                   :aria-label="`Remove panel ${product.name}`"
-                  :disabled="busy"
+                  :disabled="loading || Boolean(loadError)"
                   @click="removeProduct(product)"
                 >
                   <AppIcon name="close" />
@@ -514,7 +531,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
               <button
                 type="button"
                 class="button button-compact"
-                :disabled="busy || loading"
+                :disabled="loading || Boolean(loadError)"
                 @click="removeMissing"
               >
                 Remove missing selections
@@ -522,36 +539,35 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
             </div>
           </template>
         </div>
-        <footer class="space-y-3 border-t border-line bg-quiet-surface p-4">
+        <footer
+          v-if="busy || saveError"
+          class="border-t border-line bg-quiet-surface p-4 text-xs"
+        >
           <p
+            v-if="busy"
             role="status"
-            class="text-xs"
-            :class="dirty ? 'text-accent' : 'text-muted'"
+            class="text-muted"
           >
-            {{ busy ? 'Saving selections…' : dirty ? 'Unsaved changes' : 'Selections up to date' }}
+            Saving…
           </p>
-          <p
-            v-if="notice"
-            role="status"
-            class="text-sm text-success"
+          <div
+            v-else
+            class="flex items-center justify-between gap-3"
           >
-            {{ notice }}
-          </p>
-          <p
-            v-if="saveError"
-            role="alert"
-            class="text-sm text-danger"
-          >
-            {{ saveError }}
-          </p>
-          <button
-            type="button"
-            class="button button-primary w-full"
-            :disabled="loading || busy || Boolean(loadError)"
-            @click="save"
-          >
-            {{ busy ? 'Saving…' : 'Save project selections' }}
-          </button>
+            <p
+              role="alert"
+              class="text-danger"
+            >
+              Save failed. {{ saveError }}
+            </p>
+            <button
+              type="button"
+              class="button button-compact"
+              @click="save"
+            >
+              Retry
+            </button>
+          </div>
         </footer>
       </aside>
     </div>

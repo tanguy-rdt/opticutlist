@@ -73,6 +73,11 @@ function button(wrapper: VueWrapper, text: string) {
   return found
 }
 
+async function autosaved(wrapper: VueWrapper): Promise<void> {
+  await flushPromises()
+  await vi.waitFor(() => { expect(wrapper.find('.project-selection > footer').exists()).toBe(false) })
+}
+
 afterEach(() => {
   for (const wrapper of wrappers) wrapper.unmount()
   wrappers.length = 0
@@ -140,8 +145,7 @@ describe('MaterialsView', () => {
       await vi.waitFor(() => { expect(wrapper.find('input[aria-label="Use Birch plywood BB/BB"]').exists()).toBe(true) })
       await wrapper.get('input[type="checkbox"]').setValue(true)
       expect(wrapper.get('aside').text()).toContain(material.name)
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await autosaved(wrapper)
       wrapper.unmount()
       first.close()
       const reopened = render(second.materials, createProjectService(second))
@@ -176,8 +180,7 @@ describe('MaterialsView', () => {
       await wrapper.get('input[aria-label="Use panel Second panel"]').setValue(true)
       expect(wrapper.get('input[aria-label="Use panel Unavailable panel"]').attributes('disabled')).toBeDefined()
       await wrapper.get('input[aria-label="Use Birch plywood BB/BB"]').setValue(true)
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await autosaved(wrapper)
       const saved = await service.projects.get(project.id)
       if (!saved.ok) throw new Error('Project not saved')
       expect(saved.value.materialIds).toEqual([material.id])
@@ -208,8 +211,7 @@ describe('MaterialsView', () => {
       const productCheckbox = wrapper.findAll('label').find(label => label.text().includes('Second panel'))?.get('input')
       if (!productCheckbox) throw new Error('Missing product checkbox')
       await productCheckbox.setValue(false)
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await autosaved(wrapper)
       const saved = await service.projects.get(project.id)
       expect(saved.ok && saved.value.panelQuantities).toEqual([{ supplierProductId: validSupplierProductInput.id, quantity: 5 }])
       expect((await persistence.supplierProducts.list()).ok).toBe(true)
@@ -226,12 +228,11 @@ describe('MaterialsView', () => {
       await vi.waitFor(() => { expect(wrapper.find('input[aria-label="Use Birch plywood BB/BB"]').exists()).toBe(true) })
       const checkbox = wrapper.get<HTMLInputElement>('input[type="checkbox"]')
       await checkbox.setValue(true)
-      await button(wrapper, 'Save project selections').trigger('click')
       await vi.waitFor(() => { expect(wrapper.find('[role="alert"]').exists()).toBe(true) })
       expect(checkbox.element.checked).toBe(true)
       expect(await service.projects.get(project.id)).toEqual({ ok: true, value: project })
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await button(wrapper, 'Retry').trigger('click')
+      await autosaved(wrapper)
       expect(update).toHaveBeenCalledTimes(2)
       expect(await persistence.materials.list()).toEqual({ ok: true, value: [material] })
     } finally { persistence.close() }
@@ -247,9 +248,7 @@ describe('MaterialsView', () => {
       await vi.waitFor(() => { expect(wrapper.text()).toContain('Some selected catalog references are missing') })
       expect(await service.projects.get(project.id)).toEqual({ ok: true, value: invalid })
       await button(wrapper, 'Remove missing selections').trigger('click')
-      expect(await service.projects.get(project.id)).toEqual({ ok: true, value: invalid })
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await autosaved(wrapper)
       expect(await service.projects.get(project.id)).toEqual({ ok: true, value: project })
     } finally { persistence.close() }
   })
@@ -283,7 +282,8 @@ describe('MaterialsView', () => {
       expect(wrapper.get('[aria-labelledby="library-title"]').text()).toContain('Hardwoods')
       expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(false)
       expect(wrapper.get('img').attributes('src')).toContain('/textures/')
-      expect(await service.projects.get(project.id)).toEqual({ ok: true, value: project })
+      await autosaved(wrapper)
+      expect((await service.projects.get(project.id))).toMatchObject({ ok: true, value: { materialIds: [oak.id], supplierProductIds: [] } })
     } finally { persistence.close() }
   })
   it('summarizes separate material and panel choices and removes each without affecting the other', async () => {
@@ -306,35 +306,39 @@ describe('MaterialsView', () => {
       expect(wrapper.get('aside').findAll('dd').map(value => value.text())).toEqual(['0', '0'])
       expect(wrapper.get('aside').text()).toContain('Choose materials')
       expect(wrapper.get('aside').text()).not.toContain('Unsaved changes')
+      await autosaved(wrapper)
+      expect((await service.projects.get(project.id))).toMatchObject({ ok: true, value: { materialIds: [], supplierProductIds: [] } })
       expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [] })
     } finally { persistence.close() }
   })
-  it('warns before refreshing a draft and on page unload, then clears the warning after save', async () => {
+  it('warns on page unload only while saving, and cleans up its listener', async () => {
     const repository = fakeRepository()
     repository.list.mockResolvedValue({ ok: true, value: [material] })
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const wrapper = render(repository)
+    const projects = projectRepository()
+    let resolveWrite: (() => void) | undefined
+    const original = projects.update.getMockImplementation()
+    projects.update.mockImplementationOnce(async (id, record) => {
+      await new Promise<void>(resolve => { resolveWrite = resolve })
+      if (!original) throw new Error('Missing repository implementation')
+      return original(id, record)
+    })
+    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
+    const wrapper = render(repository, source)
     await flushPromises()
+    expect(wrapper.text()).not.toContain('Selections up to date')
+    expect(wrapper.text()).not.toContain('Save project selections')
+    expect(wrapper.find('.project-selection > footer').exists()).toBe(false)
     await wrapper.get(`input[aria-label="Use ${material.name}"]`).setValue(true)
-    expect(wrapper.get('aside').text()).toContain('Unsaved changes')
+    await flushPromises()
+    expect(wrapper.get('.project-selection > footer').text()).toBe('Saving…')
     const event = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
-    await button(wrapper, 'Refresh').trigger('click')
-    expect(confirm).toHaveBeenCalledWith('Discard unsaved project material selections?')
-    expect(repository.list).toHaveBeenCalledTimes(1)
-    expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${material.name}"]`).element.checked).toBe(true)
-    await button(wrapper, 'Save project selections').trigger('click')
-    await flushPromises()
-    expect(wrapper.text()).toContain('Project selections saved.')
+    resolveWrite?.()
+    await autosaved(wrapper)
     const savedEvent = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(savedEvent)
     expect(savedEvent.defaultPrevented).toBe(false)
-    await wrapper.get(`input[aria-label="Use ${material.name}"]`).setValue(false)
-    confirm.mockReturnValue(true)
-    await button(wrapper, 'Refresh').trigger('click')
-    await flushPromises()
-    expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${material.name}"]`).element.checked).toBe(true)
     wrapper.unmount()
     const closedEvent = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(closedEvent)
@@ -349,8 +353,7 @@ describe('MaterialsView', () => {
       const wrapper = render(persistence.materials, createProjectService(persistence), persistence)
       await vi.waitFor(() => { expect(wrapper.get('aside').text()).toContain('Missing material · reference retained') })
       await wrapper.get(`button[aria-label="Remove panel ${validSupplierProductInput.name}"]`).trigger('click')
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await autosaved(wrapper)
       expect(await persistence.projects.get(project.id)).toEqual({ ok: true, value: project })
       expect((await persistence.supplierProducts.get(supplierProductSchema.parse(validSupplierProductInput).id)).ok).toBe(true)
     } finally { persistence.close() }
@@ -410,8 +413,7 @@ describe('MaterialsView', () => {
       await wrapper.get('button[aria-label="Show panels for Oak"]').trigger('click')
       expect(wrapper.get<HTMLInputElement>('input[aria-label="Use Oak"]').element.checked).toBe(false)
       await wrapper.get('input[aria-label="Use panel Oak panel"]').setValue(false)
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await autosaved(wrapper)
       expect((await service.projects.get(project.id))).toMatchObject({ ok: true, value: { materialIds: [], supplierProductIds: [validSupplierProductInput.id] } })
       expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [] })
     } finally { persistence.close() }
@@ -436,7 +438,8 @@ describe('MaterialsView', () => {
     expect(wrapper.get('.materials-workspace').element.children[0]?.classList.contains('material-library')).toBe(true)
     expect(wrapper.get('.materials-workspace').element.children[1]?.classList.contains('panel-references')).toBe(true)
     expect(wrapper.get('.materials-workspace').element.children[2]?.classList.contains('project-selection')).toBe(true)
-    expect(wrapper.get('aside > footer').text()).toContain('Save project selections')
+    await autosaved(wrapper)
+    expect(wrapper.find('.project-selection > footer').exists()).toBe(false)
   })
 
   it('retains previously saved panel choices, including unavailable panels, without writing on open', async () => {
@@ -463,10 +466,41 @@ describe('MaterialsView', () => {
       await unavailable.setValue(false)
       expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use panel ${validSupplierProductInput.name}"]`).element.checked).toBe(true)
       expect(unavailable.attributes('disabled')).toBeDefined()
-      await button(wrapper, 'Save project selections').trigger('click')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      await autosaved(wrapper)
       expect((await service.projects.get(project.id))).toMatchObject({ ok: true, value: { supplierProductIds: [validSupplierProductInput.id], panelQuantities: [{ supplierProductId: validSupplierProductInput.id, quantity: 3 }] } })
     } finally { persistence.close() }
+  })
+
+  it('serializes rapid changes without replacing newer draft selections with an older completion', async () => {
+    const repository = fakeRepository()
+    const oak = materialSchema.parse({ ...material, id: 'oak', name: 'Oak' })
+    repository.list.mockResolvedValue({ ok: true, value: [material, oak] })
+    const projects = projectRepository()
+    let release: (() => void) | undefined
+    const original = projects.update.getMockImplementation()
+    projects.update.mockImplementationOnce(async (id, record) => {
+      await new Promise<void>(resolve => { release = resolve })
+      if (!original) throw new Error('Missing repository implementation')
+      return original(id, record)
+    })
+    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
+    const wrapper = render(repository, source)
+    await flushPromises()
+    await wrapper.get(`input[aria-label="Use ${material.name}"]`).setValue(true)
+    await flushPromises()
+    expect(projects.update).toHaveBeenCalledTimes(1)
+    await wrapper.get('input[aria-label="Use Oak"]').setValue(true)
+    await wrapper.get(`input[aria-label="Use ${material.name}"]`).setValue(false)
+    await wrapper.get('button[aria-label="Remove material Oak"]').trigger('click')
+    await wrapper.get('input[aria-label="Use Oak"]').setValue(true)
+    expect(wrapper.get<HTMLInputElement>('input[aria-label="Use Oak"]').element.checked).toBe(true)
+    expect(projects.update).toHaveBeenCalledTimes(1)
+    release?.()
+    await autosaved(wrapper)
+    expect(projects.update).toHaveBeenCalledTimes(2)
+    expect((await projects.get(project.id))).toMatchObject({ ok: true, value: { materialIds: [oak.id] } })
+    expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${material.name}"]`).element.checked).toBe(false)
+    expect(wrapper.find('.project-selection > footer').exists()).toBe(false)
   })
 
 })
