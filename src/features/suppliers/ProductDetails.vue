@@ -4,7 +4,7 @@ import type { Supplier } from '../../domain/model/supplier'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { StockItem } from '../../domain/model/stock-item'
 defineProps<{ product: SupplierProduct | undefined; materials: readonly Material[]; suppliers: readonly Supplier[]; stock: readonly StockItem[]; stockAvailable: boolean; stockError: string; disabled: boolean }>()
-const emit = defineEmits<{ edit: [product: SupplierProduct]; delete: [product: SupplierProduct]; clear: [] }>()
+const emit = defineEmits<{ edit: [product: SupplierProduct]; delete: [product: SupplierProduct] }>()
 function grain(product: SupplierProduct): string { return product.grainDirection === 'none' ? 'None' : product.grainDirection === 'length' ? 'Along length' : 'Along width' }
 function availability(product: SupplierProduct): string { return product.availability === 'available' ? 'Available' : product.availability === 'unavailable' ? 'Unavailable' : 'Unknown' }
 </script>
@@ -21,14 +21,7 @@ function availability(product: SupplierProduct): string { return product.availab
         class="font-semibold"
       >
         Product details
-      </h2><button
-        v-if="product"
-        type="button"
-        class="text-sm text-accent underline"
-        @click="emit('clear')"
-      >
-        Clear
-      </button>
+      </h2>
     </div>
     <template v-if="product">
       <div>
@@ -67,7 +60,7 @@ function availability(product: SupplierProduct): string { return product.availab
         </div>
         <div>
           <dt class="text-muted">
-            Catalog availability
+            Supplier availability
           </dt><dd>{{ availability(product) }}</dd>
         </div>
         <div>
@@ -83,26 +76,6 @@ function availability(product: SupplierProduct): string { return product.availab
         rel="noopener noreferrer"
         class="block text-sm text-accent underline"
       >Product page<span class="sr-only"> (opens in new tab)</span></a>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="button button-compact"
-          :disabled="disabled"
-          :aria-label="`Edit product ${product.name}`"
-          @click="emit('edit', product)"
-        >
-          Edit product
-        </button>
-        <button
-          type="button"
-          class="button button-compact button-danger"
-          :disabled="disabled"
-          :aria-label="`Delete product ${product.name}`"
-          @click="emit('delete', product)"
-        >
-          Delete product
-        </button>
-      </div>
       <section
         class="space-y-2 border-t border-line pt-4"
         aria-label="Owned inventory"
@@ -111,7 +84,7 @@ function availability(product: SupplierProduct): string { return product.availab
           Owned inventory
         </h3>
         <p class="text-xs text-muted">
-          Only physical stock linked to this product by purchase provenance is shown. Catalog references are not owned panels.
+          Purchase-linked stock only. Catalog references are not owned panels.
         </p>
         <p
           v-if="!stockAvailable"
@@ -144,12 +117,32 @@ function availability(product: SupplierProduct): string { return product.availab
           </li>
         </ul>
       </section>
+      <div class="flex flex-wrap gap-2 border-t border-line pt-4">
+        <button
+          type="button"
+          class="button button-compact"
+          :disabled="disabled"
+          :aria-label="`Edit product ${product.name}`"
+          @click="emit('edit', product)"
+        >
+          Edit product
+        </button>
+        <button
+          type="button"
+          class="button button-compact button-danger"
+          :disabled="disabled"
+          :aria-label="`Delete product ${product.name}`"
+          @click="emit('delete', product)"
+        >
+          Delete product
+        </button>
+      </div>
     </template>
     <p
       v-else
       class="py-3 text-sm text-muted"
     >
-      Select a panel product to inspect its specifications and owned stock.
+      No visible products to display.
     </p>
   </aside>
 </template>

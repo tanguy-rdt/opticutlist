@@ -69,10 +69,10 @@ async function importCatalog(): Promise<void> {
     v-if="service"
     class="space-y-3"
   >
-    <div class="flex flex-wrap gap-3">
+    <div class="flex flex-wrap justify-end gap-2">
       <button
         type="button"
-        class="button"
+        class="button button-compact"
         :disabled="disabled || busy"
         @click="exportCatalog"
       >
@@ -80,7 +80,7 @@ async function importCatalog(): Promise<void> {
       </button>
       <button
         type="button"
-        class="button"
+        class="button button-compact"
         :disabled="disabled || busy"
         :aria-expanded="showImport"
         aria-controls="catalog-import"
