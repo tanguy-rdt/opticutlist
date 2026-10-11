@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { quantitySchema } from './common'
 import { dimensions3DSchema } from './dimensions'
-import { materialIdSchema, stockItemIdSchema, supplierProductIdSchema } from './ids'
+import { cuttingProjectIdSchema, savedCuttingPlanIdSchema, materialIdSchema, stockItemIdSchema, supplierProductIdSchema } from './ids'
 import { grainDirectionSchema } from './orientation'
 
 export const stockItemKindSchema = z.enum(['fullPanel', 'offcut'])
@@ -12,6 +12,7 @@ export type StockItemKind = z.infer<typeof stockItemKindSchema>
 export const stockProvenanceSchema = z.discriminatedUnion('source', [
   z.strictObject({ source: z.literal('manual') }),
   z.strictObject({ source: z.literal('purchase'), supplierProductId: supplierProductIdSchema }),
+  z.strictObject({ source: z.literal('cutting'), projectId: cuttingProjectIdSchema, savedPlanId: savedCuttingPlanIdSchema, sourceStockItemId: stockItemIdSchema, panelIndex: z.number().int().nonnegative(), wasteIndex: z.number().int().nonnegative() }),
 ])
 export type StockProvenance = z.infer<typeof stockProvenanceSchema>
 

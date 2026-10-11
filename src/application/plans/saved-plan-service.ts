@@ -13,6 +13,17 @@ export interface SavePlanInput extends Pick<SavedPlanContents, 'parts' | 'settin
 function invalid(cause: unknown): Extract<PersistenceResult<never>, { ok: false }> {
   return { ok: false, error: { kind: 'invalidRecord', issues: [{ path: ['plan'], message: cause instanceof Error ? cause.message : 'The saved plan is invalid.' }] } }
 }
+/** Shared transaction-scoped historical read; never consults the current catalog. */
+export async function readSavedPlan(repositories: Repositories, projectId: CuttingProjectId, id: SavedCuttingPlanId): Promise<PersistenceResult<OpenedSavedPlan>> {
+  const summary = await repositories.savedPlanSummaries.get(id)
+  if (!summary.ok) return summary
+  if (summary.value.projectId !== projectId) return { ok: false, error: { kind: 'notFound', id } }
+  const contents = await repositories.savedPlanContents.get(id)
+  if (!contents.ok) return contents
+  if (contents.value.projectId !== projectId) return invalid(new Error('The saved plan owner does not match its summary.'))
+  try { return { ok: true, value: { summary: summary.value, contents: contents.value, plan: restoreSavedPlan(contents.value) } } }
+  catch (cause) { return invalid(cause) }
+}
 /** Scoped, insert-only snapshots. Metadata and all trees commit or roll back together. */
 export function createSavedPlanService(persistence: LocalPersistence) {
   function forProject(projectId: CuttingProjectId) {
@@ -31,15 +42,7 @@ export function createSavedPlanService(persistence: LocalPersistence) {
         return scope(repositories => repositories.savedPlanSummaries.listForProject(projectId))
       },
       async get(id: SavedCuttingPlanId): Promise<PersistenceResult<OpenedSavedPlan>> {
-        return scope(async repositories => {
-          const summary = await owned(repositories, id)
-          if (!summary.ok) return summary
-          const contents = await repositories.savedPlanContents.get(id)
-          if (!contents.ok) return contents
-          if (contents.value.projectId !== projectId) return invalid(new Error('The saved plan owner does not match its summary.'))
-          try { return { ok: true, value: { summary: summary.value, contents: contents.value, plan: restoreSavedPlan(contents.value) } } }
-          catch (cause) { return invalid(cause) }
-        })
+        return scope(repositories => readSavedPlan(repositories, projectId, id))
       },
       async save(metadata: unknown, input: SavePlanInput): Promise<PersistenceResult<OpenedSavedPlan>> {
         try {
@@ -82,6 +85,9 @@ export function createSavedPlanService(persistence: LocalPersistence) {
           const contents = await repositories.savedPlanContents.get(id)
           if (!contents.ok) return contents
           if (contents.value.projectId !== projectId) return invalid(new Error('The saved plan owner does not match its summary.'))
+          const confirmed = await repositories.cuttingConfirmations.find(id)
+          if (!confirmed.ok) return confirmed
+          if (confirmed.value !== null) return { ok: false, error: { kind: 'referenceConflict', message: 'Confirmed plans are retained for inventory movement history and cannot be deleted.' } }
           const removed = await repositories.savedPlanContents.delete(id)
           return removed.ok ? repositories.savedPlanSummaries.delete(id) : removed
         })

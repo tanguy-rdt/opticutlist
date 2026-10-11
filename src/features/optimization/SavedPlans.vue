@@ -3,6 +3,8 @@ import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import type { SavedPlanService } from '../../application/plans/saved-plan-service'
 import type { SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
+import { useCuttingConfirmationService } from '../inventory/cutting-confirmation-service'
+import CuttingConfirmation from '../inventory/CuttingConfirmation.vue'
 
 const props = defineProps<{ plans: ReturnType<SavedPlanService['forProject']>; disabled: boolean }>()
 const emit = defineEmits<{ open: [summary: SavedPlanSummary]; renamed: [summary: SavedPlanSummary]; deleted: [summary: SavedPlanSummary] }>()
@@ -11,6 +13,10 @@ const loading = ref(false)
 const working = ref(false)
 const error = ref('')
 const names = ref<Record<string, string>>({})
+const cutting = useCuttingConfirmationService()
+const confirmationPlan = shallowRef<SavedPlanSummary | null>(null)
+const confirmedIds = ref<string[]>([])
+const confirmationError = ref('')
 let generation = 0
 async function refresh(): Promise<void> {
   const current = ++generation
@@ -19,6 +25,12 @@ async function refresh(): Promise<void> {
   if (current !== generation) return
   if (result.ok) { summaries.value = result.value; names.value = Object.fromEntries(result.value.map(summary => [summary.id, summary.name])); error.value = '' }
   else error.value = persistenceErrorMessage(result.error, 'Saved plan')
+  if (cutting && result.ok && result.value[0]) {
+    const receipts = await cutting.forProject(result.value[0].projectId).list()
+    if (current !== generation) return
+    if (receipts.ok) { confirmedIds.value = receipts.value.map(receipt => receipt.id); confirmationError.value = '' }
+    else confirmationError.value = persistenceErrorMessage(receipts.error, 'Saved plan')
+  }
   loading.value = false
 }
 async function rename(summary: SavedPlanSummary): Promise<void> {
@@ -103,6 +115,12 @@ defineExpose({ refresh })
           <p class="text-sm text-muted">
             Created {{ new Date(summary.createdAt).toLocaleString() }}
           </p>
+          <p
+            v-if="confirmedIds.includes(summary.id)"
+            class="text-sm text-success"
+          >
+            Cutting confirmed · Inventory movements recorded
+          </p>
         </div>
         <button
           type="button"
@@ -125,13 +143,38 @@ defineExpose({ refresh })
         <button
           type="button"
           class="button button-danger"
-          :disabled="disabled || working"
+          :disabled="disabled || working || confirmedIds.includes(summary.id)"
           :aria-label="`Delete plan ${summary.name}`"
           @click="remove(summary)"
         >
           Delete
         </button>
+        <button
+          v-if="cutting"
+          type="button"
+          class="button"
+          :disabled="disabled || working || !!confirmationError || confirmedIds.includes(summary.id)"
+          :aria-label="`Confirm cutting ${summary.name}`"
+          @click="confirmationPlan = summary"
+        >
+          Confirm Cutting
+        </button>
       </li>
     </ul>
+    <p
+      v-if="confirmationError"
+      role="alert"
+      class="text-danger"
+    >
+      {{ confirmationError }}
+    </p>
+    <CuttingConfirmation
+      v-if="cutting && confirmationPlan"
+      :key="confirmationPlan.id"
+      :service="cutting.forProject(confirmationPlan.projectId)"
+      :summary="confirmationPlan"
+      @close="confirmationPlan = null"
+      @confirmed="refresh"
+    />
   </section>
 </template>

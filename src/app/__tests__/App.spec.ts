@@ -4,6 +4,9 @@ import { partSchema } from '../../domain/model/part'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 import { createSavedPlanService } from '../../application/plans/saved-plan-service'
 import { savedPlanServiceKey } from '../../features/optimization/saved-plan-service'
+import { createCuttingConfirmationService } from '../../application/inventory/cutting-confirmation-service'
+import { cuttingConfirmationServiceKey } from '../../features/inventory/cutting-confirmation-service'
+import { stockItemSchema } from '../../domain/model/stock-item'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { createMemoryHistory } from 'vue-router'
@@ -22,7 +25,7 @@ import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import { createLocalPersistence } from '../../infrastructure/persistence/local-database'
 import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../features/suppliers/catalog-repositories'
 import { createCatalogRepositories } from '../../application/catalog/catalog-repositories'
-import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput } from '../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../domain/model/__tests__/fixtures'
 
 vi.mock('../../features/optimization/viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
 
@@ -59,6 +62,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
       provide: {
         [optimizationServiceFactoryKey]: () => createOptimizationService(createWorker),
         [savedPlanServiceKey]: createSavedPlanService(persistence),
+        [cuttingConfirmationServiceKey]: createCuttingConfirmationService(persistence),
         [materialRepositoryKey]: catalog.materials,
         [projectServiceKey]: service,
         [supplierRepositoryKey]: catalog.suppliers,
@@ -350,4 +354,45 @@ describe('saved plan refresh and navigation', () => {
     const stored = await createSavedPlanService(persistence).forProject(project.id).list()
     expect(stored.ok && stored.value.length).toBe(1)
   })
+})
+
+it('confirms only explicitly reviewed saved cutting layouts and retains confirmation status after remount', async () => {
+  const indexedDB = new IDBFactory()
+  const initial = await mountAt('/', indexedDB)
+  const project = cuttingProjectSchema.parse({ id: 'physical-cut', name: 'Physical cutting', partIds: [], materialIds: [], supplierProductIds: [] })
+  await initial.service.projects.create(project)
+  const product = supplierProductSchema.parse(validSupplierProductInput)
+  const part = partSchema.parse({ ...validPartInput, quantity: 1 })
+  const stock = stockItemSchema.parse({ ...validStockItemInput, lengthMm: product.lengthMm, widthMm: product.widthMm, thicknessMm: product.thicknessMm, materialId: product.materialId, grainDirection: product.grainDirection, quantity: 1 })
+  await initial.persistence.stockItems.create(stock)
+  const settings = { kerfMm: 3, edgeMarginMm: 0 }
+  const optimized = optimizeProject({ parts: [part], panels: [{ product, quantity: 1 }], settings })
+  if (!optimized.ok) throw new Error('Fixture')
+  const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = product
+  const saved = await createSavedPlanService(initial.persistence).forProject(project.id).save({ id: 'physical-layout', projectId: project.id, name: 'Physical layout', createdAt: '2026-10-11T12:00:00.000Z' }, { plan: optimized.plan, parts: [part], settings, sources: [{ product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: 1, materialName: 'Birch', supplierName: 'Supplier' }], editedPanelIndices: [] })
+  expect(saved.ok).toBe(true)
+  await initial.router.push('/projects/physical-cut/optimization')
+  const wrapper = initial.wrapper
+  await vi.waitFor(() => { expect(wrapper.find('[aria-label="Confirm cutting Physical layout"]').exists()).toBe(true); expect(wrapper.get('[aria-label="Confirm cutting Physical layout"]').attributes('disabled')).toBeUndefined() })
+  await wrapper.get('[aria-label="Confirm cutting Physical layout"]').trigger('click')
+  await vi.waitFor(() => { expect(wrapper.find('#cutting-stock-0').exists()).toBe(true) })
+  expect(await initial.persistence.stockItems.get(stock.id)).toEqual({ ok: true, value: stock })
+  await wrapper.get('#cutting-stock-0').setValue(stock.id)
+  const control = (name: string) => {
+    const found = wrapper.findAll('button').reverse().find(button => button.text() === name)
+    if (!found) throw new Error(`Missing ${name}`)
+    return found
+  }
+  await control('Review inventory changes').trigger('click')
+  expect(wrapper.text()).toContain('No offcuts will be added.')
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  await control('Confirm Cutting').trigger('click')
+  await vi.waitFor(() => { expect(wrapper.text()).toContain('Cutting confirmed · Inventory movements recorded') })
+  expect(await initial.persistence.stockItems.list()).toEqual({ ok: true, value: [] })
+  initial.wrapper.unmount(); initial.persistence.close()
+  const remount = await mountAt('/projects/physical-cut/optimization', indexedDB)
+  await vi.waitFor(() => { expect(remount.wrapper.text()).toContain('Cutting confirmed · Inventory movements recorded') })
+  expect(remount.wrapper.get('[aria-label="Confirm cutting Physical layout"]').attributes('disabled')).toBeDefined()
+  const movements = await createCuttingConfirmationService(remount.persistence).forProject(project.id).list()
+  expect(movements.ok && movements.value).toHaveLength(1)
 })

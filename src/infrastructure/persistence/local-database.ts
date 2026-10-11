@@ -1,4 +1,5 @@
 import { savedPlanContentsSchema, savedPlanSummarySchema } from '../../domain/model/saved-cutting-plan'
+import { cuttingConfirmationSchema } from '../../domain/model/cutting-confirmation'
 import { cuttingProjectIdSchema } from '../../domain/model/ids'
 import Dexie, { type DexieOptions, type Table } from 'dexie'
 import type { z } from 'zod'
@@ -12,7 +13,7 @@ import { supplierSchema } from '../../domain/model/supplier'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 
 export const DATABASE_NAME = 'opticutlist'
-export const DATABASE_VERSION = 3
+export const DATABASE_VERSION = 4
 export const DATABASE_V1_STORES = {
   materials: 'id',
   parts: 'id',
@@ -21,7 +22,8 @@ export const DATABASE_V1_STORES = {
   stockItems: 'id',
 } as const
 export const DATABASE_V2_STORES = { ...DATABASE_V1_STORES, projects: 'id' } as const
-export const DATABASE_STORES = { ...DATABASE_V2_STORES, savedPlanSummaries: 'id, projectId', savedPlanContents: 'id' } as const
+export const DATABASE_V3_STORES = { ...DATABASE_V2_STORES, savedPlanSummaries: 'id, projectId', savedPlanContents: 'id' } as const
+export const DATABASE_STORES = { ...DATABASE_V3_STORES, cuttingConfirmations: 'id, projectId' } as const
 
 class PersistenceFailure extends Error {
   constructor(readonly detail: PersistenceError) {
@@ -111,6 +113,7 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
   // until the user explicitly adopts them through the project application service.
   db.version(2).stores(DATABASE_V2_STORES)
   // Add plan summaries and payloads without rewriting any existing records.
+  db.version(3).stores(DATABASE_V3_STORES)
   db.version(DATABASE_VERSION).stores(DATABASE_STORES)
   db.on('ready', () => {
     // Dexie versions are multiplied by ten in the native IndexedDB version.
@@ -129,7 +132,25 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
 
   function repositories(tableFor: (name: string) => Table<unknown, string>, run: Execute): Repositories {
     const summaries = tableFor('savedPlanSummaries')
+    const confirmations = tableFor('cuttingConfirmations')
     return {
+      cuttingConfirmations: {
+        ...createRepository(confirmations, cuttingConfirmationSchema, cuttingConfirmationSchema.shape.id, run),
+        find(id) {
+          return run('r', confirmations, async () => {
+            parse(cuttingConfirmationSchema.shape.id, id)
+            const record = await confirmations.get(id)
+            return record === undefined ? null : parse(cuttingConfirmationSchema, record)
+          })
+        },
+        listForProject(projectId) {
+          return run('r', confirmations, async () => {
+            parse(cuttingProjectIdSchema, projectId)
+            const records = await confirmations.where('projectId').equals(projectId).toArray()
+            return records.map(record => parse(cuttingConfirmationSchema, record))
+          })
+        },
+      },
       savedPlanSummaries: {
         ...createRepository(summaries, savedPlanSummarySchema, savedPlanSummarySchema.shape.id, run),
         listForProject(projectId) {
