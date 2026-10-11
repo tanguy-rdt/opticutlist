@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCuttingPlanPdfService, type CuttingPlanPdfDocument } from '../cutting-plan-pdf-service'
-import { pdfRequest } from './pdf-fixtures'
+import { createCuttingPlanPdfService, type CuttingPlanPdfDocument, type ProjectCuttingPdfDocument } from '../cutting-plan-pdf-service'
+import { pdfRequest, multiPanelPdfRequest } from './pdf-fixtures'
 import { applyPlanEdit, createPlanEditingSession, currentEditingPlan } from '../../optimization/plan-editing-session'
 import { rotationInput, rotationPlan } from '../../../domain/cutting-tree/__tests__/editing-fixtures'
 import { freezeDeep, viewerPart } from '../../../domain/cutting-tree/__tests__/viewer-fixtures'
@@ -52,5 +52,36 @@ describe('Validated PDF application service', () => {
   it('reports adapter errors explicitly without rejecting the promise', async () => {
     const generate = vi.fn().mockRejectedValue(new Error('PDF font unavailable'))
     expect(await createCuttingPlanPdfService({ generate }).export(pdfRequest)).toEqual({ ok: false, error: { kind: 'generationFailure', message: 'PDF font unavailable' } })
+  })
+})
+
+describe('Whole-result PDF validation', () => {
+  it('exports accepted panel edits in one detached document', async () => {
+    const request = multiPanelPdfRequest()
+    const allocation = request.plan.panels[0]; const source = request.sources[0]; const part = request.parts[0]
+    if (!allocation || !source || !part) throw new Error('Fixture')
+    const session = createPlanEditingSession(allocation.plan, { panel: source.product, parts: request.parts, settings: request.settings })
+    if (!session.ok) throw new Error('Fixture')
+    const edited = applyPlanEdit(session.session, { kind: 'swap', first: { partId: part.id, copyIndex: 0 }, second: { partId: part.id, copyIndex: 1 } })
+    if (!edited.ok) throw new Error('Fixture')
+    const input = { ...request, editedPanelIndices: [0], plan: { ...request.plan, panels: [{ ...allocation, plan: currentEditingPlan(edited.session) }, ...request.plan.panels.slice(1)] } }
+    const original = structuredClone(input)
+    const generateProject = vi.fn<(document: ProjectCuttingPdfDocument) => Promise<Uint8Array<ArrayBuffer>>>().mockResolvedValue(new Uint8Array([1]))
+    expect((await createCuttingPlanPdfService({ generate: vi.fn(), generateProject }).exportProject(input)).ok).toBe(true)
+    expect(generateProject.mock.calls[0]?.[0].panels).toHaveLength(2)
+    expect(generateProject.mock.calls[0]?.[0].panels[0]).toMatchObject({ edited: true, scene: { parts: [{ copyIndex: 1 }, { copyIndex: 0 }] } })
+    expect(input).toEqual(original)
+  })
+  it.each(['tree', 'accounting', 'reference'] as const)('rejects corrupted %s before generation', async kind => {
+    const request = multiPanelPdfRequest()
+    const allocation = request.plan.panels[0]; if (!allocation) throw new Error('Fixture')
+    const plan = kind === 'tree' ? { ...request.plan, panels: [{ ...allocation, plan: { ...allocation.plan, tree: { ...allocation.plan.tree, region: { xMm: 6, yMm: 5, lengthMm: 200, widthMm: 100 } } } }, ...request.plan.panels.slice(1)] } : kind === 'accounting' ? { ...request.plan, metrics: { ...request.plan.metrics, placedCount: 99 } } : request.plan
+    const input = { ...request, plan, sources: kind === 'reference' ? [] : request.sources }
+    const generateProject = vi.fn()
+    expect(await createCuttingPlanPdfService({ generate: vi.fn(), generateProject }).exportProject(input)).toMatchObject({ ok: false, error: { kind: 'invalidPlan' } })
+    expect(generateProject).not.toHaveBeenCalled()
+  })
+  it('reports complete-document generation failures without rejecting', async () => {
+    expect(await createCuttingPlanPdfService({ generate: vi.fn(), generateProject: vi.fn().mockRejectedValue(new Error('PDF failure')) }).exportProject(multiPanelPdfRequest())).toMatchObject({ ok: false, error: { kind: 'generationFailure', message: 'PDF failure' } })
   })
 })

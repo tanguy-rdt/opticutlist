@@ -23,7 +23,7 @@ import { projectIdKey, projectServiceKey } from '../../projects/project-service'
 import { supplierProductRepositoryKey, supplierRepositoryKey } from '../../suppliers/catalog-repositories'
 import OptimizationView from '../OptimizationView.vue'
 import { optimizationServiceFactoryKey } from '../optimization-service'
-import { createCuttingPlanPdfService, type CuttingPlanPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
+import { createCuttingPlanPdfService, type ProjectCuttingPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
 import { cuttingPlanPdfServiceKey } from '../pdf-export-service'
 import type * as PdfExportModule from '../pdf-export-service'
 import { downloadCuttingPlanPdf } from '../pdf-export-service'
@@ -77,7 +77,7 @@ async function setup() {
   await catalog.supplierProducts.create({ ...product, id: 'unselected-panel', name: 'Unselected panel' })
   const workers: FakeWorker[] = []
   const factory = () => createOptimizationService(() => { const worker = new FakeWorker(); workers.push(worker); return worker })
-  const pdfGenerate = vi.fn<(document: CuttingPlanPdfDocument) => Promise<Uint8Array<ArrayBuffer>>>().mockResolvedValue(new Uint8Array([1]))
+  const pdfGenerate = vi.fn<(document: ProjectCuttingPdfDocument) => Promise<Uint8Array<ArrayBuffer>>>().mockResolvedValue(new Uint8Array([1]))
   const router = createAppRouter(createMemoryHistory())
   await router.push('/')
   await router.isReady()
@@ -87,7 +87,7 @@ async function setup() {
       [currentResultServiceKey]: { forProject: () => current }, [projectIdKey]: project.id, [projectServiceKey]: service,
       [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers,
       [supplierProductRepositoryKey]: catalog.supplierProducts, [optimizationServiceFactoryKey]: factory,
-      [cuttingPlanPdfServiceKey]: createCuttingPlanPdfService({ generate: pdfGenerate }),
+      [cuttingPlanPdfServiceKey]: createCuttingPlanPdfService({ generate: vi.fn(), generateProject: pdfGenerate }),
     } },
   })
   wrappers.push(wrapper)
@@ -116,9 +116,17 @@ describe('Automatic project optimization', () => {
       if (button === undefined) throw new Error(`Missing ${label}`)
       await button.trigger('click')
     }
+    expect(wrapper.text()).not.toContain('Validate Cutting')
+    expect(wrapper.find('[aria-label="Complete vector PDF export"]').exists()).toBe(false)
+    expect(wrapper.findAll('button').filter(control => control.text() === 'Finalize cutting')).toHaveLength(1)
+    const finalization = wrapper.get('[data-finalization-action]').element
+    const layout = wrapper.get('[aria-label="Cutting plan canvas"]').element
+    expect(layout.compareDocumentPosition(finalization) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await click('Finalize cutting');
     await click('Export PDF'); await flushPromises()
-    expect(pdfGenerate.mock.calls[0]?.[0]).toMatchObject({ edited: false, materialName: validMaterialInput.name })
-    expect(pdfGenerate.mock.calls[0]?.[0].scene.parts[0]?.copyIndex).toBe(0)
+    await click('Close finalization')
+    expect(pdfGenerate.mock.calls[0]?.[0].panels[0]).toMatchObject({ edited: false, materialName: validMaterialInput.name })
+    expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(0)
     await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
     await click('Enter Edit Mode')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
@@ -127,16 +135,20 @@ describe('Automatic project optimization', () => {
     expect(wrapper.text()).toContain('Validated edited panel plan')
     expect(wrapper.text()).toContain('Optimizer baseline strategy')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
+    await click('Finalize cutting')
     await wrapper.get('#pdf-page-orientation').setValue('portrait')
     await click('Export PDF'); await flushPromises()
-    expect(pdfGenerate.mock.calls[1]?.[0]).toMatchObject({ edited: true, orientation: 'portrait' })
-    expect(pdfGenerate.mock.calls[1]?.[0].scene.parts[0]?.copyIndex).toBe(1)
+    await click('Close finalization')
+    expect(pdfGenerate.mock.calls[1]?.[0].panels[0]).toMatchObject({ edited: true, orientation: 'portrait' })
+    expect(pdfGenerate.mock.calls[1]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(1)
     await click('Undo edit')
     expect(wrapper.text()).toContain('Validated panel plan')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
+    await click('Finalize cutting');
     await click('Export PDF'); await flushPromises()
-    expect(pdfGenerate.mock.calls[2]?.[0].edited).toBe(false)
-    expect(pdfGenerate.mock.calls[2]?.[0].scene).toEqual(pdfGenerate.mock.calls[0]?.[0].scene)
+    await click('Close finalization')
+    expect(pdfGenerate.mock.calls[2]?.[0].panels[0]?.edited).toBe(false)
+    expect(pdfGenerate.mock.calls[2]?.[0].panels[0]?.scene).toEqual(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene)
     await click('Redo edit')
     await click('Reset to Optimized Plan')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 1')
@@ -455,7 +467,7 @@ describe('automatic workflow and per-panel integration', () => {
     expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '2')
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
-  it('navigates layouts and preserves independent edits, undo, viewport and per-panel PDF exports', async () => {
+  it('navigates layouts and preserves independent edits, undo, viewport and complete-result PDF exports', async () => {
     const { wrapper, catalog, service, project, product, part, start, pdfGenerate, persistence } = await setup()
     await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 1443, widthMm: 560 })
     await service.parts(project.id).update(part.id, { ...part, quantity: 4 })
@@ -477,17 +489,21 @@ describe('automatic workflow and per-panel integration', () => {
     await click('Swap selected copies')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
     await click('Zoom in')
+    await click('Finalize cutting');
     await click('Export PDF'); await flushPromises()
-    expect(pdfGenerate.mock.calls[0]?.[0].edited).toBe(true)
-    expect(pdfGenerate.mock.calls[0]?.[0].unplaced).toMatchObject([{ firstCopyIndex: 2, count: 2, reason: { kind: 'allocatedElsewhere' } }])
+    await click('Close finalization')
+    expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.edited).toBe(true)
+    expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.unplaced).toMatchObject([{ firstCopyIndex: 2, count: 2, reason: { kind: 'allocatedElsewhere' } }])
     await wrapper.get('#optimization-layout').setValue(1)
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 3')
     expect(wrapper.text()).not.toContain('Validated edited panel plan')
     expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
     expect(wrapper.findAll('[aria-label="Cutting plan canvas"]')).toHaveLength(1)
+    await click('Finalize cutting');
     await click('Export PDF'); await flushPromises()
-    expect(pdfGenerate.mock.calls[1]?.[0].edited).toBe(false)
-    expect(pdfGenerate.mock.calls[1]?.[0].scene.parts[0]?.copyIndex).toBe(2)
+    await click('Close finalization')
+    expect(pdfGenerate.mock.calls[1]?.[0].panels[1]?.edited).toBe(false)
+    expect(pdfGenerate.mock.calls[1]?.[0].panels[1]?.scene.parts[0]?.copyIndex).toBe(2)
     await wrapper.get('#optimization-layout').setValue(0)
     expect(wrapper.text()).toContain('Validated edited panel plan')
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
@@ -496,8 +512,10 @@ describe('automatic workflow and per-panel integration', () => {
     const downloads = vi.mocked(downloadCuttingPlanPdf).mock.calls.length
     let finish: () => void = () => { throw new Error('Export has not started') }
     pdfGenerate.mockImplementationOnce(() => new Promise(resolve => { finish = () => { resolve(new Uint8Array([2])) } }))
+    await click('Finalize cutting');
     await click('Export PDF'); await flushPromises()
     expect(wrapper.text()).toContain('Generating PDF')
+    await click('Close finalization')
     await wrapper.get('#optimization-layout').setValue(1)
     finish(); await flushPromises()
     expect(vi.mocked(downloadCuttingPlanPdf).mock.calls).toHaveLength(downloads)
@@ -553,9 +571,11 @@ describe('automatic current result in the optimization workspace', () => {
     await click(wrapper, 'Refresh inputs')
     await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
+    await click(wrapper, 'Finalize cutting');
     await click(wrapper, 'Export PDF'); await flushPromises()
-    expect(pdfGenerate.mock.calls[0]?.[0].edited).toBe(true)
-    expect(pdfGenerate.mock.calls[0]?.[0].scene.parts[0]?.copyIndex).toBe(1)
+    await click(wrapper, 'Close finalization')
+    expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.edited).toBe(true)
+    expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(1)
     await wrapper.get('#optimization-layout').setValue(1)
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 4')
     await click(wrapper, 'Enter Edit Mode')

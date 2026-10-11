@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
-import type { CuttingPlanPdfDocument } from '../../application/export/cutting-plan-pdf-service'
+import type { CuttingPlanPdfDocument, ProjectCuttingPdfDocument } from '../../application/export/cutting-plan-pdf-service'
 import { a4PageSize, fitPdfPanel, pdfRect } from './pdf-layout'
 
 const ink = rgb(0.12, 0.15, 0.17)
@@ -34,22 +34,20 @@ function dimensions(item: { lengthMm: number; widthMm: number; thicknessMm: numb
 }
 
 /** True PDF paths and text from the shared validated scene; no canvas/image dependency. */
-async function renderCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<Uint8Array<ArrayBuffer>> {
-  const pdf = await PDFDocument.create()
-  const font = await pdf.embedFont(StandardFonts.Helvetica)
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: CuttingPlanPdfDocument, heading = 'OptiCutList / Cutting plan'): void {
   const size = a4PageSize(document.orientation)
   const page = pdf.addPage([size.width, size.height])
   const contentWidth = size.width - 2 * margin
   let y = size.height - margin
-  page.drawText('OptiCutList / Cutting plan', { x: margin, y, size: 19, font: bold, color: ink }); y -= 24
+  page.drawText(heading, { x: margin, y, size: 19, font: bold, color: ink }); y -= 24
   y = drawLines(page, wrapPdfText(`${document.edited ? 'Manually edited' : 'Optimized'} panel plan - independently validated`, font, 10, contentWidth), font, margin, y)
   y = drawLines(page, wrapPdfText(`Panel: ${document.panel.name} / ${dimensions(document.panel)}`, font, 10, contentWidth), font, margin, y)
   y = drawLines(page, wrapPdfText(`Material: ${document.materialName} / ID: ${document.panel.materialId}`, font, 10, contentWidth), font, margin, y)
   y = drawLines(page, wrapPdfText(`Panel grain: ${document.panel.grainDirection} / Kerf: ${String(document.settings.kerfMm)} mm / Edge margin: ${String(document.settings.edgeMarginMm)} mm`, font, 10, contentWidth), font, margin, y)
-  const unplacedCount = document.unplaced.reduce((total, part) => total + part.count, 0)
+  const elsewhere = document.unplaced.filter(part => part.reason.kind === 'allocatedElsewhere').reduce((total, part) => total + part.count, 0)
+  const unplacedCount = document.unplaced.reduce((total, part) => total + part.count, 0) - elsewhere
   y -= 6
-  y = drawLines(page, wrapPdfText(`${String(document.scene.parts.length)} copies placed / ${String(unplacedCount)} copies unplaced / Utilization: ${document.metrics.utilizationPercent.toFixed(2)}%`, bold, 11, contentWidth), bold, margin, y, 11)
+  y = drawLines(page, wrapPdfText(`${String(document.scene.parts.length)} copies placed / ${String(unplacedCount)} copies unplaced${elsewhere ? ` / ${String(elsewhere)} copies on other panels` : ''} / Utilization: ${document.metrics.utilizationPercent.toFixed(2)}%`, bold, 11, contentWidth), bold, margin, y, 11)
   y = drawLines(page, wrapPdfText(`Waste: ${document.metrics.wasteAreaMm2.toLocaleString('en-US')} mm² (includes margins and kerf)`, font, 10, contentWidth), font, margin, y)
   const transform = fitPdfPanel(document.scene.panel, { x: margin, y: 92, width: contentWidth, height: y - 110 })
   page.drawRectangle({ ...pdfRect(document.scene.panel, transform), color: rgb(0.9, 0.9, 0.9) })
@@ -116,17 +114,64 @@ async function renderCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<U
         : missing.reason.issues.map(issue => ({ materialMismatch: 'Material mismatch', thicknessMismatch: 'Exact thickness mismatch', noUsableArea: 'No usable area', grainRequiresRotation: 'Grain requires forbidden rotation', exceedsUsableArea: 'Exceeds usable panel size' })[issue.kind]).join('; ')
     row(`${part?.name ?? missing.partId} / ID: ${missing.partId}\n${String(missing.count)} unplaced copies, starting at copy ${String(missing.firstCopyIndex + 1)}${part === undefined ? '' : ` / ${dimensions(part)}`}\nReason: ${reason}`)
   }
-  row('Single-panel plan only. Export does not purchase or consume inventory. Print at actual size to retain the stated drawing scale.')
+  row('Panel layout only. See the project summary for total unplaced demand. Export does not purchase or consume inventory. Print at actual size to retain the stated drawing scale.')
+}
+async function finishPdf(pdf: PDFDocument, font: PDFFont): Promise<Uint8Array<ArrayBuffer>> {
   for (const [index, current] of pdf.getPages().entries()) current.drawText(`OptiCutList / ${String(index + 1)} of ${String(pdf.getPageCount())}`, { x: margin, y: 24, size: 9, font, color: muted })
   pdf.setTitle('OptiCutList cutting plan')
   pdf.setProducer('OptiCutList / pdf-lib')
   return new Uint8Array(await pdf.save())
 }
-
-export async function generateCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<Uint8Array<ArrayBuffer>> {
-  try { return await renderCuttingPlanPdf(document) }
+async function renderCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<Uint8Array<ArrayBuffer>> {
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  appendCuttingPlanPdf(pdf, font, bold, document)
+  return finishPdf(pdf, font)
+}
+export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocument): Promise<Uint8Array<ArrayBuffer>> {
+  return withFontErrors(async () => {
+    const pdf = await PDFDocument.create()
+    const font = await pdf.embedFont(StandardFonts.Helvetica)
+    const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+    const size = a4PageSize(document.orientation)
+    let page = pdf.addPage([size.width, size.height])
+    let y = size.height - margin
+    function row(text: string, heading = false): void {
+      const selected = heading ? bold : font
+      for (const line of wrapPdfText(text, selected, heading ? 14 : 10, size.width - 2 * margin)) {
+        if (y < 50) { page = pdf.addPage([size.width, size.height]); y = size.height - margin }
+        y = drawLines(page, [line], selected, margin, y, heading ? 14 : 10)
+      }
+      y -= 8
+    }
+    row('OptiCutList / Project cutting result', true)
+    row(document.title)
+    row(`${String(document.panels.length)} panels / ${String(document.metrics.placedCount)} copies placed / ${String(document.metrics.unplacedCount)} copies unplaced`)
+    row(document.metrics.unplacedCount ? 'INCOMPLETE - unplaced parts are not produced by these layouts.' : 'All requested copies are placed.')
+    row(`Utilization: ${document.metrics.utilizationPercent.toFixed(2)}% / Waste: ${document.metrics.wasteAreaMm2.toLocaleString('en-US')} mm² (including kerf and margins)`)
+    row('Panel layouts', true)
+    document.panels.forEach((panel, index) => { row(`Panel ${String(index + 1)}: ${panel.panel.name} / ${dimensions(panel.panel)} / ${panel.materialName} / Grain: ${panel.panel.grainDirection} / Kerf: ${String(panel.settings.kerfMm)} mm / Margin: ${String(panel.settings.edgeMarginMm)} mm${panel.edited ? ' / Accepted manual edits' : ''}`) })
+    row('Unplaced project parts', true)
+    if (!document.unplaced.length) row('None.')
+    const reasons = { noCompatiblePanel: 'No compatible selected panel', constraintsPreventPlacement: 'Dimensions, grain, rotation, kerf or margins prevent placement', panelLimitReached: 'Insufficient panel quantity or remaining usable space' }
+    for (const missing of document.unplaced) {
+      const part = document.parts.find(part => part.id === missing.partId)
+      row(`${part?.name ?? missing.partId} / ID: ${missing.partId} / ${String(missing.count)} copies starting at ${String(missing.firstCopyIndex + 1)}${part ? ` / ${dimensions(part)}` : ''} / ${reasons[missing.reason]}`)
+    }
+    row('PDF generation does not change inventory. Physical cutting requires separate explicit stock confirmation.')
+    document.panels.forEach((panel, index) => { appendCuttingPlanPdf(pdf, font, bold, panel, `OptiCutList / Panel ${String(index + 1)} of ${String(document.panels.length)}`) })
+    return finishPdf(pdf, font)
+  })
+}
+async function withFontErrors(work: () => Promise<Uint8Array<ArrayBuffer>>): Promise<Uint8Array<ArrayBuffer>> {
+  try { return await work() }
   catch (cause) {
     if (cause instanceof Error && cause.message.includes('WinAnsi cannot encode')) throw new Error('A name contains characters unsupported by the built-in PDF font. Use Latin-script names for this export; no characters have been replaced.', { cause })
     throw cause
   }
+}
+
+export async function generateCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<Uint8Array<ArrayBuffer>> {
+  return withFontErrors(() => renderCuttingPlanPdf(document))
 }

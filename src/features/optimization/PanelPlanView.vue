@@ -6,7 +6,6 @@ import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { AllocatedPanel } from '../../domain/optimizer/project-plan'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import CuttingPlanViewer from './CuttingPlanViewer.vue'
-import PdfExportControls from './PdfExportControls.vue'
 
 const props = defineProps<{ allocation: AllocatedPanel; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; materialName: string; savedEdited?: boolean; savedBaseline?: boolean; confirmReset?: () => boolean }>()
 const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean] }>()
@@ -38,14 +37,6 @@ function partName(id: string): string { return props.parts.find(part => part.id 
       :parts="parts"
       :settings="settings"
       @plan-change="planChanged"
-    />
-    <PdfExportControls
-      :plan="displayedPlan"
-      :panel="panel"
-      :parts="parts"
-      :settings="settings"
-      :material-name="materialName"
-      :edited="editedPlan !== null || Boolean(savedEdited)"
     />
     <dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>

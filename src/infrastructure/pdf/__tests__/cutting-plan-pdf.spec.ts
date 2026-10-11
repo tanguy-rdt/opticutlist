@@ -1,8 +1,8 @@
 import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
-import { generateCuttingPlanPdf, wrapPdfText } from '../cutting-plan-pdf'
+import { generateCuttingPlanPdf, generateProjectCuttingPdf, wrapPdfText } from '../cutting-plan-pdf'
 import { createCuttingPlanPdfService } from '../../../application/export/cutting-plan-pdf-service'
-import { pdfRequest } from '../../../application/export/__tests__/pdf-fixtures'
+import { pdfRequest, multiPanelPdfRequest } from '../../../application/export/__tests__/pdf-fixtures'
 import { applyPlanEdit, createPlanEditingSession, currentEditingPlan } from '../../../application/optimization/plan-editing-session'
 import { rotationInput, rotationPlan, swapInput, swapPlan } from '../../../domain/cutting-tree/__tests__/editing-fixtures'
 import { freezeDeep, viewerPart } from '../../../domain/cutting-tree/__tests__/viewer-fixtures'
@@ -117,4 +117,32 @@ it('exports each allocated panel as vectors and identifies copies allocated else
     expect(hasText(pageOperators(pdf, 1), 'All requested copies are placed on this panel')).toBe(false)
   }
   expect(result.plan).toEqual(original)
+})
+
+describe('Complete multi-panel vector PDF', () => {
+  it.each(['portrait', 'landscape'] as const)('renders a global summary and every %s panel with no images', async orientation => {
+    const request = { ...multiPanelPdfRequest(true), orientation }
+    const original = structuredClone(request)
+    const service = createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf })
+    const result = await service.exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    expect(request.plan.panels).toHaveLength(2)
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(5)
+    const pages = pdf.getPages().map((_page, index) => pageOperators(pdf, index))
+    expect(hasText(pages[0] ?? '', 'INCOMPLETE')).toBe(true)
+    expect(hasText(pages[0] ?? '', '2 panels / 4 copies placed / 1 copies unplaced')).toBe(true)
+    expect(hasText(pages.join(''), 'Oversized part')).toBe(true)
+    for (let index = 1; index <= 2; index += 1) {
+      const layout = pages.find(page => hasText(page, `Panel ${String(index)} of 2`))
+      expect(layout).toBeDefined()
+      expect(layout).toMatch(/\bm\b/u)
+      expect(layout).toMatch(/\bl\b/u)
+      expect(layout).toMatch(/\bf\b/u)
+      expect(hasText(layout ?? '', '210 x 110 x 18 mm')).toBe(true)
+      expect(hasText(layout ?? '', 'Kerf: 2 mm / Edge margin: 5 mm')).toBe(true)
+    }
+    for (const [, object] of pdf.context.enumerateIndirectObjects()) expect(object.toString()).not.toContain('/Subtype /Image')
+    expect(request).toEqual(original)
+  })
 })

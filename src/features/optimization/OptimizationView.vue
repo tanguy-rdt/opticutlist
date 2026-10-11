@@ -11,7 +11,7 @@ import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import { useCurrentResultService } from './current-result-service'
 import { useCuttingConfirmationService } from '../inventory/cutting-confirmation-service'
-import CuttingConfirmation from '../inventory/CuttingConfirmation.vue'
+import CuttingFinalization from './CuttingFinalization.vue'
 import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import FormField from '../../shared/ui/FormField.vue'
 import PanelPlanView from './PanelPlanView.vue'
@@ -68,6 +68,12 @@ let persistenceController = new AbortController()
 let persistenceQueue: Promise<void> = Promise.resolve()
 const busy = computed(() => planBusy.value || state.value === 'running' || state.value === 'loading')
 const fingerprint = computed(() => result.value === null ? '' : JSON.stringify(result.value.selection.plan.panels.map((panel, index) => (editedPlans.value.get(index) ?? panel.plan).tree)))
+const displayedInput = computed<SavePlanInput | null>(() => result.value === null ? null : {
+  plan: { ...result.value.selection.plan, panels: result.value.selection.plan.panels.map((panel, index) => ({ ...panel, plan: editedPlans.value.get(index) ?? panel.plan })) },
+  parts: [...result.value.parts], settings: result.value.settings, sources: result.value.sources,
+  editedPanelIndices: result.value.selection.plan.panels.flatMap((_, index) => editedPlans.value.has(index) || result.value?.savedEdited.includes(index) ? [index] : []),
+})
+const inventoryProblem = computed(() => !cutting ? 'The inventory service is unavailable.' : planError.value ? planError.value : planBusy.value || fingerprint.value !== savedFingerprint.value || !savedSummary.value ? 'The current layouts have not finished automatic persistence.' : '')
 const unsavedManualChanges = computed(() => result.value !== null && (savedFingerprint.value === null ? editedPlans.value.size > 0 : fingerprint.value !== savedFingerprint.value))
 function canDiscard(): boolean { return !unsavedManualChanges.value || window.confirm('Discard unsaved manual cutting-plan changes? Automatic persistence has not completed.') }
 function planChanged(index: number, plan: PanelCuttingPlan, modified: boolean): void {
@@ -236,11 +242,8 @@ function persistCurrent(): void {
   const current = generation
   const currentFingerprint = fingerprint.value
   const signal = persistenceController.signal
-  const input: SavePlanInput = structuredClone({
-    plan: { ...currentResult.selection.plan, panels: currentResult.selection.plan.panels.map((panel, index) => ({ ...panel, plan: editedPlans.value.get(index) ?? panel.plan })) },
-    parts: [...currentResult.parts], settings: currentResult.settings, sources: currentResult.sources,
-    editedPanelIndices: currentResult.selection.plan.panels.flatMap((_, index) => editedPlans.value.has(index) || currentResult.savedEdited.includes(index) ? [index] : []),
-  })
+  const input = structuredClone(displayedInput.value)
+  if (!input) return
   // Serialize accepted edits, including undo/reset and edits on inactive layouts.
   planBusy.value = true
   confirmationOpen.value = false
@@ -545,24 +548,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       >
         Cutting confirmed · Inventory movements recorded
       </p>
-      <button
-        v-if="cutting && savedSummary"
-        type="button"
-        class="button"
-        :disabled="busy || confirmed || !!planError || fingerprint !== savedFingerprint"
-        :aria-label="`Confirm cutting ${savedSummary.name}`"
-        @click="confirmationOpen = true"
-      >
-        Confirm Cutting
-      </button>
-      <CuttingConfirmation
-        v-if="cutting && savedSummary && confirmationOpen"
-        :key="savedSummary.id"
-        :service="cutting"
-        :summary="savedSummary"
-        @close="confirmationOpen = false"
-        @confirmed="refreshConfirmation"
-      />
       <p role="status">
         {{ result.selection.plan.metrics.placedCount }} copies placed · {{ result.selection.plan.metrics.unplacedCount }} copies unplaced{{ result.selection.plan.metrics.unplacedCount ? '. Additional panels or different inputs are needed.' : '.' }}
       </p>
@@ -650,5 +635,28 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         @plan-change="(plan, modified) => planChanged(panelIndex, plan, modified)"
       />
     </KeepAlive>
+    <div
+      v-if="result"
+      class="flex justify-end border-t border-line pt-6"
+    >
+      <button
+        type="button"
+        class="button button-primary"
+        data-finalization-action
+        @click="confirmationOpen = true"
+      >
+        Finalize cutting
+      </button>
+    </div>
+    <CuttingFinalization
+      v-if="confirmationOpen && displayedInput"
+      :key="savedSummary?.id ?? result?.requestId ?? 0"
+      :input="displayedInput"
+      :summary="savedSummary"
+      :cutting="cutting"
+      :inventory-problem="inventoryProblem"
+      @close="confirmationOpen = false"
+      @confirmed="refreshConfirmation"
+    />
   </section>
 </template>

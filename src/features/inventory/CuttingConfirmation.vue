@@ -6,8 +6,8 @@ import { confirmCuttingInputSchema } from '../../domain/model/cutting-confirmati
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import FormField from '../../shared/ui/FormField.vue'
 
-const props = defineProps<{ service: ReturnType<CuttingConfirmationService['forProject']>; summary: SavedPlanSummary }>()
-const emit = defineEmits<{ close: []; confirmed: [] }>()
+const props = defineProps<{ service: ReturnType<CuttingConfirmationService['forProject']>; summary: SavedPlanSummary; embedded?: boolean }>()
+const emit = defineEmits<{ close: []; confirmed: []; working: [value: boolean] }>()
 const preview = shallowRef<CuttingPreview | null>(null)
 const loading = ref(true)
 const working = ref(false)
@@ -33,13 +33,13 @@ async function load(): Promise<void> {
 }
 async function confirm(): Promise<void> {
   if (working.value || !ready.value || !review.value || !window.confirm('Confirm physical cutting? Deduct the selected stock and keep only the checked offcuts. This cannot be undone.')) return
-  working.value = true; error.value = ''
+  working.value = true; emit('working', true); error.value = ''
   const input = confirmCuttingInputSchema.parse({ confirmed: true, assignments: panels.value.map(panel => ({ panelIndex: panel.index, stockItemId: assignments.value[panel.index] })), offcuts: kept.value.map(item => ({ panelIndex: item.panelIndex, wasteIndex: item.wasteIndex })) })
   const result = await props.service.confirm(props.summary.id, input)
   if (!active) return
   if (result.ok) { if (preview.value) preview.value = { ...preview.value, confirmation: result.value }; emit('confirmed') }
   else { error.value = persistenceErrorMessage(result.error, 'Saved plan'); review.value = false }
-  working.value = false
+  working.value = false; emit('working', false)
 }
 onMounted(load)
 onBeforeUnmount(() => { active = false })
@@ -54,9 +54,10 @@ onBeforeUnmount(() => { active = false })
         id="cutting-confirm-title"
         class="text-xl font-semibold"
       >
-        Confirm cutting: {{ summary.name }}
+        Inventory confirmation
       </h3>
       <button
+        v-if="!embedded"
         class="button"
         type="button"
         :disabled="working"
@@ -66,7 +67,7 @@ onBeforeUnmount(() => { active = false })
       </button>
     </div>
     <p class="text-muted">
-      This records physical cutting of the saved layouts, not unsaved viewer edits. Catalogue products are not owned stock.
+      This records physical cutting of the automatically persisted layouts. Catalogue products are not owned stock.
     </p>
     <p
       v-if="loading"

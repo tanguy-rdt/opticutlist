@@ -38,6 +38,9 @@ app.provide(optimizationServiceFactoryKey, () => createOptimizationService(creat
 app.provide(cuttingPlanPdfServiceKey, createCuttingPlanPdfService({ generate: async document => {
   const { generateCuttingPlanPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
   return generateCuttingPlanPdf(document)
+}, generateProject: async document => {
+  const { generateProjectCuttingPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
+  return generateProjectCuttingPdf(document)
 } }))
 app.onUnmount(() => { persistence.close() })
 

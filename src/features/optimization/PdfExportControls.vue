@@ -1,35 +1,36 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onDeactivated, ref, toRaw, watch } from 'vue'
 import type { PdfOrientation } from '../../application/export/cutting-plan-pdf-service'
-import type { CuttingSettings } from '../../domain/model/cutting-settings'
-import type { Part } from '../../domain/model/part'
-import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
-import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
+import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import FormField from '../../shared/ui/FormField.vue'
 import { downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-service'
 
-const props = defineProps<{ plan: PanelCuttingPlan; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; materialName: string; edited: boolean }>()
+const props = defineProps<{ input: SavePlanInput; title: string }>()
 const service = useCuttingPlanPdfService()
 const orientation = ref<PdfOrientation>('landscape')
 const exporting = ref(false)
 const error = ref('')
 const feedback = ref('')
+const previewUrl = ref('')
+function clearPreview(): void { if (previewUrl.value) URL.revokeObjectURL(previewUrl.value); previewUrl.value = '' }
 let generation = 0
-watch([() => props.plan, () => props.panel, () => props.parts, () => props.settings, orientation], () => {
-  generation += 1; exporting.value = false; error.value = ''; feedback.value = ''
+watch([() => props.input, () => props.title, orientation], () => {
+  generation += 1; clearPreview(); exporting.value = false; error.value = ''; feedback.value = ''
 }, { flush: 'sync' })
-onBeforeUnmount(() => { generation += 1 })
-onDeactivated(() => { generation += 1; exporting.value = false })
-async function exportPdf(): Promise<void> {
+onBeforeUnmount(() => { generation += 1; clearPreview() })
+onDeactivated(() => { generation += 1; clearPreview(); exporting.value = false })
+async function exportPdf(download: boolean): Promise<void> {
   if (exporting.value || service === undefined) return
   const current = ++generation
   exporting.value = true; error.value = ''; feedback.value = ''
   try {
-    const result = await service.export({ plan: toRaw(props.plan), panel: toRaw(props.panel), parts: toRaw(props.parts), settings: toRaw(props.settings), materialName: props.materialName, orientation: orientation.value, edited: props.edited })
+    const result = await service.exportProject({ ...toRaw(props.input), title: props.title, orientation: orientation.value })
     if (current !== generation) return
     if (!result.ok) { error.value = `PDF export failed: ${result.error.message}`; return }
-    downloadCuttingPlanPdf(result.bytes)
-    feedback.value = 'PDF download started. The exported plan was independently validated.'
+    clearPreview()
+    previewUrl.value = URL.createObjectURL(new Blob([result.bytes], { type: 'application/pdf' }))
+    if (download) downloadCuttingPlanPdf(result.bytes)
+    feedback.value = download ? 'PDF download started. All panel layouts were independently validated.' : 'Complete PDF preview generated. Inventory is unchanged.'
   } catch (cause) {
     if (current === generation) error.value = cause instanceof Error ? `PDF export failed: ${cause.message}` : 'PDF export failed. Try again.'
   } finally { if (current === generation) exporting.value = false }
@@ -38,7 +39,7 @@ async function exportPdf(): Promise<void> {
 <template>
   <section
     class="space-y-3 rounded-lg border border-line bg-surface p-4"
-    aria-label="Vector PDF export"
+    aria-label="Complete vector PDF export"
   >
     <div class="flex flex-wrap items-end gap-3">
       <FormField
@@ -65,9 +66,17 @@ async function exportPdf(): Promise<void> {
         type="button"
         class="button"
         :disabled="exporting || service === undefined"
+        @click="exportPdf(false)"
+      >
+        Preview PDF
+      </button>
+      <button
+        type="button"
+        class="button"
+        :disabled="exporting || service === undefined"
         :aria-busy="exporting"
         aria-describedby="pdf-export-help"
-        @click="exportPdf"
+        @click="exportPdf(true)"
       >
         {{ exporting ? 'Generating PDF…' : 'Export PDF' }}
       </button>
@@ -76,8 +85,17 @@ async function exportPdf(): Promise<void> {
       id="pdf-export-help"
       class="text-sm text-muted"
     >
-      Exports the currently displayed plan, including accepted edits, as vector graphics. Complete part details follow the layout page.
+      One vector document includes the global summary, all panel layouts and accepted edits. PDF generation and preview never change inventory.
     </p>
+    <object
+      v-if="previewUrl"
+      :data="previewUrl"
+      type="application/pdf"
+      class="h-[32rem] w-full rounded-lg border border-line"
+      aria-label="Complete cutting document preview"
+    >
+      <p>Your browser cannot display a PDF preview. Use Export PDF to open the complete document in a PDF reader.</p>
+    </object>
     <p
       v-if="service === undefined"
       role="status"
