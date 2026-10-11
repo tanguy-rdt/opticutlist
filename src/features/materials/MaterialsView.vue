@@ -59,21 +59,6 @@ const missingSelections = computed(() => [
   ...selectedIds.value.filter(id => !materials.value.some(material => material.id === id)),
   ...selectedProductIds.value.filter(id => !products.value.some(product => product.id === id)),
 ])
-const groups = computed(() => {
-  const groups: { supplierId: string; supplierName: string; categories: { name: string; products: SupplierProduct[] }[] }[] = []
-  for (const product of products.value) {
-    let supplier = groups.find(group => group.supplierId === product.supplierId)
-    if (!supplier) {
-      supplier = { supplierId: product.supplierId, supplierName: suppliers.value.find(record => record.id === product.supplierId)?.name ?? 'Missing supplier', categories: [] }
-      groups.push(supplier)
-    }
-    const name = materials.value.find(material => material.id === product.materialId)?.category ?? 'Missing material'
-    let category = supplier.categories.find(group => group.name === name)
-    if (!category) { category = { name, products: [] }; supplier.categories.push(category) }
-    category.products.push(product)
-  }
-  return groups
-})
 const loading = ref(true)
 const busy = ref(false)
 const loadError = ref('')
@@ -110,26 +95,12 @@ function selectable(product: SupplierProduct): boolean {
   return product.availability !== 'unavailable' && materials.value.some(material => material.id === product.materialId)
     && suppliers.value.some(supplier => supplier.id === product.supplierId)
 }
-function groupProducts(records: readonly SupplierProduct[]): readonly SupplierProduct[] {
-  return records.filter(product => selectable(product) || selectedProductIds.value.includes(product.id))
-}
-function checked(records: readonly SupplierProduct[]): boolean {
-  const eligible = groupProducts(records)
-  return eligible.length > 0 && eligible.every(product => selectedProductIds.value.includes(product.id))
-}
-function mixed(records: readonly SupplierProduct[]): boolean {
-  return groupProducts(records).some(product => selectedProductIds.value.includes(product.id)) && !checked(records)
-}
-function toggleProducts(records: readonly SupplierProduct[]): void {
-  const remove = checked(records)
-  const eligible = groupProducts(records)
-  const ids = new Set(selectedProductIds.value)
-  for (const product of eligible) {
-    if (remove) ids.delete(product.id)
-    else if (selectable(product)) ids.add(product.id)
+function toggleProduct(product: SupplierProduct): void {
+  if (selectedProductIds.value.includes(product.id)) removeProduct(product)
+  else if (selectable(product)) {
+    selectedProductIds.value = [...selectedProductIds.value, product.id]
+    notice.value = ''
   }
-  selectedProductIds.value = [...ids]
-  notice.value = ''
 }
 async function save(): Promise<void> {
   if (busy.value || loading.value || loadError.value) return
@@ -337,21 +308,6 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
               {{ activeMaterial?.name ?? 'Choose a material from the library' }}
             </p>
           </div>
-          <label
-            v-if="!loading && !loadError && activeProducts.length"
-            class="flex min-h-11 items-center gap-2 text-sm"
-          >
-            <input
-              type="checkbox"
-              class="size-4 accent-accent"
-              aria-label="Use all visible material panels"
-              :checked="checked(activeProducts)"
-              :indeterminate="mixed(activeProducts)"
-              :aria-checked="mixed(activeProducts) ? 'mixed' : checked(activeProducts)"
-              :disabled="busy || !groupProducts(activeProducts).length"
-              @change="toggleProducts(activeProducts)"
-            >All material panels
-          </label>
         </header>
         <p
           v-if="loading"
@@ -404,7 +360,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                 :aria-label="`Use panel ${product.name}`"
                 :checked="selectedProductIds.includes(product.id)"
                 :disabled="busy || (!selectable(product) && !selectedProductIds.includes(product.id))"
-                @change="toggleProducts([product])"
+                @change="toggleProduct(product)"
               >
               <span class="grid min-w-0 flex-1 gap-2 text-sm">
                 <span class="font-semibold [overflow-wrap:anywhere]">{{ product.name }}</span>
@@ -415,50 +371,6 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
             </label>
           </li>
         </ul>
-        <div
-          v-if="!loading && !loadError && groups.length"
-          class="border-t border-line bg-quiet-surface p-4"
-        >
-          <h3 class="mb-2 text-xs font-semibold text-muted">
-            Bulk panel selection · all catalog references
-          </h3>
-          <div class="space-y-2">
-            <div
-              v-for="group in groups"
-              :key="group.supplierId"
-              class="flex flex-wrap items-center gap-x-4 gap-y-1"
-            >
-              <label class="flex min-h-9 items-center gap-2 text-xs font-semibold">
-                <input
-                  type="checkbox"
-                  class="size-4 accent-accent"
-                  :aria-label="`Use all products from ${group.supplierName}`"
-                  :checked="checked(group.categories.flatMap(category => category.products))"
-                  :indeterminate="mixed(group.categories.flatMap(category => category.products))"
-                  :aria-checked="mixed(group.categories.flatMap(category => category.products)) ? 'mixed' : checked(group.categories.flatMap(category => category.products))"
-                  :disabled="busy || !groupProducts(group.categories.flatMap(category => category.products)).length"
-                  @change="toggleProducts(group.categories.flatMap(category => category.products))"
-                >{{ group.supplierName }}
-              </label>
-              <label
-                v-for="category in group.categories"
-                :key="category.name"
-                class="flex min-h-9 items-center gap-2 text-xs text-muted"
-              >
-                <input
-                  type="checkbox"
-                  class="size-4 accent-accent"
-                  :aria-label="`Use ${category.name} products from ${group.supplierName}`"
-                  :checked="checked(category.products)"
-                  :indeterminate="mixed(category.products)"
-                  :aria-checked="mixed(category.products) ? 'mixed' : checked(category.products)"
-                  :disabled="busy || !groupProducts(category.products).length"
-                  @change="toggleProducts(category.products)"
-                >{{ category.name }}
-              </label>
-            </div>
-          </div>
-        </div>
       </section>
       <aside
         class="panel project-selection min-w-0 overflow-hidden"

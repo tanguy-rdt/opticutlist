@@ -150,7 +150,7 @@ describe('MaterialsView', () => {
       expect(await second.materials.list()).toEqual({ ok: true, value: [material] })
     } finally { first.close(); second.close() }
   })
-  it('selects supplier/category/products with tri-state checkboxes, persists choices and isolates a second project', async () => {
+  it('selects individual products, persists choices and isolates a second project', async () => {
     const persistence = createLocalPersistence('product-selection-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
     try {
       expect((await persistence.materials.create(material)).ok).toBe(true)
@@ -166,15 +166,14 @@ describe('MaterialsView', () => {
       expect((await service.projects.create(second)).ok).toBe(true)
       const wrapper = render(persistence.materials, service, persistence)
       await vi.waitFor(() => { expect(wrapper.find('input[aria-label="Search materials"]').attributes('disabled') === undefined).toBe(true) })
-      const supplier = wrapper.get<HTMLInputElement>(`input[aria-label="Use all products from ${validSupplierInput.name}"]`)
-      const category = wrapper.get<HTMLInputElement>(`input[aria-label="Use ${material.category} products from ${validSupplierInput.name}"]`)
+      const panelColumn = wrapper.get('.panel-references')
+      expect(panelColumn.findAll('input[type="checkbox"]')).toHaveLength(3)
+      expect(wrapper.text()).not.toContain('All material panels')
+      expect(wrapper.text()).not.toContain('Bulk panel selection')
+      expect(wrapper.find('input[aria-label^="Use all"]').exists()).toBe(false)
       await wrapper.get(`input[aria-label="Use panel ${validSupplierProductInput.name}"]`).setValue(true)
-      expect(supplier.element.indeterminate).toBe(true)
-      expect(category.element.indeterminate).toBe(true)
-      expect(supplier.attributes('aria-checked')).toBe('mixed')
-      await category.setValue(true)
-      expect(supplier.element.checked).toBe(true)
-      expect(category.element.indeterminate).toBe(false)
+      expect(wrapper.get<HTMLInputElement>('input[aria-label="Use panel Second panel"]').element.checked).toBe(false)
+      await wrapper.get('input[aria-label="Use panel Second panel"]').setValue(true)
       expect(wrapper.get('input[aria-label="Use panel Unavailable panel"]').attributes('disabled')).toBeDefined()
       await wrapper.get('input[aria-label="Use Birch plywood BB/BB"]').setValue(true)
       await button(wrapper, 'Save project selections').trigger('click')
@@ -357,31 +356,6 @@ describe('MaterialsView', () => {
     } finally { persistence.close() }
   })
 
-  it('keeps supplier/category bulk scope intact across hidden materials and other suppliers', async () => {
-    const persistence = createLocalPersistence('selection-bulk-filter-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
-    try {
-      const extra = materialSchema.parse({ ...material, id: 'extra-material', name: 'Maple plywood' })
-      await persistence.materials.create(material)
-      await persistence.materials.create(extra)
-      await persistence.suppliers.create(validSupplierInput)
-      await persistence.suppliers.create({ ...validSupplierInput, id: 'other-supplier', name: 'Other supplier' })
-      await persistence.supplierProducts.create(validSupplierProductInput)
-      await persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'extra-panel', materialId: extra.id })
-      await persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'other-panel', supplierId: 'other-supplier' })
-      const service = createProjectService(persistence)
-      await service.projects.create(project)
-      const wrapper = render(persistence.materials, service, persistence)
-      await vi.waitFor(() => { expect(wrapper.find('input[aria-label="Search materials"]').attributes('disabled') === undefined).toBe(true) })
-      await wrapper.get('input[aria-label="Search materials"]').setValue('birch')
-      await wrapper.get(`input[aria-label="Use ${material.category} products from ${validSupplierInput.name}"]`).setValue(true)
-      expect(wrapper.get('aside').findAll('dd').map(value => value.text())).toEqual(['0', '2'])
-      expect(wrapper.get('aside').text()).toContain('Maple plywood')
-      expect(wrapper.get<HTMLInputElement>('input[aria-label="Use all products from Other supplier"]').element.checked).toBe(false)
-      await wrapper.get(`input[aria-label="Use all products from ${validSupplierInput.name}"]`).setValue(false)
-      expect(wrapper.get('aside').findAll('dd').map(value => value.text())).toEqual(['0', '0'])
-      expect(await service.projects.get(project.id)).toEqual({ ok: true, value: project })
-    } finally { persistence.close() }
-  })
   it('does not offer missing-reference removal when a refresh fails to read storage', async () => {
     const repository = fakeRepository()
     repository.list.mockResolvedValueOnce({ ok: true, value: [material] }).mockResolvedValue(storageFailure)
@@ -463,6 +437,36 @@ describe('MaterialsView', () => {
     expect(wrapper.get('.materials-workspace').element.children[1]?.classList.contains('panel-references')).toBe(true)
     expect(wrapper.get('.materials-workspace').element.children[2]?.classList.contains('project-selection')).toBe(true)
     expect(wrapper.get('aside > footer').text()).toContain('Save project selections')
+  })
+
+  it('retains previously saved panel choices, including unavailable panels, without writing on open', async () => {
+    const persistence = createLocalPersistence('existing-individual-selections-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
+    try {
+      await persistence.materials.create(material)
+      await persistence.suppliers.create(validSupplierInput)
+      await persistence.supplierProducts.create(validSupplierProductInput)
+      await persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'unavailable-panel', name: 'Unavailable panel', availability: 'unavailable' })
+      const saved = cuttingProjectSchema.parse({ ...project, materialIds: [material.id], supplierProductIds: [validSupplierProductInput.id, 'unavailable-panel'], panelQuantities: [{ supplierProductId: validSupplierProductInput.id, quantity: 3 }, { supplierProductId: 'unavailable-panel', quantity: 2 }] })
+      // Legacy selections may reference a panel that is no longer available.
+      await persistence.projects.create(saved)
+      const service = createProjectService(persistence)
+      const update = vi.spyOn(service.projects, 'update')
+      const wrapper = render(persistence.materials, service, persistence)
+      await vi.waitFor(() => { expect(wrapper.get('input[aria-label="Search materials"]').attributes('disabled')).toBeUndefined() })
+      expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use panel ${validSupplierProductInput.name}"]`).element.checked).toBe(true)
+      const unavailable = wrapper.get<HTMLInputElement>('input[aria-label="Use panel Unavailable panel"]')
+      expect(unavailable.element.checked).toBe(true)
+      expect(unavailable.attributes('disabled')).toBeUndefined()
+      expect(wrapper.get('aside').findAll('dd').map(value => value.text())).toEqual(['1', '2'])
+      expect(await service.projects.get(project.id)).toEqual({ ok: true, value: saved })
+      expect(update).not.toHaveBeenCalled()
+      await unavailable.setValue(false)
+      expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use panel ${validSupplierProductInput.name}"]`).element.checked).toBe(true)
+      expect(unavailable.attributes('disabled')).toBeDefined()
+      await button(wrapper, 'Save project selections').trigger('click')
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Project selections saved.') })
+      expect((await service.projects.get(project.id))).toMatchObject({ ok: true, value: { supplierProductIds: [validSupplierProductInput.id], panelQuantities: [{ supplierProductId: validSupplierProductInput.id, quantity: 3 }] } })
+    } finally { persistence.close() }
   })
 
 })
