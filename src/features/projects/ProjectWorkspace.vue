@@ -6,6 +6,7 @@ import type { CuttingProject } from '../../domain/model/cutting-project'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { partRepositoryKey } from '../parts/part-repository'
 import { projectIdKey, useProjectService } from './project-service'
+import ProjectExport from './ProjectExport.vue'
 
 const props = defineProps<{ projectId: string }>()
 const service = useProjectService()
@@ -100,6 +101,7 @@ onMounted(load)
             Optimization
           </RouterLink>
         </nav>
+        <ProjectExport :project-id="project.id" />
       </div>
       <RouterView />
     </template>

@@ -1,3 +1,6 @@
+import { createProjectTransferService } from '../../application/projects/project-transfer-service'
+import { projectJson } from '../../infrastructure/projects/project-json'
+import { projectTransferServiceKey } from '../../features/projects/project-transfer-service'
 import { optimizeProject } from '../../domain/optimizer/optimize-project'
 import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
 import { partSchema } from '../../domain/model/part'
@@ -62,6 +65,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
       provide: {
         [optimizationServiceFactoryKey]: () => createOptimizationService(createWorker),
         [savedPlanServiceKey]: createSavedPlanService(persistence),
+        [projectTransferServiceKey]: createProjectTransferService(persistence, projectJson),
         [cuttingConfirmationServiceKey]: createCuttingConfirmationService(persistence),
         [materialRepositoryKey]: catalog.materials,
         [projectServiceKey]: service,
@@ -96,23 +100,19 @@ describe('Home and application navigation', () => {
     expect(wrapper.find('aside').exists()).toBe(false)
   })
 
-  it('exposes unavailable project tiles to keyboard users with clear explanations', async () => {
+  it('opens import through the keyboard-accessible full-surface Home tile', async () => {
     const { wrapper, router } = await mountAt('/')
-    for (const id of ['import-project']) {
-      const tile = wrapper.get<HTMLElement>(`[aria-labelledby="${id}-title"]`)
-      expect(tile.attributes('aria-disabled')).toBe('true')
-      expect(tile.attributes('role')).toBe('button')
-      expect(tile.attributes('tabindex')).toBe('0')
-      expect(tile.attributes('aria-describedby')).toBe(`${id}-unavailable`)
-      expect(wrapper.get(`#${id}-unavailable`).text()).toContain('not available yet')
-      tile.element.focus()
-      expect(document.activeElement).toBe(tile.element)
-      await tile.trigger('click')
-      await tile.trigger('keydown', { key: 'Enter' })
-      await tile.trigger('keydown', { key: ' ' })
-      await flushPromises()
-      expect(router.currentRoute.value.path).toBe('/')
-    }
+    const tile = wrapper.get<HTMLAnchorElement>('a[aria-labelledby="import-project-title"]')
+    expect(tile.attributes('href')).toBe('/import')
+    expect(tile.attributes('aria-disabled')).toBeUndefined()
+    expect(tile.find('button, input').exists()).toBe(false)
+    tile.element.focus()
+    expect(document.activeElement).toBe(tile.element)
+    tile.element.dispatchEvent(new MouseEvent('click', { detail: 0, bubbles: true, cancelable: true }))
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/import')
+    expect(wrapper.get('h1').text()).toBe('Import Project')
+    expect(wrapper.find('#project-import-file').exists()).toBe(true)
   })
 
   it('opens Catalogue when any part of its tile is clicked', async () => {
@@ -144,7 +144,7 @@ describe('Home and application navigation', () => {
   it('removes nested actions, catalogue badges and independent saved-library links', async () => {
     const { wrapper } = await mountAt('/')
     expect(wrapper.find('.home-card button').exists()).toBe(false)
-    expect(wrapper.findAll('.home-card').filter(tile => tile.element.tagName === 'A').map(link => link.attributes('href'))).toEqual(['/projects', '/catalog'])
+    expect(wrapper.findAll('.home-card').filter(tile => tile.element.tagName === 'A').map(link => link.attributes('href'))).toEqual(['/projects', '/import', '/catalog'])
     expect(wrapper.text()).not.toContain('Access saved parts and materials')
     const catalogue = wrapper.get('[aria-labelledby="catalog-title"]')
     expect(catalogue.findAll('span')).toHaveLength(0)
@@ -395,4 +395,47 @@ it('confirms only explicitly reviewed saved cutting layouts and retains confirma
   expect(remount.wrapper.get('[aria-label="Confirm cutting Physical layout"]').attributes('disabled')).toBeDefined()
   const movements = await createCuttingConfirmationService(remount.persistence).forProject(project.id).list()
   expect(movements.ok && movements.value).toHaveLength(1)
+})
+
+it('imports an exported project from Home with collision preview and opens its remapped Parts and saved plan', async () => {
+  const { wrapper, router, persistence, service } = await mountAt('/')
+  await persistence.materials.create(validMaterialInput); await persistence.suppliers.create(validSupplierInput); await persistence.supplierProducts.create(validSupplierProductInput)
+  await persistence.stockItems.create(validStockItemInput)
+  const stock = await persistence.stockItems.list()
+  const project = cuttingProjectSchema.parse({ id: 'portable-ui-project', name: 'Portable cabinet', partIds: [], materialIds: [validMaterialInput.id], supplierProductIds: [validSupplierProductInput.id] })
+  await service.projects.create(project); await service.parts(project.id).create(validPartInput)
+  const part = partSchema.parse(validPartInput); const product = supplierProductSchema.parse(validSupplierProductInput)
+  const settings = { kerfMm: 3, edgeMarginMm: 0 }
+  const optimized = optimizeProject({ parts: [part], panels: [{ product, quantity: 1 }], settings })
+  if (!optimized.ok) throw new Error('Fixture')
+  const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = product
+  const saved = await createSavedPlanService(persistence).forProject(project.id).save({ id: 'portable-ui-plan', projectId: project.id, name: 'Portable cuts', createdAt: '2026-10-11T12:00:00.000Z' }, { plan: optimized.plan, parts: [part], settings, sources: [{ product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: 1, materialName: validMaterialInput.name, supplierName: validSupplierInput.name }], editedPanelIndices: [] })
+  expect(saved.ok).toBe(true)
+  const exported = await createProjectTransferService(persistence, projectJson).export(project.id)
+  if (!exported.ok) throw new Error('Export')
+  await wrapper.get('a[aria-labelledby="import-project-title"]').trigger('click'); await flushPromises()
+  const file = new File([exported.value.text], 'project.json', { type: 'application/json' })
+  Object.defineProperty(file, 'text', { value: () => Promise.resolve(exported.value.text) })
+  const input = wrapper.get('#project-import-file')
+  Object.defineProperty(input.element, 'files', { value: [file] }); await input.trigger('change')
+  await vi.waitFor(() => { expect(wrapper.text()).toContain('Import preview: Portable cabinet') })
+  expect(wrapper.text()).toContain('This project ID already exists')
+  expect((await persistence.projects.list())).toMatchObject({ ok: true, value: [{ id: project.id }] })
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  await wrapper.get('button').trigger('click')
+  await vi.waitFor(() => { expect(wrapper.text()).toContain('imported successfully') })
+  const open = wrapper.findAll('a').find(link => link.text() === 'Open imported project')
+  if (!open) throw new Error('Open')
+  await open.trigger('click')
+  await vi.waitFor(() => { expect(wrapper.text()).toContain(part.name) })
+  // The route carries the new stable identity; the original project is untouched.
+  expect(router.currentRoute.value.params.projectId).not.toBe(project.id)
+  const optimizeLink = wrapper.findAll('nav a').find(link => link.text() === 'Optimization')
+  if (!optimizeLink) throw new Error('Optimization')
+  await optimizeLink.trigger('click')
+  await vi.waitFor(() => { expect(wrapper.find('[aria-label="Open plan Portable cuts"]').exists()).toBe(true); expect(wrapper.get('[aria-label="Open plan Portable cuts"]').attributes('disabled')).toBeUndefined() })
+  await wrapper.get('[aria-label="Open plan Portable cuts"]').trigger('click')
+  await vi.waitFor(() => { expect(wrapper.text()).toContain('Saved plan: Portable cuts') })
+  expect(wrapper.text()).toContain(part.name)
+  expect(await persistence.stockItems.list()).toEqual(stock)
 })

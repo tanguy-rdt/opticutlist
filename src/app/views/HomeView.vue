@@ -59,13 +59,10 @@ import ProjectList from '../../features/projects/ProjectList.vue'
         </div>
       </RouterLink>
 
-      <article
+      <RouterLink
+        to="/import"
         class="home-card flex flex-col items-start gap-4 p-6 md:col-start-1 md:row-start-2 md:p-8"
         aria-labelledby="import-project-title"
-        aria-describedby="import-project-unavailable"
-        role="button"
-        aria-disabled="true"
-        tabindex="0"
       >
         <span class="home-icon">
           <svg
@@ -89,15 +86,7 @@ import ProjectList from '../../features/projects/ProjectList.vue'
             Pick up where you left off with a project from a previous workshop session.
           </p>
         </div>
-        <div class="mt-auto space-y-2 pt-2">
-          <p
-            id="import-project-unavailable"
-            class="text-sm text-muted"
-          >
-            Project import is not available yet.
-          </p>
-        </div>
-      </article>
+      </RouterLink>
 
       <RouterLink
         to="/catalog"

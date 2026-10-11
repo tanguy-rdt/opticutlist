@@ -1,4 +1,7 @@
 import { createSavedPlanService } from './application/plans/saved-plan-service'
+import { createProjectTransferService } from './application/projects/project-transfer-service'
+import { projectJson } from './infrastructure/projects/project-json'
+import { projectTransferServiceKey } from './features/projects/project-transfer-service'
 import { createCuttingConfirmationService } from './application/inventory/cutting-confirmation-service'
 import { cuttingConfirmationServiceKey } from './features/inventory/cutting-confirmation-service'
 import { savedPlanServiceKey } from './features/optimization/saved-plan-service'
@@ -28,6 +31,7 @@ app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
 app.provide(savedPlanServiceKey, createSavedPlanService(persistence))
+app.provide(projectTransferServiceKey, createProjectTransferService(persistence, projectJson))
 app.provide(cuttingConfirmationServiceKey, createCuttingConfirmationService(persistence))
 app.provide(projectServiceKey, createProjectService(persistence))
 app.provide(optimizationServiceFactoryKey, () => createOptimizationService(createOptimizationWorker))

@@ -7,6 +7,7 @@ import MaterialsView from '../../features/materials/MaterialsView.vue'
 import ProjectsView from '../views/ProjectsView.vue'
 import HomeView from '../views/HomeView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
+import ProjectImport from '../../features/projects/ProjectImport.vue'
 
 // Hash history keeps deep links working on static hosting (GitHub Pages).
 export function createAppRouter(history: RouterHistory = createWebHashHistory()): Router {
@@ -18,6 +19,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
       { path: '/parts', redirect: '/projects' },
       { path: '/catalog', alias: '/suppliers', name: 'suppliers', component: SuppliersView },
       { path: '/projects', name: 'projects', component: ProjectsView },
+      { path: '/import', name: 'project-import', component: ProjectImport },
       { path: '/projects/:projectId', component: ProjectWorkspace, props: true, children: [
         { path: '', redirect: to => ({ name: 'project-parts', params: to.params }) },
         { path: 'parts', name: 'project-parts', component: ProjectPartsView },
