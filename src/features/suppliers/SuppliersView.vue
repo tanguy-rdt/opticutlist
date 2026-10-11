@@ -751,6 +751,7 @@ onMounted(load)
         ref="productForm"
         :product="editingProduct"
         :initial-supplier-id="initialSupplierId"
+        fixed-supplier
         :suppliers="suppliers"
         :materials="materials"
         :disabled="disabled"

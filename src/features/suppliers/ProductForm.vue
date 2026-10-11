@@ -11,7 +11,7 @@ import { materialPresets, type MaterialPreset } from '../materials/material-libr
 import MaterialSelector from '../materials/MaterialSelector.vue'
 import { useMaterialRepository } from '../materials/material-repository'
 
-const props = defineProps<{ product: SupplierProduct | null; suppliers: readonly Supplier[]; materials: readonly Material[]; initialSupplierId: string; disabled: boolean }>()
+const props = defineProps<{ product: SupplierProduct | null; suppliers: readonly Supplier[]; materials: readonly Material[]; initialSupplierId: string; disabled: boolean; fixedSupplier?: boolean }>()
 const emit = defineEmits<{ save: [product: SupplierProduct, presetId?: string]; cancel: []; materialCreated: [material: Material]; materialBusy: [busy: boolean] }>()
 const materialRepository = useMaterialRepository()
 const creatingMaterial = ref(false)
@@ -76,6 +76,8 @@ async function createMaterial(): Promise<void> {
 const form = ref<HTMLFormElement | null>(null)
 const name = ref(props.product?.name ?? '')
 const supplierId = ref<string>(props.product?.supplierId ?? props.initialSupplierId)
+const effectiveSupplierId = computed(() => props.fixedSupplier ? props.product?.supplierId ?? props.initialSupplierId : supplierId.value)
+const supplierName = computed(() => props.suppliers.find(supplier => supplier.id === effectiveSupplierId.value)?.name)
 const materialId = ref<string>(props.product?.materialId ?? '')
 function presetValue(id: string): string {
   let value = `preset:${id}`
@@ -101,15 +103,15 @@ function numberInput(value: number | string): number | undefined { return typeof
 function focusName(): void { form.value?.querySelector<HTMLInputElement>('input')?.focus() }
 defineExpose({ focusName })
 async function submit(): Promise<void> {
-  if (props.disabled || materialBusy.value || creatingMaterial.value || props.suppliers.length === 0) return
+  if (props.disabled || materialBusy.value || creatingMaterial.value) return
   const result = supplierProductSchema.safeParse({
-    id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: supplierId.value, materialId: productPreset.value ? crypto.randomUUID() : materialId.value,
+    id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: effectiveSupplierId.value, materialId: productPreset.value ? crypto.randomUUID() : materialId.value,
     lengthMm: numberInput(numbers.lengthMm), widthMm: numberInput(numbers.widthMm), thicknessMm: numberInput(numbers.thicknessMm), price: numberInput(numbers.price),
     currency: currency.value.trim(), grainDirection: grainDirection.value, availability: availability.value,
     ...(productUrl.value.trim() ? { productUrl: productUrl.value.trim() } : {}),
   })
   const issues = new Map(result.success ? [] : result.error.issues.map((issue) => [String(issue.path[0]), issue.message]))
-  if (!props.suppliers.some((supplier) => supplier.id === supplierId.value)) issues.set('supplierId', 'Choose an existing supplier.')
+  if (!props.suppliers.some((supplier) => supplier.id === effectiveSupplierId.value)) issues.set('supplierId', 'Choose an existing supplier.')
   if (!productPreset.value && !props.materials.some((material) => material.id === materialId.value)) issues.set('materialId', 'Choose an existing material.')
   errors.value = issues
   if (issues.size > 0) {
@@ -126,6 +128,22 @@ async function submit(): Promise<void> {
     class="product-editor space-y-4"
     @submit.prevent="submit"
   >
+    <div
+      v-if="fixedSupplier"
+      class="space-y-1"
+    >
+      <p class="text-sm text-muted">
+        Supplier: <span class="font-medium text-ink">{{ supplierName ?? 'Missing supplier' }}</span>
+      </p>
+      <p
+        v-if="errors.get('supplierId')"
+        id="product-supplier-error"
+        role="alert"
+        class="text-sm text-danger"
+      >
+        {{ errors.get('supplierId') }}
+      </p>
+    </div>
     <section
       aria-labelledby="product-general-heading"
       class="space-y-3"
@@ -159,8 +177,12 @@ async function submit(): Promise<void> {
           >
         </template>
       </FormField>
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div
+        class="grid gap-4"
+        :class="{ 'sm:grid-cols-2': !fixedSupplier }"
+      >
         <FormField
+          v-if="!fixedSupplier"
           id="product-supplier"
           required-indicator="asterisk"
           label="Supplier"

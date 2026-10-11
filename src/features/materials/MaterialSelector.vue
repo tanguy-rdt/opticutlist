@@ -103,20 +103,26 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside); })
       ref="popup"
       class="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
     >
-      <div class="p-2">
-        <input
-          ref="search"
-          v-model="query"
-          class="field"
-          role="combobox"
-          aria-label="Search materials"
-          autocomplete="off"
-          aria-expanded="true"
-          aria-autocomplete="list"
-          :aria-controls="listId"
-          :aria-activedescendant="activeOptionId"
-          placeholder="Search materials…"
-        >
+      <div class="border-b border-line px-2 py-1.5">
+        <div class="flex h-8 items-center gap-2 rounded-md bg-subtle px-2 focus-within:ring-2 focus-within:ring-accent">
+          <AppIcon
+            name="search"
+            class="size-3.5 shrink-0 text-muted"
+          />
+          <input
+            ref="search"
+            v-model="query"
+            class="min-w-0 flex-1 bg-transparent py-1 text-sm text-ink outline-none placeholder:text-muted"
+            role="combobox"
+            aria-label="Search materials"
+            autocomplete="off"
+            aria-expanded="true"
+            aria-autocomplete="list"
+            :aria-controls="listId"
+            :aria-activedescendant="activeOptionId"
+            placeholder="Search materials…"
+          >
+        </div>
       </div>
       <div
         :id="listId"

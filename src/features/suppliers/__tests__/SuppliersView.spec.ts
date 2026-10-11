@@ -76,7 +76,6 @@ async function fillSupplier(wrapper: VueWrapper) {
 async function fillProduct(wrapper: VueWrapper) {
   await openForm(wrapper, 'product')
   await wrapper.get('#product-name').setValue(product.name)
-  await wrapper.get('#product-supplier').setValue(supplier.id)
   await selectMaterial(wrapper, material.id)
   for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
   await wrapper.get('#product-currency').setValue(product.currency)
@@ -100,7 +99,7 @@ describe('SuppliersView', () => {
     expect(wrapper.get('#catalog-dialog-title').text()).toBe('New product')
     const form = wrapper.get('form[aria-label="Product editor"]')
     expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing and availability', 'Additional information'])
-    for (const field of ['name', 'supplier', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain', 'availability']) {
+    for (const field of ['name', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain', 'availability']) {
       const label = form.get(`label[for="product-${field}"]`)
       expect(label.get('span[aria-hidden="true"]').text()).toBe('*')
       expect(label.get('.sr-only').text()).toBe('(required)')
@@ -366,7 +365,7 @@ describe('SuppliersView', () => {
     expect(wrapper.text()).toContain('Material created and selected.')
     expect(document.activeElement).toBe(wrapper.get('#product-material').element)
     for (const [field, value] of [
-      ['name', product.name], ['supplier', product.supplierId], ['lengthMm', String(product.lengthMm)],
+      ['name', product.name], ['lengthMm', String(product.lengthMm)],
       ['widthMm', String(product.widthMm)], ['thicknessMm', String(product.thicknessMm)], ['price', String(product.price)],
       ['currency', product.currency], ['grain', product.grainDirection], ['availability', product.availability], ['url', product.productUrl ?? ''],
     ]) {
@@ -614,8 +613,7 @@ describe('SuppliersView', () => {
       await vi.waitFor(() => { expect(button(wrapper, '+ Add Product').attributes('disabled')).toBeUndefined() })
       await openForm(wrapper, 'product')
       await wrapper.get('#product-name').setValue(product.name)
-      await wrapper.get('#product-supplier').setValue(supplier.id)
-      for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
+          for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
       await openCustomMaterial(wrapper)
       if (preset) await wrapper.get('input[value="pin"]').setValue(true)
       await wrapper.get('#inline-material-name').setValue(material.name)
@@ -757,7 +755,7 @@ describe('SuppliersView', () => {
     await selectProduct(wrapper)
     await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
     await wrapper.get('#product-name').setValue('Updated product')
-    await wrapper.get('#product-supplier').setValue(alternateSupplier.id)
+    expect(wrapper.find('#product-supplier').exists()).toBe(false)
     await selectMaterial(wrapper, alternateMaterial.id)
     await wrapper.get('#product-lengthMm').setValue('2400')
     await wrapper.get('#product-widthMm').setValue('1200')
@@ -769,7 +767,7 @@ describe('SuppliersView', () => {
     await wrapper.get('#product-url').setValue('')
     await submit(wrapper, 'product')
     expect(repositories.supplierProducts.update).toHaveBeenCalledExactlyOnceWith(product.id, {
-      id: product.id, name: 'Updated product', supplierId: alternateSupplier.id, materialId: alternateMaterial.id,
+      id: product.id, name: 'Updated product', supplierId: supplier.id, materialId: alternateMaterial.id,
       lengthMm: 2400, widthMm: 1200, thicknessMm: 18.5, price: 0, currency: 'USD', grainDirection: 'width', availability: 'unavailable',
     })
     expect(wrapper.get('[role="status"]').text()).toBe('Product updated.')
@@ -813,9 +811,8 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     await openForm(wrapper, 'product')
-    await wrapper.get('#product-supplier').setValue('')
     await submit(wrapper, 'product')
-    for (const field of ['name', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'supplier', 'material']) {
+    for (const field of ['name', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'material']) {
       expect(wrapper.get(`#product-${field}`).attributes('aria-invalid')).toBe('true')
       expect(wrapper.get(`#product-${field}-error`).text()).not.toBe('')
     }
@@ -883,7 +880,8 @@ describe('SuppliersView', () => {
     await flushPromises()
     expect(wrapper.find('#product-supplier').exists()).toBe(false)
     await wrapper.get(`button[aria-label="Add product for ${supplier.name}"]`).trigger('click')
-    expect(wrapper.get<HTMLSelectElement>('#product-supplier').element.value).toBe(supplier.id)
+    expect(wrapper.find('#product-supplier').exists()).toBe(false)
+    expect(wrapper.get('form').text()).toContain(`Supplier: ${supplier.name}`)
     expect(wrapper.get<HTMLButtonElement>('#product-material').element.value).toBe('')
   })
 
@@ -1014,7 +1012,6 @@ describe('SuppliersView', () => {
       const storedSuppliers = await first.suppliers.list()
       if (!storedSuppliers.ok || !storedSuppliers.value[0]) throw new Error('Missing saved supplier')
       await fillProduct(wrapper)
-      await wrapper.get('#product-supplier').setValue(storedSuppliers.value[0].id)
       await submit(wrapper, 'product')
       await vi.waitFor(() => { expect(wrapper.text()).toContain('Product created.') })
       wrapper.unmount()
