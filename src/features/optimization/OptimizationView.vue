@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
+import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { stockPanel } from '../../domain/optimizer/panel-source'
 import { useStockRepository } from '../inventory/stock-repository'
 import { isCompatible } from '../../domain/compatibility'
@@ -26,10 +26,8 @@ import { useCatalogRepositories } from '../suppliers/catalog-repositories'
 import { useOptimizationService } from './optimization-service'
 
 const { exportStep } = defineProps<{ exportStep?: boolean }>()
-const router = useRouter()
 const cuttingState = useCuttingWorkspaceState()
 const inventoryWorking = ref(false)
-const expandedPanels = ref<Record<number, boolean>>({})
 const selectedCopies = ref<Record<number, string>>({})
 const projectId = useProjectId()
 const projects = useProjectService()
@@ -108,7 +106,6 @@ async function leaveWorkspace(to: { name?: unknown }): Promise<boolean> {
   }
   return canDiscard()
 }
-async function continueToExport(): Promise<void> { await router.push({ name: 'project-cutting-export', params: { projectId } }) }
 
 function invalidate(markStale = true): void {
   generation += 1
@@ -613,6 +610,8 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
               :class="panelIndex === index ? 'bg-subtle text-accent' : 'hover:bg-subtle'"
               :data-panel-index="index"
               :aria-pressed="panelIndex === index"
+              :aria-expanded="panelIndex === index"
+              :aria-controls="`panel-parts-${index}`"
               @click="panelIndex = index"
             >
               <span class="min-w-0 flex-1"><span
@@ -620,17 +619,8 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
               >Panel {{ index + 1 }}</span><span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.lengthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.widthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.thicknessMm }} mm</span></span>
               <span class="rounded bg-success-surface px-1.5 py-1 text-xs text-accent">{{ allocation.plan.metrics.utilizationPercent.toFixed(1) }}%</span>
             </button>
-            <button
-              type="button"
-              class="px-2 py-1 text-xs text-muted"
-              :aria-expanded="expandedPanels[index] !== false"
-              :aria-controls="`panel-parts-${index}`"
-              @click="expandedPanels[index] = expandedPanels[index] === false"
-            >
-              {{ expandedPanels[index] === false ? 'Show placed parts' : 'Hide placed parts' }}
-            </button>
             <ul
-              v-show="expandedPanels[index] !== false"
+              v-show="panelIndex === index"
               :id="`panel-parts-${index}`"
               class="ml-2 border-l border-line pl-2"
               :aria-label="`Parts on panel ${index + 1}`"
@@ -705,20 +695,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           </div>
         </div>
       </div>
-    </div>
-    <div
-      v-if="result && !exportStep"
-      class="flex justify-end"
-    >
-      <button
-        type="button"
-        class="button button-primary"
-        :disabled="!exportAvailable"
-        data-export-action
-        @click="continueToExport"
-      >
-        Continue to Export
-      </button>
     </div>
     <CuttingFinalization
       v-if="exportStep && displayedInput && exportAvailable"

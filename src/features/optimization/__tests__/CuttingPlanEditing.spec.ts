@@ -24,8 +24,9 @@ function button(wrapper: VueWrapper, label: string) {
   return control
 }
 async function selectFirst(wrapper: VueWrapper): Promise<void> {
-  const value = wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value')
-  await wrapper.get('#cutting-viewer-part').setValue(value)
+  const first = vi.mocked(createPlanCanvas).mock.calls.at(-1)?.[1].parts[0]
+  if (!first) throw new Error('Missing placed copy')
+  await wrapper.setProps({ selectedCopyKey: first.key })
 }
 describe('Always available constrained editing', () => {
   it('offers only constrained edits immediately without a mode toggle or resize controls', () => {
@@ -54,7 +55,7 @@ describe('Always available constrained editing', () => {
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Normal')
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('50 × 30 × 18 mm')
     expect(wrapper.get('output').text()).toBe('125% of fit')
-    expect(wrapper.get<HTMLSelectElement>('#cutting-viewer-part').element.value).not.toBe('')
+    expect(wrapper.find('[aria-label="Selected part information"]').exists()).toBe(true)
     const rendered = vi.mocked(createPlanCanvas).mock.calls.at(-1)
     expect(rendered?.[1].parts[0]?.region).toEqual({ xMm: 5, yMm: 5, lengthMm: 50, widthMm: 30 })
     expect(plan).toEqual(original)

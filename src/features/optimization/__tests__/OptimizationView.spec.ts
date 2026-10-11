@@ -1,3 +1,5 @@
+import { ref } from 'vue'
+import { cuttingWorkspaceStateKey, type CuttingWorkspaceState } from '../../projects/cutting-workspace-state'
 import { createCurrentResultService } from '../../../application/plans/current-result-service'
 import { currentResultServiceKey } from '../../../features/optimization/current-result-service'
 import { panelSnapshotSchema } from '../../../domain/model/saved-cutting-plan'
@@ -49,6 +51,8 @@ class FakeWorker implements OptimizationWorkerPort {
   }
   complete(): void { this.onmessage?.(new MessageEvent('message', { data: handleOptimizationRequest(this.request) })) }
 }
+const workspaceStates = new WeakMap<VueWrapper, CuttingWorkspaceState>()
+function exportReady(wrapper: VueWrapper): boolean { return workspaceStates.get(wrapper)?.available.value === true }
 const wrappers: VueWrapper[] = []
 const connections: ReturnType<typeof createLocalPersistence>[] = []
 afterEach(() => {
@@ -59,9 +63,8 @@ afterEach(() => {
 })
 function activeCopy(wrapper: VueWrapper): string { return wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector('[data-copy-key]')?.textContent ?? '' }
 async function showExport(wrapper: VueWrapper): Promise<void> {
-  await vi.waitFor(() => { expect(wrapper.get('[data-export-action]').attributes('disabled')).toBeUndefined() })
-  await wrapper.get('[data-export-action]').trigger('click')
-  // This fixture mounts the routed component directly; mirror the route's prop.
+  await vi.waitFor(() => { expect(exportReady(wrapper)).toBe(true) })
+  // This fixture mounts the routed component directly; mirror the Export tab's route prop.
   await wrapper.setProps({ exportStep: true })
   await flushPromises()
 }
@@ -99,15 +102,18 @@ async function setup() {
   await router.push('/')
   await router.isReady()
   function mountView() {
+    const cuttingState = { available: ref(false), invalidated: ref(false) }
     const view = mount(OptimizationView, {
     attachTo: document.body,
     global: { plugins: [router], provide: {
+      [cuttingWorkspaceStateKey]: cuttingState,
       [currentResultServiceKey]: { forProject: () => current }, [projectIdKey]: project.id, [projectServiceKey]: service,
       [stockRepositoryKey]: createStockRepository(persistence), [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers,
       [supplierProductRepositoryKey]: catalog.supplierProducts, [optimizationServiceFactoryKey]: factory,
       [cuttingPlanPdfServiceKey]: createCuttingPlanPdfService({ generate: vi.fn(), generateProject: pdfGenerate }),
     } },
   })
+    workspaceStates.set(view, cuttingState)
     wrappers.push(view)
     return view
   }
@@ -134,28 +140,23 @@ describe('Automatic project optimization', () => {
   it('synchronizes sidebar and inline copy selection without changing the plan', async () => {
     const { wrapper, start, current } = await setup()
     const worker = await start(); worker.complete(); await flushPromises()
-    await vi.waitFor(() => { expect(wrapper.get('[data-export-action]').attributes('disabled')).toBeUndefined() })
+    await vi.waitFor(() => { expect(exportReady(wrapper)).toBe(true) })
     const before = await current.load()
     await wrapper.get('[data-copy-key]').trigger('click')
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Side panel / 1')
     expect(wrapper.get('[data-copy-key]').attributes('aria-pressed')).toBe('true')
-    const second = wrapper.get('#cutting-viewer-part option:nth-child(3)').attributes('value')
-    await wrapper.get('#cutting-viewer-part').setValue(second)
+    await wrapper.findAll('[data-copy-key]')[1]?.trigger('click')
     expect(wrapper.findAll('[data-copy-key]')[1]?.attributes('aria-pressed')).toBe('true')
-    const toggle = wrapper.findAll('button').find(control => control.text() === 'Hide placed parts')
-    if (!toggle) throw new Error('Missing panel disclosure')
-    await toggle.trigger('click')
-    expect(toggle.attributes('aria-expanded')).toBe('false')
-    expect(wrapper.get('[data-copy-key]').isVisible()).toBe(false)
-    await toggle.trigger('click')
+    expect(wrapper.get('[data-panel-index]').attributes('aria-expanded')).toBe('true')
     expect(wrapper.get('[data-copy-key]').isVisible()).toBe(true)
+    expect(wrapper.findAll('button').some(control => control.text().includes('placed parts'))).toBe(false)
     expect(wrapper.find('[aria-label="Part inspection"]').exists()).toBe(false)
     expect(await current.load()).toEqual(before)
   })
   it('does not expose the previous result while a replacement is pending or fails', async () => {
     const { wrapper, start, current, persistence } = await setup()
     const first = await start(); first.complete(); await flushPromises()
-    await vi.waitFor(() => { expect(wrapper.get('[data-export-action]').attributes('disabled')).toBeUndefined() })
+    await vi.waitFor(() => { expect(exportReady(wrapper)).toBe(true) })
     const inventory = await persistence.stockItems.list()
     const older = await current.load()
     let finish: () => void = () => { throw new Error('Missing pending write') }
@@ -163,7 +164,7 @@ describe('Automatic project optimization', () => {
       finish = () => { resolve({ ok: false, error: { kind: 'storageFailure', message: 'Unavailable' } }) }
     }))
     const second = await start(); second.complete(); await flushPromises()
-    expect(wrapper.get('[data-export-action]').attributes('disabled')).toBeDefined()
+    expect(exportReady(wrapper)).toBe(false)
     await wrapper.setProps({ exportStep: true })
     expect(wrapper.text()).toContain('No current cutting document available')
     expect(wrapper.find('[aria-label="Complete vector PDF export"]').exists()).toBe(false)
@@ -229,7 +230,6 @@ describe('Automatic project optimization', () => {
     const input = structuredClone(worker.request.input)
     worker.complete(); await flushPromises()
     async function click(label: string): Promise<void> {
-      if (label === 'Continue to Export') { await showExport(wrapper); return }
       if (label === 'Back to Optimization') { await showOptimization(wrapper); return }
       const button = wrapper.findAll('button').find(button => button.text() === label)
       if (button === undefined) throw new Error(`Missing ${label}`)
@@ -237,22 +237,20 @@ describe('Automatic project optimization', () => {
     }
     expect(wrapper.text()).not.toContain('Validate Cutting')
     expect(wrapper.find('[aria-label="Complete vector PDF export"]').exists()).toBe(false)
-    expect(wrapper.findAll('button').filter(control => control.text() === 'Continue to Export')).toHaveLength(1)
-    const finalization = wrapper.get('[data-export-action]').element
-    const layout = wrapper.get('[aria-label="Cutting plan canvas"]').element
-    expect(layout.compareDocumentPosition(finalization) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    await click('Continue to Export');
+    expect(wrapper.findAll('button').some(control => control.text() === 'Continue to Export')).toBe(false)
+    await showExport(wrapper);
     await click('Export PDF'); await flushPromises()
     await click('Back to Optimization')
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]).toMatchObject({ edited: false, materialName: validMaterialInput.name })
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(0)
-    await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
+    wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector<HTMLButtonElement>('[data-copy-key]')?.click()
+    await flushPromises()
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click('Swap selected copies')
     expect(wrapper.text()).toContain('Swap accepted and independently validated')
     expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(true)
     expect(activeCopy(wrapper)).toContain('Side panel / 2')
-    await click('Continue to Export')
+    await showExport(wrapper)
     await wrapper.get('#pdf-page-orientation').setValue('portrait')
     await click('Export PDF'); await flushPromises()
     await click('Back to Optimization')
@@ -261,7 +259,7 @@ describe('Automatic project optimization', () => {
     await click('Undo edit')
     expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(true)
     expect(activeCopy(wrapper)).toContain('Side panel / 1')
-    await click('Continue to Export');
+    await showExport(wrapper);
     await click('Export PDF'); await flushPromises()
     await click('Back to Optimization')
     expect(pdfGenerate.mock.calls[2]?.[0].panels[0]?.edited).toBe(false)
@@ -305,8 +303,7 @@ describe('Automatic project optimization', () => {
     expect(wrapper.get('[aria-label="Panels used"]').find('img').exists()).toBe(false)
     expect(wrapper.get('[aria-label="Selected panel"]').text()).not.toContain('Catalog')
     const inputSnapshot = structuredClone(worker.request.input)
-    const copy = wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value')
-    await wrapper.get('#cutting-viewer-part').setValue(copy)
+    await wrapper.get('[data-copy-key]').trigger('click')
     const zoom = wrapper.findAll('button').find(button => button.text() === 'Zoom in')
     if (zoom === undefined) throw new Error('Missing zoom control')
     await zoom.trigger('click')
@@ -628,28 +625,33 @@ describe('automatic workflow and per-panel integration', () => {
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(4)
     expect(wrapper.findAll('[data-panel-index]')).toHaveLength(2)
     async function click(label: string): Promise<void> {
-      if (label === 'Continue to Export') { await showExport(wrapper); return }
       if (label === 'Back to Optimization') { await showOptimization(wrapper); return }
       const button = wrapper.findAll('button').find(button => button.text() === label)
       if (!button) throw new Error(`Missing ${label}`)
       await button.trigger('click')
     }
-    await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
+    wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector<HTMLButtonElement>('[data-copy-key]')?.click()
+    await flushPromises()
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click('Swap selected copies')
     expect(activeCopy(wrapper)).toContain('Side panel / 2')
     await click('Zoom in')
-    await click('Continue to Export');
+    await showExport(wrapper);
     await click('Export PDF'); await flushPromises()
     await click('Back to Optimization')
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.edited).toBe(true)
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.unplaced).toMatchObject([{ firstCopyIndex: 2, count: 2, reason: { kind: 'allocatedElsewhere' } }])
+    expect(wrapper.get('#panel-parts-0').isVisible()).toBe(true)
+    expect(wrapper.get('#panel-parts-1').isVisible()).toBe(false)
     await wrapper.get('[data-panel-index="1"]').trigger('click')
     expect(activeCopy(wrapper)).toContain('Side panel / 3')
+    expect(wrapper.get('#panel-parts-0').isVisible()).toBe(false)
+    expect(wrapper.get('#panel-parts-1').isVisible()).toBe(true)
+    expect(wrapper.get('[data-panel-index="1"]').attributes('aria-expanded')).toBe('true')
     expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
     expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
     expect(wrapper.findAll('[aria-label="Cutting plan canvas"]')).toHaveLength(1)
-    await click('Continue to Export');
+    await showExport(wrapper);
     await click('Export PDF'); await flushPromises()
     await click('Back to Optimization')
     expect(pdfGenerate.mock.calls[1]?.[0].panels[1]?.edited).toBe(false)
@@ -662,7 +664,7 @@ describe('automatic workflow and per-panel integration', () => {
     const downloads = vi.mocked(downloadCuttingPlanPdf).mock.calls.length
     let finish: () => void = () => { throw new Error('Export has not started') }
     pdfGenerate.mockImplementationOnce(() => new Promise(resolve => { finish = () => { resolve(new Uint8Array([2])) } }))
-    await click('Continue to Export');
+    await showExport(wrapper);
     await click('Export PDF'); await flushPromises()
     expect(wrapper.text()).toContain('Generating PDF')
     await click('Back to Optimization')
@@ -684,14 +686,14 @@ describe('automatic workflow and per-panel integration', () => {
 
 describe('automatic current result in the optimization workspace', () => {
   async function click(wrapper: VueWrapper, text: string): Promise<void> {
-    if (text === 'Continue to Export') { await showExport(wrapper); return }
     if (text === 'Back to Optimization') { await showOptimization(wrapper); return }
     const button = wrapper.findAll('button').find(button => button.text() === text)
     if (!button) throw new Error(`Missing ${text}`)
     await button.trigger('click')
   }
   async function editSwap(wrapper: VueWrapper): Promise<void> {
-    await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
+    wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector<HTMLButtonElement>('[data-copy-key]')?.click()
+    await flushPromises()
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click(wrapper, 'Swap selected copies')
   }
@@ -722,9 +724,9 @@ describe('automatic current result in the optimization workspace', () => {
     // Reopening exercises restoration without an explicit Open or Save action.
     await vi.waitFor(() => { expect(wrapper.get('button').attributes('disabled')).toBeUndefined() })
     wrapper = await reopen(wrapper)
-    await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
+    await vi.waitFor(() => { expect(wrapper.find('[aria-label="Cutting plan canvas"]').exists()).toBe(true) })
     expect(activeCopy(wrapper)).toContain('Side panel / 2')
-    await click(wrapper, 'Continue to Export');
+    await showExport(wrapper);
     await click(wrapper, 'Export PDF'); await flushPromises()
     await click(wrapper, 'Back to Optimization')
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.edited).toBe(true)
@@ -799,11 +801,11 @@ describe('automatic current result in the optimization workspace', () => {
     await persistence.savedPlanContents.update(body.id, { ...body, metrics: { ...body.metrics, placedCount: 900 } })
     wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('failed independent validation') })
-    expect(wrapper.find('#cutting-viewer-part').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Cutting plan canvas"]').exists()).toBe(false)
     await persistence.savedPlanContents.update(body.id, body)
     vi.spyOn(catalog.supplierProducts, 'list').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Disk unavailable' } })
     wrapper = await reopen(wrapper)
-    await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
+    await vi.waitFor(() => { expect(wrapper.find('[aria-label="Cutting plan canvas"]').exists()).toBe(true) })
     expect(wrapper.text()).toContain('Could not access local storage')
   })
 })

@@ -213,29 +213,6 @@ onBeforeUnmount(() => {
         role="group"
         aria-label="Cutting layout view controls"
       >
-        <label
-          class="sr-only"
-          for="cutting-viewer-part"
-        >Inspect a placed copy</label>
-        <select
-          id="cutting-viewer-part"
-          v-model="selectedKey"
-          class="copy-picker field"
-          :disabled="projection.status !== 'valid' || !projection.scene.parts.length"
-        >
-          <option value="">
-            Selection
-          </option>
-          <template v-if="projection.status === 'valid'">
-            <option
-              v-for="part in projection.scene.parts"
-              :key="part.key"
-              :value="part.key"
-            >
-              {{ part.part.name }} / {{ part.copyIndex + 1 }}
-            </option>
-          </template>
-        </select>
         <button
           type="button"
           class="tool"
