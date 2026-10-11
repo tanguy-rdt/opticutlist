@@ -1,17 +1,34 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { RouterLink } from 'vue-router'
+import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useMaterialRepository } from '../materials/material-repository'
-import { useCatalogRepositories } from './catalog-repositories'
+import { useCatalogRepositories, useCatalogStockRepository } from './catalog-repositories'
 import SupplierForm from './SupplierForm.vue'
 import ProductForm from './ProductForm.vue'
 import CatalogTransfer from './CatalogTransfer.vue'
+import ProductDetails from './ProductDetails.vue'
+import CatalogFormDialog from './CatalogFormDialog.vue'
 
 const repositories = useCatalogRepositories()
+const stockRepository = useCatalogStockRepository()
+const stock = shallowRef<readonly StockItem[]>([])
+const stockError = ref('')
+const selectedSupplierId = ref('')
+const selectedProductId = ref('')
+const search = ref('')
+const supplierSearch = ref('')
+const categoryFilter = ref('')
+const materialFilter = ref('')
+const availabilityFilter = ref('')
+const formMode = ref<'supplier' | 'product' | null>(null)
+const addSupplierButton = ref<HTMLButtonElement | null>(null)
+let generation = 0
+onBeforeUnmount(() => { generation++ })
 const materialRepository = useMaterialRepository()
 const suppliers = shallowRef<readonly Supplier[]>([])
 const products = shallowRef<readonly SupplierProduct[]>([])
@@ -30,24 +47,41 @@ const initialSupplierId = ref('')
 const supplierForm = ref<InstanceType<typeof SupplierForm> | null>(null)
 const productForm = ref<InstanceType<typeof ProductForm> | null>(null)
 const disabled = computed(() => loading.value || busy.value || transferBusy.value || Boolean(loadError.value))
-const catalog = computed(() => {
-  const supplierIds = [...new Set([...suppliers.value.map((supplier) => supplier.id), ...products.value.map((product) => product.supplierId)])]
-  return supplierIds.map((id) => {
-    const supplier = suppliers.value.find((candidate) => candidate.id === id)
-    const categories = new Map<string, SupplierProduct[]>()
-    for (const product of products.value.filter((candidate) => candidate.supplierId === id)) {
-      const category = materials.value.find((material) => material.id === product.materialId)?.category ?? 'Missing material'
-      const group = categories.get(category) ?? []
-      group.push(product)
-      categories.set(category, group)
-    }
-    return { id, name: supplier?.name ?? 'Missing supplier', categories: [...categories].map(([name, items]) => ({ name, items })) }
-  })
+const supplierNavigation = computed(() => [...new Set([...suppliers.value.map(item => item.id), ...products.value.map(item => item.supplierId)])].map(id => ({ id, supplier: suppliers.value.find(item => item.id === id), name: suppliers.value.find(item => item.id === id)?.name ?? 'Missing supplier', count: products.value.filter(item => item.supplierId === id).length })))
+const selectedSupplier = computed(() => suppliers.value.find(item => item.id === selectedSupplierId.value))
+const selectedProduct = computed(() => products.value.find(item => item.id === selectedProductId.value))
+const supplierMaterials = computed(() => materials.value.filter(material => products.value.some(product => product.supplierId === selectedSupplierId.value && product.materialId === material.id)))
+const categories = computed(() => [...new Set(supplierMaterials.value.map(material => material.category))])
+const sections = computed(() => {
+  const grouped = new Map<string, SupplierProduct[]>()
+  for (const product of products.value) {
+    const material = materials.value.find(item => item.id === product.materialId)
+    if (product.supplierId !== selectedSupplierId.value || (categoryFilter.value && material?.category !== categoryFilter.value) || (materialFilter.value && product.materialId !== materialFilter.value) || (availabilityFilter.value && product.availability !== availabilityFilter.value)) continue
+    if (search.value && !`${product.name} ${material?.name ?? ''} ${material?.category ?? ''}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase().trim())) continue
+    const group = grouped.get(product.materialId) ?? []; group.push(product); grouped.set(product.materialId, group)
+  }
+  return [...grouped].map(([id, items]) => ({ id, material: materials.value.find(item => item.id === id), items }))
 })
+function selectSupplier(id: string): void { selectedSupplierId.value = id; selectedProductId.value = ''; materialFilter.value = ''; categoryFilter.value = '' }
+async function inspectProduct(id: string): Promise<void> {
+  selectedProductId.value = id
+  await nextTick()
+  if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1279px)').matches) {
+    const heading = document.getElementById('product-details-title')
+    heading?.focus({ preventScroll: true })
+    if (typeof heading?.scrollIntoView === 'function') heading.scrollIntoView({ block: 'nearest', behavior: 'instant' })
+  }
+}
+function linkedStock(product: SupplierProduct): readonly StockItem[] { return stock.value.filter(item => item.provenance.source === 'purchase' && item.provenance.supplierProductId === product.id) }
+function stockLabel(product: SupplierProduct): string { return !stockRepository ? 'Not available' : stockError.value ? 'Read error' : `${String(linkedStock(product).reduce((quantity, item) => quantity + item.quantity, 0))} owned` }
+function availability(product: SupplierProduct): string { return product.availability === 'available' ? 'Available' : product.availability === 'unavailable' ? 'Unavailable' : 'Unknown' }
+function closeForm(): void { if (!busy.value) { formMode.value = null; operationError.value = '' } }
 
 async function load(): Promise<void> {
+  const current = ++generation
   loading.value = true
   const [supplierResult, productResult, materialResult] = await Promise.all([repositories.suppliers.list(), repositories.supplierProducts.list(), materialRepository.list()])
+  if (current !== generation) return
   const errors: string[] = []
   if (supplierResult.ok) suppliers.value = supplierResult.value
   else errors.push(persistenceErrorMessage(supplierResult.error, 'Supplier'))
@@ -56,9 +90,20 @@ async function load(): Promise<void> {
   if (materialResult.ok) materials.value = materialResult.value
   else errors.push(persistenceErrorMessage(materialResult.error, 'Material'))
   loadError.value = errors.join(' ')
+  if (!supplierNavigation.value.some(item => item.id === selectedSupplierId.value)) selectedSupplierId.value = supplierNavigation.value[0]?.id ?? ''
+  if (!products.value.some(item => item.id === selectedProductId.value)) selectedProductId.value = ''
+  stockError.value = ''
+  if (stockRepository) {
+    const result = await stockRepository.list()
+    if (current !== generation) return
+    if (result.ok) stock.value = result.value
+    else { stock.value = []; stockError.value = persistenceErrorMessage(result.error, 'Product') }
+  }
   loading.value = false
 }
 async function editSupplier(supplier: Supplier | null): Promise<void> {
+  if (disabled.value) return
+  formMode.value = 'supplier'
   editingSupplier.value = supplier
   supplierVersion.value++
   operationError.value = ''
@@ -67,6 +112,8 @@ async function editSupplier(supplier: Supplier | null): Promise<void> {
   supplierForm.value?.focusName()
 }
 async function editProduct(product: SupplierProduct | null, supplierId = ''): Promise<void> {
+  if (disabled.value) return
+  formMode.value = 'product'
   editingProduct.value = product
   initialSupplierId.value = supplierId
   productVersion.value++
@@ -83,13 +130,16 @@ async function saveSupplier(supplier: Supplier): Promise<void> {
   const result = editingSupplier.value ? await repositories.suppliers.update(supplier.id, supplier) : await repositories.suppliers.create(supplier)
   if (result.ok) {
     notice.value = editingSupplier.value ? 'Supplier updated.' : 'Supplier created.'
+    selectedSupplierId.value = result.value.id
     editingSupplier.value = null
+    formMode.value = null
     supplierVersion.value++
     await load()
   } else operationError.value = persistenceErrorMessage(result.error, 'Supplier')
   busy.value = false
   await nextTick()
-  supplierForm.value?.focusName()
+  if (formMode.value) supplierForm.value?.focusName()
+  else addSupplierButton.value?.focus()
 }
 async function saveProduct(product: SupplierProduct): Promise<void> {
   if (disabled.value) return
@@ -99,7 +149,10 @@ async function saveProduct(product: SupplierProduct): Promise<void> {
   const result = editingProduct.value ? await repositories.supplierProducts.update(product.id, product) : await repositories.supplierProducts.create(product)
   if (result.ok) {
     notice.value = editingProduct.value ? 'Product updated.' : 'Product created.'
+    selectedSupplierId.value = result.value.supplierId
+    selectedProductId.value = result.value.id
     editingProduct.value = null
+    formMode.value = null
     productVersion.value++
     await load()
   } else operationError.value = result.error.kind === 'notFound'
@@ -116,13 +169,13 @@ async function removeSupplier(supplier: Supplier): Promise<void> {
   operationError.value = ''
   const result = await repositories.suppliers.delete(supplier.id)
   if (result.ok) {
-    if (editingSupplier.value?.id === supplier.id) { editingSupplier.value = null; supplierVersion.value++ }
+    if (editingSupplier.value?.id === supplier.id) { editingSupplier.value = null; supplierVersion.value++; formMode.value = null }
     notice.value = 'Supplier deleted.'
     await load()
   } else operationError.value = persistenceErrorMessage(result.error, 'Supplier')
   busy.value = false
   await nextTick()
-  supplierForm.value?.focusName()
+  addSupplierButton.value?.focus()
 }
 async function removeProduct(product: SupplierProduct): Promise<void> {
   if (disabled.value || !window.confirm(`Delete catalog product “${product.name}”? This cannot be undone.`)) return
@@ -131,7 +184,7 @@ async function removeProduct(product: SupplierProduct): Promise<void> {
   operationError.value = ''
   const result = await repositories.supplierProducts.delete(product.id)
   if (result.ok) {
-    if (editingProduct.value?.id === product.id) { editingProduct.value = null; productVersion.value++ }
+    if (editingProduct.value?.id === product.id) { editingProduct.value = null; productVersion.value++; formMode.value = null }
     notice.value = 'Product deleted.'
     await load()
   } else operationError.value = persistenceErrorMessage(result.error, 'Product')
@@ -143,36 +196,27 @@ onMounted(load)
 </script>
 <template>
   <section class="min-w-0 space-y-6">
-    <RouterLink
-      to="/"
-      class="button"
-    >
-      <span aria-hidden="true">←</span> Back to Home
-    </RouterLink>
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div class="space-y-2">
-        <p class="eyebrow">
-          Purchasable panels
-        </p><h1 class="text-3xl font-semibold tracking-tight">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="space-y-3">
+        <RouterLink
+          to="/"
+          class="text-sm font-medium text-accent hover:underline"
+        >
+          ← Back to Home
+        </RouterLink>
+        <h1 class="text-3xl font-semibold tracking-tight">
           Catalogue
-        </h1><p class="max-w-2xl text-muted">
-          Manage suppliers and their panel catalogs. Catalog products describe what you can buy; adding them does not create owned stock.
+        </h1>
+        <p class="text-sm text-muted">
+          Your global library of suppliers, materials and purchasable panels.
         </p>
       </div>
-      <button
-        type="button"
-        class="button button-primary"
-        :disabled="disabled"
-        @click="editSupplier(null)"
-      >
-        + New supplier
-      </button>
+      <CatalogTransfer
+        :disabled="loading || busy || Boolean(loadError) || formMode !== null"
+        @busy="transferBusy = $event"
+        @imported="load"
+      />
     </div>
-    <CatalogTransfer
-      :disabled="loading || busy || Boolean(loadError)"
-      @busy="transferBusy = $event"
-      @imported="load"
-    />
     <p
       v-if="notice"
       role="status"
@@ -181,226 +225,293 @@ onMounted(load)
       {{ notice }}
     </p>
     <p
-      v-if="operationError"
+      v-if="operationError && !formMode"
       role="alert"
-      class="rounded-lg border border-danger bg-danger-surface px-4 py-3 text-sm text-danger"
+      class="text-danger"
     >
       {{ operationError }}
     </p>
+    <p
+      v-if="loading"
+      role="status"
+      class="panel p-8 text-muted"
+    >
+      Loading supplier catalog…
+    </p>
     <div
-      class="panel min-w-0 overflow-hidden"
-      :aria-busy="loading"
+      v-else-if="loadError"
+      class="panel space-y-4 p-6"
     >
-      <div class="flex items-center justify-between gap-4 border-b border-line px-5 py-4">
-        <h2 class="font-semibold">
-          Supplier library
-        </h2><button
-          type="button"
-          class="button"
-          :disabled="loading || busy"
-          @click="load"
-        >
-          Refresh
-        </button>
-      </div>
       <p
-        v-if="loading"
-        role="status"
-        class="px-6 py-14 text-center text-muted"
+        role="alert"
+        class="text-danger"
       >
-        Loading supplier catalog…
+        {{ loadError }}
       </p>
-      <div
-        v-else-if="loadError"
-        class="space-y-4 p-6"
+      <button
+        type="button"
+        class="button"
+        :disabled="busy"
+        @click="load"
       >
-        <p
-          role="alert"
-          class="text-danger"
-        >
-          {{ loadError }}
-        </p><button
-          type="button"
-          class="button"
-          :disabled="busy"
-          @click="load"
-        >
-          Try again
-        </button>
-      </div>
-      <div
-        v-else-if="suppliers.length === 0"
-        class="space-y-3 px-6 py-14 text-center"
-      >
-        <h3 class="text-lg font-semibold">
-          No suppliers yet
-        </h3><p class="text-sm text-muted">
-          Add your first supplier using the form below.
-        </p>
-      </div>
-      <div
-        v-else
-        class="overflow-x-auto"
-        tabindex="0"
-        role="region"
-        aria-label="Supplier table"
-      >
-        <table class="w-full text-left text-sm">
-          <caption class="sr-only">
-            Saved suppliers and their websites
-          </caption><thead class="bg-subtle text-xs text-muted">
-            <tr>
-              <th
-                scope="col"
-                class="px-5 py-3"
-              >
-                Supplier
-              </th><th
-                scope="col"
-                class="px-5 py-3"
-              >
-                Website
-              </th><th
-                scope="col"
-                class="px-5 py-3 text-right"
-              >
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="supplier in suppliers"
-              :key="supplier.id"
-              class="border-t border-line"
-            >
-              <th
-                scope="row"
-                class="px-5 py-4 font-medium [overflow-wrap:anywhere]"
-              >
-                {{ supplier.name }}
-              </th><td class="px-5 py-4 [overflow-wrap:anywhere]">
-                <a
-                  v-if="supplier.websiteUrl"
-                  :href="supplier.websiteUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-accent underline underline-offset-4"
-                >{{ supplier.websiteUrl }}<span class="sr-only"> (opens in new tab)</span></a><span
-                  v-else
-                  class="text-muted"
-                >—</span>
-              </td><td class="px-5 py-4">
-                <div class="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    class="button"
-                    :disabled="disabled"
-                    :aria-label="`Edit supplier ${supplier.name}`"
-                    @click="editSupplier(supplier)"
-                  >
-                    Edit
-                  </button><button
-                    type="button"
-                    class="button button-danger"
-                    :disabled="disabled"
-                    :aria-label="`Delete supplier ${supplier.name}`"
-                    @click="removeSupplier(supplier)"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        Try again
+      </button>
     </div>
-    <section
-      v-if="!loading && !loadError"
-      class="space-y-4"
-      aria-labelledby="catalog-title"
+    <div
+      v-else
+      class="catalog-workspace grid min-w-0 items-start gap-5 md:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[14rem_minmax(0,1fr)_19rem] 2xl:grid-cols-[16rem_minmax(0,1fr)_21rem]"
     >
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2
-          id="catalog-title"
-          class="text-xl font-semibold"
-        >
-          Panel catalogs
-        </h2><button
-          type="button"
-          class="button"
-          :disabled="disabled || suppliers.length === 0"
-          @click="editProduct(null)"
-        >
-          + New product
-        </button>
-      </div>
-      <p
-        v-if="materials.length === 0"
-        class="text-sm text-muted"
+      <aside
+        class="panel space-y-4 p-4 md:sticky md:top-5"
+        aria-labelledby="supplier-nav-title"
       >
-        Create a material directly in the product form below to start your catalog.
-      </p>
-      <p
-        v-if="products.length === 0"
-        class="text-sm text-muted"
-      >
-        No catalog products yet.
-      </p>
-      <section
-        v-for="group in catalog"
-        :key="group.id"
-        class="panel min-w-0 overflow-hidden"
-      >
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
-          <h3 class="font-semibold">
-            {{ group.name }}
-          </h3><button
-            v-if="suppliers.some((supplier) => supplier.id === group.id)"
-            type="button"
-            class="button"
-            :disabled="disabled"
-            :aria-label="`Add product for ${group.name}`"
-            @click="editProduct(null, group.id)"
+        <div class="flex items-center justify-between gap-2">
+          <h2
+            id="supplier-nav-title"
+            class="font-semibold"
           >
-            Add product
+            Suppliers
+          </h2>
+          <span class="text-xs text-muted">{{ suppliers.length }}</span>
+        </div>
+        <button
+          ref="addSupplierButton"
+          type="button"
+          class="button button-primary w-full"
+          :disabled="disabled"
+          @click="editSupplier(null)"
+        >
+          + Add Supplier
+        </button>
+        <label
+          for="supplier-search"
+          class="sr-only"
+        >Find a supplier</label>
+        <input
+          id="supplier-search"
+          v-model="supplierSearch"
+          type="search"
+          class="field"
+          placeholder="Find a supplier…"
+        >
+        <nav
+          aria-label="Catalog suppliers"
+          class="flex gap-2 overflow-x-auto p-1 md:max-h-[60dvh] md:flex-col md:overflow-y-auto"
+        >
+          <button
+            v-for="supplier in supplierNavigation.filter(item => item.name.toLocaleLowerCase().includes(supplierSearch.toLocaleLowerCase().trim()))"
+            :key="supplier.id"
+            type="button"
+            class="flex min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left text-sm md:min-w-0"
+            :class="selectedSupplierId === supplier.id ? 'border-accent bg-subtle text-accent' : 'border-transparent hover:bg-subtle'"
+            :aria-pressed="selectedSupplierId === supplier.id"
+            :aria-label="`Select supplier ${supplier.name}`"
+            @click="selectSupplier(supplier.id)"
+          >
+            <span class="font-medium [overflow-wrap:anywhere]">{{ supplier.name }}</span>
+            <span class="shrink-0 text-xs tabular-nums">{{ supplier.count }}<span class="sr-only"> product references</span></span>
           </button>
+        </nav>
+        <p
+          v-if="!supplierNavigation.length"
+          class="text-sm text-muted"
+        >
+          No suppliers yet. Add your first supplier to start your catalog.
+        </p>
+        <p
+          v-else-if="!supplierNavigation.some(item => item.name.toLocaleLowerCase().includes(supplierSearch.toLocaleLowerCase().trim()))"
+          class="text-sm text-muted"
+        >
+          No matching suppliers.
+        </p>
+      </aside>
+      <section
+        class="min-w-0 space-y-5"
+        aria-labelledby="supplier-content-title"
+      >
+        <div class="panel space-y-4 p-5">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="eyebrow">
+                Panel references
+              </p>
+              <h2
+                id="supplier-content-title"
+                class="mt-1 text-2xl font-semibold"
+              >
+                {{ selectedSupplier?.name ?? (selectedSupplierId ? 'Missing supplier' : 'Select a supplier') }}
+              </h2>
+              <a
+                v-if="selectedSupplier?.websiteUrl"
+                :href="selectedSupplier.websiteUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-sm text-accent underline [overflow-wrap:anywhere]"
+              >Supplier website<span class="sr-only"> (opens in new tab)</span></a>
+            </div>
+            <div
+              v-if="selectedSupplier"
+              class="flex flex-wrap gap-2"
+            >
+              <button
+                type="button"
+                class="button"
+                :disabled="disabled"
+                :aria-label="`Edit supplier ${selectedSupplier.name}`"
+                @click="editSupplier(selectedSupplier)"
+              >
+                Edit supplier
+              </button>
+              <button
+                type="button"
+                class="button button-danger"
+                :disabled="disabled"
+                :aria-label="`Delete supplier ${selectedSupplier.name}`"
+                @click="removeSupplier(selectedSupplier)"
+              >
+                Delete supplier
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-muted">
+              Catalog availability is separate from owned inventory.
+            </p>
+            <button
+              type="button"
+              class="button button-primary"
+              :disabled="disabled || !selectedSupplier"
+              :aria-label="`Add product for ${selectedSupplier?.name ?? 'supplier'}`"
+              @click="editProduct(null, selectedSupplierId)"
+            >
+              + Add Product
+            </button>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+            <div>
+              <label
+                for="catalog-search"
+                class="mb-1 block text-xs font-medium text-muted"
+              >Search products</label><input
+                id="catalog-search"
+                v-model="search"
+                type="search"
+                class="field"
+                placeholder="Name or material…"
+              >
+            </div>
+            <div>
+              <label
+                for="catalog-category"
+                class="mb-1 block text-xs font-medium text-muted"
+              >Category</label><select
+                id="catalog-category"
+                v-model="categoryFilter"
+                class="field"
+              >
+                <option value="">
+                  All categories
+                </option><option
+                  v-for="category in categories"
+                  :key="category"
+                  :value="category"
+                >
+                  {{ category }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label
+                for="catalog-material"
+                class="mb-1 block text-xs font-medium text-muted"
+              >Material</label><select
+                id="catalog-material"
+                v-model="materialFilter"
+                class="field"
+              >
+                <option value="">
+                  All materials
+                </option><option
+                  v-for="material in supplierMaterials"
+                  :key="material.id"
+                  :value="material.id"
+                >
+                  {{ material.name }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label
+                for="catalog-availability"
+                class="mb-1 block text-xs font-medium text-muted"
+              >Availability</label><select
+                id="catalog-availability"
+                v-model="availabilityFilter"
+                class="field"
+              >
+                <option value="">
+                  Any availability
+                </option><option value="available">
+                  Available
+                </option><option value="unavailable">
+                  Unavailable
+                </option><option value="unknown">
+                  Unknown
+                </option>
+              </select>
+            </div>
+          </div>
         </div>
         <p
-          v-if="group.categories.length === 0"
-          class="p-5 text-sm text-muted"
+          v-if="products.length === 0"
+          class="panel p-6 text-sm text-muted"
         >
-          This supplier has no products yet.
+          No catalog products yet. Add a product to create or select its material.
+        </p>
+        <p
+          v-else-if="sections.length === 0"
+          class="panel p-6 text-sm text-muted"
+        >
+          No products match this supplier and your filters.
         </p>
         <section
-          v-for="category in group.categories"
-          :key="category.name"
+          v-for="section in sections"
+          :key="section.id"
+          class="panel min-w-0 overflow-hidden"
+          :aria-label="section.material?.name ?? 'Missing material'"
         >
-          <h4 class="bg-subtle px-5 py-3 text-sm font-semibold">
-            {{ category.name }}
-          </h4>
+          <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+            <div>
+              <p class="eyebrow">
+                {{ section.material?.category ?? 'Missing material' }}
+              </p><h3 class="mt-1 font-semibold">
+                {{ section.material?.name ?? 'Missing material' }}
+              </h3>
+            </div>
+            <span class="text-xs text-muted">{{ section.items.length }} references</span>
+          </div>
           <div
             class="overflow-x-auto"
             tabindex="0"
             role="region"
-            :aria-label="`${group.name}, ${category.name} products; scroll horizontally for all columns`"
+            :aria-label="`${section.material?.name ?? 'Missing material'} products; scroll horizontally for all columns`"
           >
             <table class="w-full text-left text-sm">
               <caption class="sr-only">
-                {{ group.name }} — {{ category.name }}. Dimensions are length × width × thickness in millimeters.
-              </caption><thead class="text-xs text-muted">
+                {{ section.material?.name ?? 'Missing material' }} panel products in millimeters
+              </caption>
+              <thead class="bg-subtle text-xs text-muted">
                 <tr>
                   <th
                     scope="col"
                     class="px-4 py-3"
                   >
-                    Product / material
+                    Product
                   </th><th
                     scope="col"
                     class="px-4 py-3"
                   >
-                    Dimensions (mm)<span class="block font-normal">Length × width × thickness</span>
+                    Length × width × thickness (mm)
                   </th><th
                     scope="col"
                     class="px-4 py-3"
@@ -410,93 +521,114 @@ onMounted(load)
                     scope="col"
                     class="px-4 py-3"
                   >
-                    Grain
+                    Availability
                   </th><th
                     scope="col"
                     class="px-4 py-3"
                   >
-                    Availability
-                  </th><th
-                    scope="col"
-                    class="px-4 py-3 text-right"
-                  >
-                    Actions
+                    Owned stock
                   </th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="product in category.items"
+                  v-for="product in section.items"
                   :key="product.id"
-                  class="border-t border-line"
+                  class="border-t border-line hover:bg-subtle"
+                  :class="selectedProductId === product.id ? 'bg-subtle' : ''"
+                  @click="inspectProduct(product.id)"
                 >
                   <th
                     scope="row"
-                    class="min-w-40 px-4 py-4 font-medium [overflow-wrap:anywhere]"
+                    class="min-w-40 px-4 py-3 font-medium"
                   >
-                    {{ product.name }}<span class="block text-xs font-normal text-muted">{{ materials.find((material) => material.id === product.materialId)?.name ?? 'Missing material' }}</span><a
-                      v-if="product.productUrl"
-                      :href="product.productUrl"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="block text-xs text-accent underline underline-offset-4"
-                    >Product page<span class="sr-only"> for {{ product.name }} (opens in new tab)</span></a>
-                  </th><td class="whitespace-nowrap px-4 py-4 tabular-nums">
+                    <button
+                      type="button"
+                      class="rounded text-left text-accent underline-offset-4 hover:underline"
+                      :aria-label="`View product ${product.name}`"
+                      :aria-pressed="selectedProductId === product.id"
+                      aria-controls="product-details"
+                      @click.stop="inspectProduct(product.id)"
+                    >
+                      {{ product.name }}
+                    </button>
+                  </th>
+                  <td class="whitespace-nowrap px-4 py-3 tabular-nums">
                     {{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }}
-                  </td><td class="whitespace-nowrap px-4 py-4 tabular-nums">
+                  </td><td class="whitespace-nowrap px-4 py-3 tabular-nums">
                     {{ product.price }} {{ product.currency }}
-                  </td><td class="whitespace-nowrap px-4 py-4">
-                    {{ product.grainDirection === 'none' ? 'None' : (product.grainDirection === 'length' ? 'Along length' : 'Along width') }}
-                  </td><td class="px-4 py-4">
-                    {{ product.availability === 'available' ? 'Available' : (product.availability === 'unavailable' ? 'Unavailable' : 'Unknown') }}
-                  </td><td class="px-4 py-4">
-                    <div class="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        class="button"
-                        :disabled="disabled"
-                        :aria-label="`Edit product ${product.name}`"
-                        @click="editProduct(product)"
-                      >
-                        Edit
-                      </button><button
-                        type="button"
-                        class="button button-danger"
-                        :disabled="disabled"
-                        :aria-label="`Delete product ${product.name}`"
-                        @click="removeProduct(product)"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <span
+                      class="inline-flex rounded-md px-2 py-1 text-xs font-medium"
+                      :class="product.availability === 'available' ? 'bg-success-surface text-success' : 'bg-subtle text-muted'"
+                    >{{ availability(product) }}</span>
+                  </td><td class="whitespace-nowrap px-4 py-3 text-xs text-muted">
+                    {{ stockLabel(product) }}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
+        <button
+          type="button"
+          class="button"
+          :disabled="disabled"
+          @click="load"
+        >
+          Refresh
+        </button>
       </section>
-    </section>
-    <SupplierForm
-      :key="supplierVersion"
-      ref="supplierForm"
-      :supplier="editingSupplier"
-      :disabled="disabled"
-      @save="saveSupplier"
-      @cancel="editSupplier(null)"
-    />
-    <ProductForm
-      :key="productVersion"
-      ref="productForm"
-      :product="editingProduct"
-      :initial-supplier-id="initialSupplierId"
-      :suppliers="suppliers"
-      :materials="materials"
-      :disabled="disabled"
-      @save="saveProduct"
-      @material-created="materials = [...materials, $event]"
-      @material-busy="busy = $event"
-      @cancel="editProduct(null)"
-    />
+      <ProductDetails
+        :product="selectedProduct"
+        :materials="materials"
+        :suppliers="suppliers"
+        :stock="selectedProduct ? linkedStock(selectedProduct) : []"
+        :stock-available="Boolean(stockRepository)"
+        :stock-error="stockError"
+        :disabled="disabled"
+        @edit="editProduct"
+        @delete="removeProduct"
+        @clear="selectedProductId = ''"
+      />
+    </div>
+    <CatalogFormDialog
+      v-if="formMode"
+      :title="formMode === 'supplier' ? 'Supplier information' : 'Panel product information'"
+      :busy="busy"
+      @close="closeForm"
+    >
+      <p
+        v-if="operationError"
+        role="alert"
+        class="mb-4 text-danger"
+      >
+        {{ operationError }}
+      </p>
+      <SupplierForm
+        v-if="formMode === 'supplier'"
+        :key="supplierVersion"
+        ref="supplierForm"
+        :supplier="editingSupplier"
+        :disabled="disabled"
+        @save="saveSupplier"
+        @cancel="closeForm"
+      />
+      <ProductForm
+        v-else
+        :key="productVersion"
+        ref="productForm"
+        :product="editingProduct"
+        :initial-supplier-id="initialSupplierId"
+        :suppliers="suppliers"
+        :materials="materials"
+        :disabled="disabled"
+        @save="saveProduct"
+        @material-created="materials = [...materials, $event]"
+        @material-busy="busy = $event"
+        @cancel="closeForm"
+      />
+    </CatalogFormDialog>
   </section>
 </template>

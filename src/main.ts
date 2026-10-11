@@ -12,7 +12,7 @@ import { createOptimizationService } from './application/optimization/optimizati
 import { optimizationServiceFactoryKey } from './features/optimization/optimization-service'
 import { createOptimizationWorker } from './workers/optimization/create-optimization-worker'
 import { createCatalogRepositories } from './application/catalog/catalog-repositories'
-import { supplierRepositoryKey, supplierProductRepositoryKey } from './features/suppliers/catalog-repositories'
+import { catalogStockRepositoryKey, supplierRepositoryKey, supplierProductRepositoryKey } from './features/suppliers/catalog-repositories'
 
 import { createProjectService } from './application/projects/project-service'
 import { projectServiceKey } from './features/projects/project-service'
@@ -29,6 +29,7 @@ import './app/styles.css'
 const app = createApp(App)
 const persistence = createLocalPersistence()
 const catalog = createCatalogRepositories(persistence)
+app.provide(catalogStockRepositoryKey, persistence.stockItems)
 app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)

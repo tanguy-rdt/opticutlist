@@ -125,7 +125,7 @@ describe('Home and application navigation', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/catalog')
     expect(wrapper.get('h1').text()).toBe('Catalogue')
-    expect(wrapper.text()).toContain('New supplier')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Add Supplier') })
   })
 
   it('supports native keyboard activation of the entire Catalogue link', async () => {
@@ -157,12 +157,14 @@ describe('Home and application navigation', () => {
     const { wrapper, router } = await mountAt(path)
     expect(wrapper.get('h1').text()).toBe('Catalogue')
     expect(router.currentRoute.value.name).toBe('suppliers')
+    expect(wrapper.get('main').classes()).toContain('max-w-[1800px]')
     const back = wrapper.get('main a[href="/"]')
     expect(back.text()).toContain('Back to Home')
     await back.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
     expect(wrapper.get('h1').text()).toBe('Your next build starts here.')
+    expect(wrapper.get('main').classes()).toContain('max-w-7xl')
   })
 
   it('requires a project for old Parts and Materials routes', async () => {

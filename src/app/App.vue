@@ -57,7 +57,8 @@ function focusContent(): void {
     <main
       id="main-content"
       tabindex="-1"
-      class="mx-auto w-full max-w-7xl flex-1 px-6 py-8 lg:px-8 lg:py-10"
+      class="mx-auto w-full flex-1 lg:px-8 lg:py-10"
+      :class="$route.name === 'suppliers' ? 'max-w-[1800px] px-4 py-6 sm:px-6' : 'max-w-7xl px-6 py-8'"
     >
       <RouterView :key="String($route.params.projectId ?? '')" />
     </main>

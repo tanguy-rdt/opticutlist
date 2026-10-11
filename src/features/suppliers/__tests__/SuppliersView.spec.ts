@@ -5,13 +5,17 @@ import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../../../app/router'
 import { createCatalogRepositories } from '../../../application/catalog/catalog-repositories'
 import type { PersistenceResult, Repository } from '../../../application/persistence/repositories'
-import { validMaterialInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
+import { stockItemSchema } from '../../../domain/model/stock-item'
+import { catalogTransferServiceKey } from '../catalog-transfer-service'
+import type { CatalogTransferService } from '../../../application/catalog/catalog-transfer-service'
+import { catalogTransferSchema } from '../../../application/catalog/catalog-transfer-format'
 import { materialSchema } from '../../../domain/model/material'
 import { supplierSchema } from '../../../domain/model/supplier'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
 import { materialRepositoryKey } from '../../materials/material-repository'
-import { supplierRepositoryKey, supplierProductRepositoryKey } from '../catalog-repositories'
+import { supplierRepositoryKey, supplierProductRepositoryKey, catalogStockRepositoryKey } from '../catalog-repositories'
 import SuppliersView from '../SuppliersView.vue'
 
 const supplier = supplierSchema.parse(validSupplierInput)
@@ -31,12 +35,12 @@ function fakeRepository<Entity extends { id: string }>(record: Entity, records: 
 function setup() {
   return { suppliers: fakeRepository(supplier, [supplier]), supplierProducts: fakeRepository(product), materials: fakeRepository(material, [material]) }
 }
-function render(repositories: { suppliers: Repository<typeof supplier>; supplierProducts: Repository<typeof product>; materials: Repository<typeof material> }) {
+function render(repositories: { suppliers: Repository<typeof supplier>; supplierProducts: Repository<typeof product>; materials: Repository<typeof material> }, provide: Record<symbol, unknown> = {}) {
   const wrapper = mount(SuppliersView, {
     attachTo: document.body,
     global: {
       plugins: [createAppRouter(createMemoryHistory())],
-      provide: { [supplierRepositoryKey]: repositories.suppliers, [supplierProductRepositoryKey]: repositories.supplierProducts, [materialRepositoryKey]: repositories.materials },
+      provide: { [supplierRepositoryKey]: repositories.suppliers, [supplierProductRepositoryKey]: repositories.supplierProducts, [materialRepositoryKey]: repositories.materials, ...provide },
     },
   })
   wrappers.push(wrapper)
@@ -47,11 +51,20 @@ function button(wrapper: VueWrapper, text: string) {
   if (!found) throw new Error(`Missing button ${text}`)
   return found
 }
+async function openForm(wrapper: VueWrapper, entity: 'supplier' | 'product') {
+  if (wrapper.find(`#${entity}-name`).exists()) return
+  await button(wrapper, entity === 'supplier' ? '+ Add Supplier' : '+ Add Product').trigger('click')
+}
+async function selectProduct(wrapper: VueWrapper) {
+  if (!wrapper.find(`button[aria-label="Edit product ${product.name}"]`).exists()) await wrapper.get(`button[aria-label="View product ${product.name}"]`).trigger('click')
+}
 async function fillSupplier(wrapper: VueWrapper) {
+  await openForm(wrapper, 'supplier')
   await wrapper.get('#supplier-name').setValue(supplier.name)
   await wrapper.get('#supplier-website').setValue(supplier.websiteUrl ?? '')
 }
 async function fillProduct(wrapper: VueWrapper) {
+  await openForm(wrapper, 'product')
   await wrapper.get('#product-name').setValue(product.name)
   await wrapper.get('#product-supplier').setValue(supplier.id)
   await wrapper.get('#product-material').setValue(material.id)
@@ -62,21 +75,110 @@ async function fillProduct(wrapper: VueWrapper) {
   await wrapper.get('#product-url').setValue(product.productUrl ?? '')
 }
 async function submit(wrapper: VueWrapper, entity: 'supplier' | 'product') {
+  await openForm(wrapper, entity)
   const form = wrapper.findAll('form').find((candidate) => candidate.find(`#${entity}-name`).exists())
   if (!form) throw new Error(`Missing ${entity} form`)
   await form.trigger('submit')
   await flushPromises()
 }
-afterEach(() => { for (const wrapper of wrappers) wrapper.unmount(); wrappers.length = 0; vi.restoreAllMocks() })
+afterEach(() => { for (const wrapper of wrappers) wrapper.unmount(); wrappers.length = 0; vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('SuppliersView', () => {
+  it('groups separate materials even with the same category and combines name, category, material and availability filters', async () => {
+    const repositories = setup()
+    const otherMaterial = materialSchema.parse({ ...material, id: 'other-plywood', name: 'Oak plywood' })
+    const otherProduct = supplierProductSchema.parse({ ...product, id: 'oak-panel', name: 'Oak panel', materialId: otherMaterial.id, availability: 'unavailable' })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [material, otherMaterial] })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product, otherProduct] })
+    const wrapper = render(repositories); await flushPromises()
+    expect(wrapper.findAll('table')).toHaveLength(2)
+    await wrapper.get('#catalog-material').setValue(otherMaterial.id)
+    expect(wrapper.findAll('table')).toHaveLength(1); expect(wrapper.find(`button[aria-label="View product ${product.name}"]`).exists()).toBe(false)
+    await wrapper.get('#catalog-material').setValue(''); await wrapper.get('#catalog-availability').setValue('available')
+    expect(wrapper.find(`button[aria-label="View product ${otherProduct.name}"]`).exists()).toBe(false)
+    await wrapper.get('#catalog-category').setValue(material.category); await wrapper.get('#catalog-search').setValue('birch')
+    expect(wrapper.findAll('table')).toHaveLength(1)
+    await wrapper.get('#catalog-search').setValue('no match'); expect(wrapper.text()).toContain('No products match')
+    await wrapper.get('#supplier-search').setValue('no match'); expect(wrapper.text()).toContain('No matching suppliers')
+  })
+
+  it('uses an adaptive workspace and native product controls that reveal details on small screens', async () => {
+    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }))
+    const wrapper = render(repositories); await flushPromises()
+    const layout = wrapper.get('.catalog-workspace')
+    expect(layout.classes()).toContain('md:grid-cols-[13rem_minmax(0,1fr)]')
+    expect(layout.classes()).toContain('xl:grid-cols-[14rem_minmax(0,1fr)_19rem]')
+    const control = wrapper.get(`button[aria-label="View product ${product.name}"]`)
+    expect(control.attributes('type')).toBe('button'); expect(control.attributes('aria-controls')).toBe('product-details')
+    await control.trigger('click')
+    expect(document.activeElement).toBe(wrapper.get('#product-details-title').element)
+    expect(control.attributes('aria-pressed')).toBe('true')
+  })
+
+  it('shows only real purchase-linked inventory, with its actual dimensions, without writing stock', async () => {
+    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    const purchased = stockItemSchema.parse({ ...validStockItemInput, id: 'purchased', quantity: 3, provenance: { source: 'purchase', supplierProductId: product.id } })
+    const unrelated = stockItemSchema.parse({ ...validStockItemInput, id: 'manual', quantity: 9 })
+    const inventory = fakeRepository(purchased, [purchased, unrelated])
+    const wrapper = render(repositories, { [catalogStockRepositoryKey]: inventory }); await flushPromises()
+    expect(wrapper.get('table').text()).toContain('3 owned')
+    await selectProduct(wrapper)
+    const details = wrapper.get('#product-details')
+    expect(details.text()).toContain('3 offcut(s) · 800 × 400.5 × 18 mm')
+    expect(details.text()).not.toContain('9 offcut(s)')
+    expect(details.text()).toContain('Catalog references are not owned panels')
+    expect(inventory.create).not.toHaveBeenCalled(); expect(inventory.update).not.toHaveBeenCalled(); expect(inventory.delete).not.toHaveBeenCalled()
+  })
+
+  it('reports unavailable or failed stock reads without blocking catalog interaction', async () => {
+    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    const inventory = { list: vi.fn().mockResolvedValue(failure) }
+    const wrapper = render(repositories, { [catalogStockRepositoryKey]: inventory }); await flushPromises(); await selectProduct(wrapper)
+    expect(wrapper.get('#product-details [role="alert"]').text()).toContain('Could not access local storage')
+    expect(wrapper.get(`button[aria-label="Edit product ${product.name}"]`).attributes('disabled')).toBeUndefined()
+  })
+
+  it('opens accessible contextual forms, restores focus after Escape and blocks closing during pending writes', async () => {
+    const repositories = setup(); const wrapper = render(repositories); await flushPromises()
+    expect(wrapper.findAll('form')).toHaveLength(0)
+    const opener = button(wrapper, '+ Add Supplier'); opener.element.focus(); await opener.trigger('click')
+    const dialog = wrapper.get('dialog')
+    expect(dialog.attributes('aria-labelledby')).toBe('catalog-dialog-title')
+    expect(document.activeElement).toBe(wrapper.get('#supplier-name').element)
+    await dialog.trigger('cancel'); expect(wrapper.find('dialog').exists()).toBe(false); expect(document.activeElement).toBe(opener.element)
+    await fillSupplier(wrapper)
+    let resolve: ((result: PersistenceResult<typeof supplier>) => void) | undefined
+    repositories.suppliers.create.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    await submit(wrapper, 'supplier'); await wrapper.get('dialog').trigger('cancel')
+    expect(wrapper.find('dialog').exists()).toBe(true); expect(button(wrapper, 'Close form').attributes('disabled')).toBeDefined()
+    resolve?.({ ok: true, value: supplier }); await flushPromises(); expect(wrapper.find('dialog').exists()).toBe(false)
+  })
+
+  it('keeps .cocl import preview/confirmation functional and refreshes the new supplier list', async () => {
+    const repositories = setup()
+    const incoming = supplierSchema.parse({ ...supplier, id: 'imported-supplier', name: 'Imported supplier' })
+    const file = catalogTransferSchema.parse({ format: 'opticutlist-catalog', schemaVersion: 1, catalog: { materials: [], suppliers: [incoming], products: [] } })
+    const transfer: CatalogTransferService = { export: vi.fn().mockResolvedValue({ ok: true, value: JSON.stringify(file) }), preview: vi.fn().mockResolvedValue({ ok: true, value: { file, conflicts: 0, reused: 0 } }), import: vi.fn().mockImplementation(() => { repositories.suppliers.list.mockResolvedValue({ ok: true, value: [supplier, incoming] }); return Promise.resolve({ ok: true, value: file }) }) }
+    const wrapper = render(repositories, { [catalogTransferServiceKey]: transfer }); await flushPromises()
+    await button(wrapper, 'Import Catalog').trigger('click')
+    const input = wrapper.get('#catalog-import-file'); expect(input.attributes('accept')).toBe('.cocl')
+    const selected = new File([''], 'catalog.cocl'); Object.defineProperty(selected, 'text', { value: () => Promise.resolve(JSON.stringify(file)) }); Object.defineProperty(input.element, 'files', { value: [selected] })
+    await input.trigger('change'); await flushPromises(); expect(wrapper.text()).toContain('0 materials · 1 suppliers · 0 products')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await button(wrapper, 'Confirm Catalog Import').trigger('click'); await flushPromises()
+    expect(wrapper.find(`button[aria-label="Select supplier ${incoming.name}"]`).exists()).toBe(true)
+    expect(repositories.suppliers.list).toHaveBeenCalledTimes(2)
+  })
+
+
   it.each(['create', 'edit'] as const)('creates a material inline and preserves every product field during %s', async (mode) => {
     const repositories = setup()
     if (mode === 'edit') repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
     repositories.materials.create.mockImplementation((record) => Promise.resolve({ ok: true, value: materialSchema.parse(record) }))
     const wrapper = render(repositories)
     await flushPromises()
-    if (mode === 'edit') await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    if (mode === 'edit') { await selectProduct(wrapper); await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click') }
     await fillProduct(wrapper)
     await button(wrapper, '+ New material').trigger('click')
     expect(document.activeElement).toBe(wrapper.get('#inline-material-name').element)
@@ -186,7 +288,8 @@ describe('SuppliersView', () => {
     try {
       await first.suppliers.create(supplier)
       const wrapper = render(createCatalogRepositories(first))
-      await vi.waitFor(() => { expect(wrapper.get('#product-name').attributes('disabled')).toBeUndefined() })
+      await vi.waitFor(() => { expect(button(wrapper, '+ Add Product').attributes('disabled')).toBeUndefined() })
+      await openForm(wrapper, 'product')
       await wrapper.get('#product-name').setValue(product.name)
       await wrapper.get('#product-supplier').setValue(supplier.id)
       for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
@@ -213,12 +316,12 @@ describe('SuppliersView', () => {
     repositories.suppliers.list.mockReturnValue(new Promise((done) => { resolve = done }))
     const wrapper = render(repositories)
     expect(wrapper.text()).toContain('Loading supplier catalog')
-    expect(wrapper.get('#supplier-name').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('form').exists()).toBe(false)
     resolve?.({ ok: true, value: [] })
     await flushPromises()
     expect(wrapper.text()).toContain('No suppliers yet')
     expect(wrapper.text()).toContain('No catalog products yet')
-    expect(button(wrapper, 'Create product').attributes('disabled')).toBeDefined()
+    expect(button(wrapper, '+ Add Product').attributes('disabled')).toBeDefined()
   })
 
   it('creates a supplier with a stable validated ID and optional website', async () => {
@@ -232,7 +335,7 @@ describe('SuppliersView', () => {
     expect(created).toEqual({ ...supplier, id: created.id })
     expect(repositories.suppliers.list).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[role="status"]').text()).toBe('Supplier created.')
-    expect(wrapper.get<HTMLInputElement>('#supplier-name').element.value).toBe('')
+    expect(wrapper.find('#supplier-name').exists()).toBe(false)
   })
 
   it('edits a supplier, clears an optional URL, and retains its ID', async () => {
@@ -252,6 +355,7 @@ describe('SuppliersView', () => {
     const repositories = setup()
     const wrapper = render(repositories)
     await flushPromises()
+    await openForm(wrapper, 'supplier')
     await wrapper.get('#supplier-name').setValue('   ')
     await wrapper.get('#supplier-website').setValue('javascript:alert(1)')
     await submit(wrapper, 'supplier')
@@ -276,7 +380,7 @@ describe('SuppliersView', () => {
     expect(repositories.suppliers.delete).toHaveBeenCalledExactlyOnceWith(supplier.id)
     expect(wrapper.text()).toContain('No suppliers yet')
     expect(wrapper.get('[role="status"]').text()).toBe('Supplier deleted.')
-    expect(document.activeElement).toBe(wrapper.get('#supplier-name').element)
+    expect(document.activeElement).toBe(button(wrapper, '+ Add Supplier').element)
   })
 
   it('groups products by supplier and material category and displays every constraint', async () => {
@@ -289,11 +393,16 @@ describe('SuppliersView', () => {
     repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product, secondProduct] })
     const wrapper = render(repositories)
     await flushPromises()
-    const groups = wrapper.findAll('h3').map((heading) => heading.text())
-    expect(groups).toEqual([supplier.name, secondSupplier.name])
-    expect(wrapper.findAll('h4').map((heading) => heading.text())).toEqual(['Plywood', 'Fiberboard'])
+    expect(wrapper.findAll('nav[aria-label="Catalog suppliers"] button').map(item => item.attributes('aria-label'))).toEqual([`Select supplier ${supplier.name}`, `Select supplier ${secondSupplier.name}`])
+    expect(wrapper.findAll('table')).toHaveLength(1)
+    expect(wrapper.get('h3').text()).toBe(material.name)
+    await selectProduct(wrapper)
     for (const text of [product.name, '2500 × 1250 × 18', '89.9 EUR', 'Along length', 'Available']) expect(wrapper.text()).toContain(text)
     expect(wrapper.get(`a[href="${product.productUrl ?? ''}"]`).attributes('rel')).toBe('noopener noreferrer')
+    await wrapper.get(`button[aria-label="Select supplier ${secondSupplier.name}"]`).trigger('click')
+    expect(wrapper.text()).toContain('Fiberboard'); expect(wrapper.text()).toContain(secondProduct.name)
+    expect(wrapper.find(`button[aria-label="View product ${product.name}"]`).exists()).toBe(false)
+
   })
 
   it('creates a schema-validated product and rereads storage', async () => {
@@ -307,7 +416,7 @@ describe('SuppliersView', () => {
     expect(created).toEqual({ ...product, id: created.id })
     expect(repositories.supplierProducts.list).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[role="status"]').text()).toBe('Product created.')
-    expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe('')
+    expect(wrapper.find('#product-name').exists()).toBe(false)
   })
 
   it('edits all product attributes, retains ID, and omits a cleared optional URL', async () => {
@@ -319,6 +428,7 @@ describe('SuppliersView', () => {
     repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
     const wrapper = render(repositories)
     await flushPromises()
+    await selectProduct(wrapper)
     await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
     await wrapper.get('#product-name').setValue('Updated product')
     await wrapper.get('#product-supplier').setValue(alternateSupplier.id)
@@ -344,10 +454,11 @@ describe('SuppliersView', () => {
     repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
     const wrapper = render(repositories)
     await flushPromises()
+    if (entity === 'product') await selectProduct(wrapper)
     await wrapper.get(`button[aria-label="Edit ${entity} ${entity === 'supplier' ? supplier.name : product.name}"]`).trigger('click')
     await wrapper.get(`#${entity}-name`).setValue('Unsaved')
     await button(wrapper, 'Cancel').trigger('click')
-    expect(wrapper.get<HTMLInputElement>(`#${entity}-name`).element.value).toBe('')
+    expect(wrapper.find(`#${entity}-name`).exists()).toBe(false)
     expect(repositories.suppliers.update).not.toHaveBeenCalled()
     expect(repositories.supplierProducts.update).not.toHaveBeenCalled()
   })
@@ -358,6 +469,7 @@ describe('SuppliersView', () => {
     const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = render(repositories)
     await flushPromises()
+    await selectProduct(wrapper)
     await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
     const action = wrapper.get(`button[aria-label="Delete product ${product.name}"]`)
     await action.trigger('click')
@@ -367,14 +479,15 @@ describe('SuppliersView', () => {
     await flushPromises()
     expect(repositories.supplierProducts.delete).toHaveBeenCalledExactlyOnceWith(product.id)
     expect(wrapper.text()).toContain('No catalog products yet')
-    expect(wrapper.get('#product-form-title').text()).toBe('New catalog product')
-    expect(document.activeElement).toBe(wrapper.get('#product-name').element)
+    expect(wrapper.find('#product-name').exists()).toBe(false)
   })
 
   it('requires dimensions, name, price, supplier and material selection', async () => {
     const repositories = setup()
     const wrapper = render(repositories)
     await flushPromises()
+    await openForm(wrapper, 'product')
+    await wrapper.get('#product-supplier').setValue('')
     await submit(wrapper, 'product')
     for (const field of ['name', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'supplier', 'material']) {
       expect(wrapper.get(`#product-${field}`).attributes('aria-invalid')).toBe('true')
@@ -428,7 +541,9 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     expect(wrapper.text()).toContain('Missing supplier')
+    await wrapper.get('button[aria-label="Select supplier Missing supplier"]').trigger('click')
     expect(wrapper.text()).toContain('Missing material')
+    await selectProduct(wrapper)
     await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
     await submit(wrapper, 'product')
     expect(wrapper.get('#product-supplier-error').text()).toContain('Choose an existing supplier')
@@ -440,7 +555,7 @@ describe('SuppliersView', () => {
     const repositories = setup()
     const wrapper = render(repositories)
     await flushPromises()
-    expect(wrapper.get<HTMLSelectElement>('#product-supplier').element.value).toBe('')
+    expect(wrapper.find('#product-supplier').exists()).toBe(false)
     await wrapper.get(`button[aria-label="Add product for ${supplier.name}"]`).trigger('click')
     expect(wrapper.get<HTMLSelectElement>('#product-supplier').element.value).toBe(supplier.id)
     expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe('')
@@ -451,7 +566,8 @@ describe('SuppliersView', () => {
     repositories.materials.list.mockResolvedValue({ ok: true, value: [] })
     const wrapper = render(repositories)
     await flushPromises()
-    expect(wrapper.text()).toContain('Create a material directly in the product form')
+    await openForm(wrapper, 'product')
+    expect(button(wrapper, '+ New material').exists()).toBe(true)
     expect(button(wrapper, 'Create product').attributes('disabled')).toBeDefined()
   })
 
@@ -462,7 +578,7 @@ describe('SuppliersView', () => {
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
     expect(wrapper.text()).not.toContain('No suppliers yet')
-    expect(button(wrapper, 'Create product').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('form').exists()).toBe(false)
     await button(wrapper, 'Try again').trigger('click')
     await flushPromises()
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
@@ -492,6 +608,7 @@ describe('SuppliersView', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = render(repositories)
     await flushPromises()
+    if (entity === 'product') await selectProduct(wrapper)
     await wrapper.get(`button[aria-label="Delete ${entity} ${entity === 'supplier' ? supplier.name : product.name}"]`).trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('referenced by existing records')
@@ -517,6 +634,7 @@ describe('SuppliersView', () => {
     else repositories.supplierProducts.update.mockResolvedValue(failure)
     const wrapper = render(repositories)
     await flushPromises()
+    if (entity === 'product') await selectProduct(wrapper)
     await wrapper.get(`button[aria-label="Edit ${entity} ${entity === 'supplier' ? supplier.name : product.name}"]`).trigger('click')
     await wrapper.get(`#${entity}-name`).setValue('Unsaved edit')
     await submit(wrapper, entity)
@@ -533,7 +651,7 @@ describe('SuppliersView', () => {
     await flushPromises()
     await fillProduct(wrapper)
     await submit(wrapper, 'product')
-    expect(wrapper.get('#supplier-name').attributes('disabled')).toBeDefined()
+    expect(button(wrapper, 'Close form').attributes('disabled')).toBeDefined()
     await submit(wrapper, 'product')
     expect(repositories.supplierProducts.create).toHaveBeenCalledTimes(1)
     resolve?.({ ok: true, value: product })
