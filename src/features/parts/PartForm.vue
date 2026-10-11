@@ -4,6 +4,7 @@ import { computed, nextTick, ref, shallowRef } from 'vue'
 import type { Material } from '../../domain/model/material'
 import { grainDirectionSchema, rotationPolicySchema } from '../../domain/model/orientation'
 import { partSchema, type Part } from '../../domain/model/part'
+import MaterialSelector from '../materials/MaterialSelector.vue'
 import FormField from '../../shared/ui/FormField.vue'
 
 const props = defineProps<{
@@ -24,7 +25,7 @@ const quantity = ref<number | string>(props.part?.quantity ?? 1)
 const grainDirection = ref(props.part?.grainDirection ?? 'none')
 const rotation = ref(props.part?.rotation ?? 'allowed')
 const errors = shallowRef<ReadonlyMap<string, string>>(new Map())
-const missingMaterial = computed(() => materialId.value !== '' && !props.materials.some((material) => material.id === materialId.value))
+const materialOptions = computed(() => props.materials.map(material => ({ value: material.id, name: material.name, group: material.category, presetId: material.libraryPresetId })))
 
 function numberInput(value: number | string): number | undefined {
   return typeof value === 'string' && value.trim() === '' ? undefined : Number(value)
@@ -58,7 +59,7 @@ async function submit(): Promise<void> {
   errors.value = issues
   if (issues.size > 0) {
     await nextTick()
-    form.value?.querySelector<HTMLInputElement | HTMLSelectElement>('[aria-invalid="true"]')?.focus()
+    form.value?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
     return
   }
   if (result.success) emit('save', result.data)
@@ -66,36 +67,26 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section
-    class="panel p-6"
-    aria-labelledby="part-form-title"
+  <form
+    ref="form"
+    novalidate
+    class="space-y-6"
+    :aria-busy="busy"
+    @submit.prevent="submit"
   >
-    <div class="mb-6 space-y-2">
-      <p class="eyebrow">
-        {{ part ? 'Update your library' : 'Add to your library' }}
-      </p>
-      <h2
-        id="part-form-title"
-        class="text-xl font-semibold"
-      >
-        {{ part ? 'Edit part' : 'New part' }}
-      </h2>
-      <p class="text-sm text-muted">
-        Enter finished dimensions in millimeters. Length and width define the face; thickness is required for material compatibility.
-      </p>
-    </div>
-    <form
-      ref="form"
-      novalidate
-      class="space-y-5"
-      :aria-busy="busy"
-      @submit.prevent="submit"
-    >
-      <div class="grid gap-5 md:grid-cols-2">
+    <p class="text-xs text-muted">
+      * Required fields. Dimensions in millimeters.
+    </p>
+    <section class="space-y-4">
+      <h3 class="text-sm font-semibold">
+        General information
+      </h3>
+      <div class="grid gap-4">
         <FormField
           id="part-name"
           label="Name"
           required
+          required-indicator="asterisk"
           :error="errors.get('name') ?? ''"
         >
           <template #default="{ controlAttrs }">
@@ -116,45 +107,32 @@ async function submit(): Promise<void> {
           id="part-material"
           label="Material"
           required
+          required-indicator="asterisk"
           :error="errors.get('materialId') ?? ''"
         >
           <template #default="{ controlAttrs }">
-            <select
-              v-model="materialId"
+            <MaterialSelector
               v-bind="controlAttrs"
-              class="field"
-              name="materialId"
+              id="part-material"
+              v-model="materialId"
+              :options="materialOptions"
+              :allow-custom-creation="false"
               :disabled="disabled || busy || materials.length === 0"
-            >
-              <option
-                value=""
-                disabled
-              >
-                Select a material
-              </option>
-              <option
-                v-if="missingMaterial"
-                :value="materialId"
-                disabled
-              >
-                Unavailable material — choose another
-              </option>
-              <option
-                v-for="material in materials"
-                :key="material.id"
-                :value="material.id"
-              >
-                {{ material.name }} · {{ material.category }}
-              </option>
-            </select>
+            />
           </template>
         </FormField>
       </div>
-      <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+    </section>
+    <section class="space-y-4 border-t border-line pt-5">
+      <h3 class="text-sm font-semibold">
+        Dimensions
+      </h3>
+      <div class="grid gap-4 sm:grid-cols-3">
         <FormField
           id="part-length"
           label="Length (mm)"
           required
+          required-indicator="asterisk"
           :error="errors.get('lengthMm') ?? ''"
         >
           <template #default="{ controlAttrs }">
@@ -175,6 +153,7 @@ async function submit(): Promise<void> {
           id="part-width"
           label="Width (mm)"
           required
+          required-indicator="asterisk"
           :error="errors.get('widthMm') ?? ''"
         >
           <template #default="{ controlAttrs }">
@@ -195,6 +174,7 @@ async function submit(): Promise<void> {
           id="part-thickness"
           label="Thickness (mm)"
           required
+          required-indicator="asterisk"
           :error="errors.get('thicknessMm') ?? ''"
         >
           <template #default="{ controlAttrs }">
@@ -211,10 +191,18 @@ async function submit(): Promise<void> {
             >
           </template>
         </FormField>
+      </div>
+    </section>
+    <section class="space-y-4 border-t border-line pt-5">
+      <h3 class="text-sm font-semibold">
+        Production
+      </h3>
+      <div class="max-w-48">
         <FormField
           id="part-quantity"
           label="Quantity"
           required
+          required-indicator="asterisk"
           :error="errors.get('quantity') ?? ''"
         >
           <template #default="{ controlAttrs }">
@@ -232,11 +220,17 @@ async function submit(): Promise<void> {
           </template>
         </FormField>
       </div>
-      <div class="grid gap-5 md:grid-cols-2">
+    </section>
+    <section class="space-y-4 border-t border-line pt-5">
+      <h3 class="text-sm font-semibold">
+        Cutting constraints
+      </h3>
+      <div class="grid gap-4 sm:grid-cols-2">
         <FormField
           id="part-grain"
           label="Grain direction"
           required
+          required-indicator="asterisk"
           :error="errors.get('grainDirection') ?? ''"
           hint="Direction relative to this part's length and width."
         >
@@ -262,6 +256,7 @@ async function submit(): Promise<void> {
           id="part-rotation"
           label="90° rotation"
           required
+          required-indicator="asterisk"
           :error="errors.get('rotation') ?? ''"
           hint="Grain direction still applies when rotation is allowed."
         >
@@ -284,24 +279,23 @@ async function submit(): Promise<void> {
           </template>
         </FormField>
       </div>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="submit"
-          class="button button-primary"
-          :disabled="disabled || busy || materials.length === 0"
-        >
-          {{ busy ? 'Please wait…' : (part ? 'Save changes' : 'Create part') }}
-        </button>
-        <button
-          v-if="part"
-          type="button"
-          class="button"
-          :disabled="disabled || busy"
-          @click="emit('cancel')"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
-  </section>
+    </section>
+    <div class="flex flex-wrap justify-end gap-2 border-t border-line pt-5">
+      <button
+        type="submit"
+        class="button button-primary"
+        :disabled="disabled || busy || materials.length === 0"
+      >
+        {{ busy ? 'Please wait…' : (part ? 'Save changes' : 'Create part') }}
+      </button>
+      <button
+        type="button"
+        class="button"
+        :disabled="disabled || busy"
+        @click="emit('cancel')"
+      >
+        Cancel
+      </button>
+    </div>
+  </form>
 </template>

@@ -4,15 +4,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 
 import { createAppRouter } from '../../../app/router'
+import { createProjectService } from '../../../application/projects/project-service'
+import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
+import { cuttingProjectIdSchema } from '../../../domain/model/ids'
+import { supplierSchema } from '../../../domain/model/supplier'
+import { supplierProductSchema } from '../../../domain/model/supplier-product'
+import { projectIdKey, projectServiceKey } from '../../projects/project-service'
+import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../suppliers/catalog-repositories'
 import type { PersistenceResult, Repository } from '../../../application/persistence/repositories'
-import { validMaterialInput, validPartInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
 import { materialSchema } from '../../../domain/model/material'
 import { partSchema } from '../../../domain/model/part'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
 import { materialRepositoryKey } from '../../materials/material-repository'
+import MaterialSelector from '../../materials/MaterialSelector.vue'
 import PartsView from '../PartsView.vue'
 import { partRepositoryKey } from '../part-repository'
 
+const projectId = cuttingProjectIdSchema.parse('parts-project')
+const project = cuttingProjectSchema.parse({ id: projectId, name: 'Workshop', partIds: [], materialIds: [validMaterialInput.id, 'mat-mdf'], supplierProductIds: [] })
 const material = materialSchema.parse(validMaterialInput)
 const part = partSchema.parse(validPartInput)
 const updated = partSchema.parse({ ...part, name: 'Updated panel', quantity: 3, grainDirection: 'width', rotation: 'allowed' })
@@ -29,22 +39,35 @@ function fakeRepository<Entity extends { id: string }>(record: Entity, records: 
   }
 }
 function setup() {
-  return { parts: fakeRepository(part), materials: fakeRepository(material, [material]) }
+  return { parts: fakeRepository(part), materials: fakeRepository(material, [material]), projects: fakeRepository(project), products: fakeRepository(supplierProductSchema.parse(validSupplierProductInput)) }
 }
-function render(repositories: { parts: Repository<typeof part>; materials: Repository<typeof material> }) {
+function render(repositories: { parts: Repository<typeof part>; materials: Repository<typeof material>; projects?: Repository<typeof project>; products?: Repository<ReturnType<typeof supplierProductSchema.parse>> }) {
   const wrapper = mount(PartsView, {
     attachTo: document.body,
     global: {
       plugins: [createAppRouter(createMemoryHistory())],
-      provide: { [partRepositoryKey]: repositories.parts, [materialRepositoryKey]: repositories.materials },
+      provide: {
+        [partRepositoryKey]: repositories.parts, [materialRepositoryKey]: repositories.materials,
+        [projectIdKey]: projectId,
+        [projectServiceKey]: { projects: repositories.projects ?? fakeRepository(project) },
+        [supplierRepositoryKey]: fakeRepository(supplierSchema.parse(validSupplierInput)),
+        [supplierProductRepositoryKey]: repositories.products ?? fakeRepository(supplierProductSchema.parse(validSupplierProductInput)),
+      },
     },
   })
   wrappers.push(wrapper)
   return wrapper
 }
+async function chooseMaterial(wrapper: VueWrapper, id: string) {
+  await wrapper.get('#part-material').trigger('click')
+  const option = wrapper.findAll('[role="option"]').find(option => option.attributes('data-value') === id)
+  if (!option) throw new Error('Missing material option')
+  await option.trigger('click')
+}
 async function fill(wrapper: VueWrapper) {
+  if (!wrapper.find('#part-name').exists()) { await button(wrapper, 'New part').trigger('click'); await flushPromises() }
   await wrapper.get('#part-name').setValue(part.name)
-  await wrapper.get('#part-material').setValue(material.id)
+  await chooseMaterial(wrapper, material.id)
   await wrapper.get('#part-length').setValue(String(part.lengthMm))
   await wrapper.get('#part-width').setValue(String(part.widthMm))
   await wrapper.get('#part-thickness').setValue(String(part.thicknessMm))
@@ -74,7 +97,7 @@ describe('PartsView', () => {
     repositories.parts.list.mockReturnValue(new Promise((done) => { resolve = done }))
     const wrapper = render(repositories)
     expect(wrapper.text()).toContain('Loading parts…')
-    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(button(wrapper, 'New part').attributes('disabled')).toBeDefined()
     resolve?.({ ok: true, value: [] })
     await flushPromises()
     expect(wrapper.text()).toContain('No parts yet')
@@ -86,7 +109,7 @@ describe('PartsView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     const table = wrapper.get('table')
-    for (const text of [part.name, material.name, '720 × 560 × 18', '2', 'Along length', 'Forbidden']) {
+    for (const text of [part.name, material.name, '720 × 560', '18', '2', 'Along length', 'Forbidden']) {
       expect(table.text()).toContain(text)
     }
     expect(wrapper.get('[role="region"]').attributes('tabindex')).toBe('0')
@@ -96,6 +119,7 @@ describe('PartsView', () => {
     const repositories = setup()
     const wrapper = render(repositories)
     await flushPromises()
+    await button(wrapper, 'New part').trigger('click')
     await wrapper.get('#part-quantity').setValue('')
     await submit(wrapper)
     for (const field of ['name', 'material', 'length', 'width', 'thickness', 'quantity']) {
@@ -136,7 +160,7 @@ describe('PartsView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     await fill(wrapper)
-    await wrapper.get('#part-material').setValue('')
+    wrapper.findComponent(MaterialSelector).vm.$emit('update:modelValue', '')
     await submit(wrapper)
     expect(wrapper.get('#part-material-error').text()).toBe('Choose an existing material.')
     expect(repositories.parts.create).not.toHaveBeenCalled()
@@ -150,7 +174,7 @@ describe('PartsView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     await fill(wrapper)
-    await wrapper.get('#part-material').setValue(alternative.id)
+    await chooseMaterial(wrapper, alternative.id)
     await submit(wrapper)
     const created = partSchema.parse(repositories.parts.create.mock.calls[0]?.[0])
     expect(created.materialId).toBe(alternative.id)
@@ -175,10 +199,10 @@ describe('PartsView', () => {
     repositories.materials.list.mockResolvedValue({ ok: true, value: [] })
     const wrapper = render(repositories)
     await flushPromises()
-    expect(wrapper.text()).toContain('Add a material before creating or editing parts')
-    expect(wrapper.get('a').attributes('href')).toBe('/suppliers')
-    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
-    await submit(wrapper)
+    expect(wrapper.text()).toContain('Select materials for this project')
+    expect(wrapper.get('a').attributes('href')).toBe('/projects/parts-project/materials')
+    expect(button(wrapper, 'New part').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('form').exists()).toBe(false)
     expect(repositories.parts.create).not.toHaveBeenCalled()
   })
 
@@ -197,8 +221,7 @@ describe('PartsView', () => {
     expect(repositories.parts.list).toHaveBeenCalledTimes(2)
     expect(wrapper.get('tbody').text()).toContain(part.name)
     expect(wrapper.get('[role="status"]').text()).toBe('Part created.')
-    expect(wrapper.get<HTMLInputElement>('#part-name').element.value).toBe('')
-    expect(document.activeElement).toBe(wrapper.get('#part-name').element)
+    expect(wrapper.find('dialog').exists()).toBe(false)
   })
 
   it('edits with a stable ID and preserves all constraints', async () => {
@@ -228,8 +251,7 @@ describe('PartsView', () => {
     await wrapper.get(`button[aria-label="Edit ${part.name}"]`).trigger('click')
     await wrapper.get('#part-name').setValue('Unsaved')
     await button(wrapper, 'Cancel').trigger('click')
-    expect(wrapper.get('#part-form-title').text()).toBe('New part')
-    expect(wrapper.get<HTMLInputElement>('#part-name').element.value).toBe('')
+    expect(wrapper.find('dialog').exists()).toBe(false)
     expect(repositories.parts.update).not.toHaveBeenCalled()
   })
 
@@ -249,9 +271,9 @@ describe('PartsView', () => {
     await flushPromises()
     expect(repositories.parts.delete).toHaveBeenCalledExactlyOnceWith(part.id)
     expect(wrapper.text()).toContain('No parts yet')
-    expect(wrapper.get('#part-form-title').text()).toBe('New part')
+    expect(wrapper.find('dialog').exists()).toBe(false)
     expect(wrapper.get('[role="status"]').text()).toBe('Part deleted.')
-    expect(document.activeElement).toBe(wrapper.get('#part-name').element)
+    expect(wrapper.find('dialog').exists()).toBe(false)
   })
 
   it('handles read errors with retry without claiming the library is empty', async () => {
@@ -275,7 +297,7 @@ describe('PartsView', () => {
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not load materials')
     expect(wrapper.get('tbody').text()).toContain('Material unavailable')
-    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(button(wrapper, 'New part').attributes('disabled')).toBeDefined()
     await button(wrapper, 'Retry loading').trigger('click')
     await flushPromises()
     expect(wrapper.get('tbody').text()).toContain(material.name)
@@ -292,7 +314,7 @@ describe('PartsView', () => {
     await submit(wrapper)
     expect(wrapper.get('#part-material-error').text()).toBe('Choose an existing material.')
     expect(repositories.parts.update).not.toHaveBeenCalled()
-    await wrapper.get('#part-material').setValue(material.id)
+    await chooseMaterial(wrapper, material.id)
     await submit(wrapper)
     expect(repositories.parts.update).toHaveBeenCalledExactlyOnceWith(part.id, part)
   })
@@ -362,6 +384,7 @@ describe('PartsView', () => {
     await fill(wrapper)
     await submit(wrapper)
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[aria-label="Close part form"]').attributes('disabled')).toBeDefined()
     await submit(wrapper)
     expect(repositories.parts.create).toHaveBeenCalledTimes(1)
     resolve?.({ ok: true, value: part })
@@ -385,18 +408,170 @@ describe('PartsView', () => {
     const second = createLocalPersistence('parts-ui-test', { indexedDB, IDBKeyRange })
     try {
       expect((await first.materials.create(material)).ok).toBe(true)
-      const wrapper = render(first)
+      expect((await first.projects.create(project)).ok).toBe(true)
+      const otherProject = cuttingProjectSchema.parse({ ...project, id: 'other-project' })
+      expect((await first.projects.create(otherProject)).ok).toBe(true)
+      const unrelated = partSchema.parse({ ...part, id: 'unrelated-part', name: 'Other project only' })
+      expect((await createProjectService(first).parts(otherProject.id).create(unrelated)).ok).toBe(true)
+      const firstService = createProjectService(first)
+      const wrapper = render({ ...first, parts: firstService.parts(projectId) })
       await vi.waitFor(() => { expect(wrapper.text()).toContain('No parts yet') })
       await fill(wrapper)
       await wrapper.get('form').trigger('submit')
       await vi.waitFor(() => { expect(wrapper.get('tbody').text()).toContain(part.name) })
       wrapper.unmount()
       first.close()
-      const reopened = render(second)
-      await vi.waitFor(() => { expect(reopened.get('tbody').text()).toContain('720 × 560 × 18') })
+      const reopened = render({ ...second, parts: createProjectService(second).parts(projectId) })
+      await vi.waitFor(() => { expect(reopened.get('tbody').text()).toContain('720 × 560') })
+      expect(reopened.text()).not.toContain('Other project only')
+      expect(await second.parts.get(unrelated.id)).toEqual({ ok: true, value: unrelated })
+      const owner = await second.projects.get(projectId)
+      expect(owner.ok && owner.value.materialIds).toEqual(project.materialIds)
+      expect((await second.stockItems.list())).toEqual({ ok: true, value: [] })
     } finally {
       first.close()
       second.close()
     }
   })
+  it('selects parts by stable ID, updates details and searches by name', async () => {
+    const repositories = setup()
+    const secondPart = partSchema.parse({ ...part, id: 'second-part', name: 'Shelf', lengthMm: 300, widthMm: 100, grainDirection: 'width' })
+    repositories.parts.list.mockResolvedValue({ ok: true, value: [part, secondPart] })
+    const wrapper = render(repositories)
+    await flushPromises()
+    expect(wrapper.get('aside').text()).toContain(part.name)
+    await wrapper.get('button[aria-label="Select Shelf"]').trigger('click')
+    expect(wrapper.get('aside').text()).toContain('Shelf')
+    expect(wrapper.get('button[aria-label="Select Shelf"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('[data-grain="width"]').exists()).toBe(true)
+    await wrapper.get('[aria-label="Search parts by name"]').setValue('shelf')
+    expect(wrapper.get('tbody').findAll('tr')).toHaveLength(1)
+    await wrapper.get('[aria-label="Search parts by name"]').setValue('missing')
+    expect(wrapper.text()).toContain('No parts match your search.')
+    expect(wrapper.find('table').exists()).toBe(false)
+  })
+
+  it('opens and closes the drawer without writes, restoring trigger focus', async () => {
+    const repositories = setup()
+    const wrapper = render(repositories)
+    await flushPromises()
+    expect(wrapper.find('form').exists()).toBe(false)
+    const trigger = button(wrapper, 'New part')
+    trigger.element.focus()
+    await trigger.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('dialog').classes()).toContain('h-dvh')
+    expect(wrapper.get('dialog h2').text()).toBe('New part')
+    await wrapper.get('#part-name').setValue('Uncommitted')
+    await wrapper.get('[aria-label="Close part form"]').trigger('click')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(document.activeElement).toBe(trigger.element)
+    await trigger.trigger('click')
+    expect(wrapper.get<HTMLInputElement>('#part-name').element.value).toBe('')
+    await wrapper.get('dialog').trigger('cancel')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(repositories.parts.create).not.toHaveBeenCalled()
+  })
+
+  it('offers only project selections, including selected products, without catalog creation', async () => {
+    const repositories = setup()
+    const alternative = materialSchema.parse({ ...material, id: 'product-material', name: 'Selected plywood', libraryPresetId: 'contreplaque' })
+    const outside = materialSchema.parse({ ...material, id: 'other-project-material', name: 'Other project' })
+    const product = supplierProductSchema.parse({ ...validSupplierProductInput, materialId: alternative.id })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [material, alternative, outside] })
+    repositories.products.list.mockResolvedValue({ ok: true, value: [product] })
+    repositories.projects.get.mockResolvedValue({ ok: true, value: { ...project, materialIds: [material.id], supplierProductIds: [product.id] } })
+    const wrapper = render(repositories)
+    await flushPromises()
+    await button(wrapper, 'New part').trigger('click')
+    await wrapper.get('#part-material').trigger('click')
+    expect(wrapper.findAll('[role="option"]').map(option => option.text())).toEqual([material.name, alternative.name])
+    expect(wrapper.text()).not.toContain('Create custom material')
+    expect(wrapper.text()).not.toContain(outside.name)
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+    expect(repositories.projects.update).not.toHaveBeenCalled()
+    expect(wrapper.findComponent(MaterialSelector).props('allowCustomCreation')).toBe(false)
+  })
+
+  it('rechecks project selections and retains a draft after a material is deselected', async () => {
+    const repositories = setup()
+    const wrapper = render(repositories)
+    await flushPromises()
+    await fill(wrapper)
+    repositories.projects.get.mockResolvedValue({ ok: true, value: { ...project, materialIds: [] } })
+    await submit(wrapper)
+    expect(wrapper.get('[role="alert"]').text()).toContain('no longer available to this project')
+    expect(wrapper.get<HTMLInputElement>('#part-name').element.value).toBe(part.name)
+    expect(repositories.parts.create).not.toHaveBeenCalled()
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+  })
+
+  it('preserves parts outside current selections while requiring an explicit replacement on edit', async () => {
+    const repositories = setup()
+    const outside = materialSchema.parse({ ...material, id: 'historic-material', name: 'Historic oak' })
+    const historicPart = partSchema.parse({ ...part, materialId: outside.id })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [material, outside] })
+    repositories.parts.list.mockResolvedValue({ ok: true, value: [historicPart] })
+    const wrapper = render(repositories)
+    await flushPromises()
+    expect(wrapper.get('tbody').text()).toContain(outside.name)
+    expect(wrapper.get('aside').text()).toContain('saved association has been preserved')
+    await wrapper.get(`button[aria-label="Edit ${part.name}"]`).trigger('click')
+    await submit(wrapper)
+    expect(wrapper.get('#part-material-error').text()).toContain('Choose an existing material')
+    expect(repositories.parts.update).not.toHaveBeenCalled()
+    expect(historicPart.materialId).toBe(outside.id)
+  })
+
+  it('keeps workspace and field groups responsive without changing navigation', async () => {
+    const repositories = setup()
+    repositories.parts.list.mockResolvedValue({ ok: true, value: [part] })
+    const wrapper = render(repositories)
+    await flushPromises()
+    expect(wrapper.findAll('div').some(element => element.classes().includes('xl:grid-cols-[minmax(0,1fr)_320px]'))).toBe(true)
+    await button(wrapper, 'New part').trigger('click')
+    expect(wrapper.get('#part-length').element.parentElement?.parentElement?.classList.contains('sm:grid-cols-3')).toBe(true)
+    expect(wrapper.findComponent(MaterialSelector).exists()).toBe(true)
+  })
+
+  it('uses shared picker search and keyboard selection only within allowed materials', async () => {
+    const repositories = setup()
+    const second = materialSchema.parse({ ...material, id: 'mat-mdf', name: 'MDF' })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [material, second] })
+    const wrapper = render(repositories)
+    await flushPromises()
+    await button(wrapper, 'New part').trigger('click')
+    await wrapper.get('#part-material').trigger('keydown', { key: 'ArrowDown' })
+    await flushPromises()
+    const search = wrapper.get('input[role="combobox"]')
+    await search.setValue('MDF')
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(1)
+    await search.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.get('#part-material').text()).toContain('MDF')
+    expect(wrapper.get('#part-material').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('dialog').exists()).toBe(true)
+    await wrapper.get('#part-material').trigger('click')
+    await wrapper.get('input[role="combobox"]').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.get('#part-material').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('dialog').exists()).toBe(true)
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+  })
+
+  it('resolves material images by stable association and updates them on part selection', async () => {
+    const repositories = setup()
+    const textured = materialSchema.parse({ ...material, libraryPresetId: 'contreplaque' })
+    const second = materialSchema.parse({ ...material, id: 'mat-mdf', name: 'Custom renamed MDF', libraryPresetId: 'mdf' })
+    const secondPart = partSchema.parse({ ...part, id: 'mdf-part', name: 'Drawer bottom', materialId: second.id })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [textured, second] })
+    repositories.parts.list.mockResolvedValue({ ok: true, value: [part, secondPart] })
+    const wrapper = render(repositories)
+    await flushPromises()
+    expect(wrapper.get('aside img').attributes('src')).toContain('/previews/contreplaque.webp')
+    expect(wrapper.get('tbody img').attributes('src')).toContain('/textures/contreplaque.webp')
+    await wrapper.get('button[aria-label="Select Drawer bottom"]').trigger('click')
+    expect(wrapper.get('aside img').attributes('src')).toContain('/previews/mdf.webp')
+    expect(wrapper.get('aside').text()).toContain('Custom renamed MDF')
+    expect(repositories.parts.update).not.toHaveBeenCalled()
+  })
+
 })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-const props = defineProps<{ title: string; busy: boolean; closeLabel?: string }>()
+const props = defineProps<{ title: string; busy: boolean; closeLabel?: string; drawer?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 let previousFocus: HTMLElement | null = null
@@ -17,7 +17,8 @@ onBeforeUnmount(() => { if (typeof dialog.value?.close === 'function') dialog.va
   <dialog
     ref="dialog"
     aria-labelledby="catalog-dialog-title"
-    class="panel m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-3xl overflow-y-auto p-4 text-ink backdrop:bg-canvas/80 sm:p-6"
+    class="panel overflow-y-auto p-4 text-ink backdrop:bg-canvas/80 sm:p-6"
+    :class="drawer ? 'm-0 ml-auto h-dvh max-h-dvh w-full max-w-xl rounded-none sm:rounded-l-2xl' : 'm-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-3xl'"
     @cancel.prevent="close"
   >
     <div class="mb-4 flex items-center justify-between gap-3">
