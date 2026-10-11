@@ -84,6 +84,32 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
 }
 
 describe('Home and application navigation', () => {
+  it('protects pending Materials choices across tabs and project changes without changing navigation', async () => {
+    const { wrapper, router, persistence, service } = await mountAt('/')
+    await persistence.materials.create(validMaterialInput)
+    const first = cuttingProjectSchema.parse({ id: 'draft-project', name: 'First', materialIds: [], supplierProductIds: [], partIds: [] })
+    const second = cuttingProjectSchema.parse({ ...first, id: 'other-draft-project', name: 'Second' })
+    await service.projects.create(first)
+    await service.projects.create(second)
+    await router.push(`/projects/${first.id}/materials`)
+    await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use ${validMaterialInput.name}"]`).exists()).toBe(true) })
+    await wrapper.get(`input[aria-label="Use ${validMaterialInput.name}"]`).setValue(true)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await router.push(`/projects/${first.id}/parts`)
+    expect(router.currentRoute.value.path).toBe(`/projects/${first.id}/materials`)
+    await router.push(`/projects/${second.id}/materials`)
+    expect(router.currentRoute.value.path).toBe(`/projects/${first.id}/materials`)
+    expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${validMaterialInput.name}"]`).element.checked).toBe(true)
+    expect(await service.projects.get(first.id)).toEqual({ ok: true, value: first })
+    confirm.mockReturnValue(true)
+    await router.push(`/projects/${second.id}/materials`)
+    await vi.waitFor(() => { expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${validMaterialInput.name}"]`).element.checked).toBe(false) })
+    expect(wrapper.text()).not.toContain('Unsaved changes')
+    await router.push(`/projects/${second.id}/parts`)
+    await flushPromises()
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Select materials to get started') })
+  })
+
   it('keeps the three-tile layout and woodworking imagery', async () => {
     const { wrapper } = await mountAt('/')
     expect(wrapper.get('header').text()).toContain('OptiCutList')

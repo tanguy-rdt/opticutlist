@@ -120,7 +120,7 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
         id="main-content"
         tabindex="-1"
         class="mx-auto w-full flex-1 px-4 pt-4 pb-5 sm:px-6 lg:px-4"
-        :class="$route.name === 'suppliers' || $route.name === 'stock' || $route.name === 'project-parts' ? 'max-w-none' : 'max-w-7xl'"
+        :class="$route.name === 'suppliers' || $route.name === 'stock' || $route.name === 'project-parts' || $route.name === 'project-materials' ? 'max-w-none' : 'max-w-7xl'"
       >
         <RouterView :key="String($route.params.projectId ?? '')" />
       </main>
