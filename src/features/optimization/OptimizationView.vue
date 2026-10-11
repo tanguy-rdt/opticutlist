@@ -354,15 +354,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       >
         Back to Optimization
       </RouterLink>
-      <button
-        v-else
-        type="button"
-        class="button button-compact"
-        :disabled="busy"
-        @click="load"
-      >
-        Refresh inputs
-      </button>
     </header>
     <p
       v-if="planError"

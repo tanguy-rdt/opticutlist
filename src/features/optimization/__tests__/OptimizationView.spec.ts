@@ -98,7 +98,8 @@ async function setup() {
   const router = createAppRouter(createMemoryHistory())
   await router.push('/')
   await router.isReady()
-  const wrapper = mount(OptimizationView, {
+  function mountView() {
+    const view = mount(OptimizationView, {
     attachTo: document.body,
     global: { plugins: [router], provide: {
       [currentResultServiceKey]: { forProject: () => current }, [projectIdKey]: project.id, [projectServiceKey]: service,
@@ -107,7 +108,16 @@ async function setup() {
       [cuttingPlanPdfServiceKey]: createCuttingPlanPdfService({ generate: vi.fn(), generateProject: pdfGenerate }),
     } },
   })
-  wrappers.push(wrapper)
+    wrappers.push(view)
+    return view
+  }
+  const wrapper = mountView()
+  async function reopen(previous: VueWrapper) {
+    previous.unmount()
+    const view = mountView()
+    await vi.waitFor(() => { expect(view.text()).not.toContain('Loading project inputs') })
+    return view
+  }
   await vi.waitFor(() => { expect(wrapper.text()).not.toContain('Loading project inputs') })
   async function start(): Promise<FakeWorker> {
     await vi.waitFor(() => { expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined() })
@@ -118,7 +128,7 @@ async function setup() {
     if (worker === undefined) throw new Error('Missing worker')
     return worker
   }
-  return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB, plans, current, router }
+  return { wrapper, reopen, mountView, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB, plans, current, router }
 }
 describe('Automatic project optimization', () => {
   it('synchronizes sidebar and inline copy selection without changing the plan', async () => {
@@ -194,7 +204,6 @@ describe('Automatic project optimization', () => {
     await persistence.stockItems.update(stock.id, stock)
     expect((await service.projects.update(project.id, { ...owner.value, supplierProductIds: [], stockItemIds: [stock.id] })).ok).toBe(true)
     const before = await persistence.stockItems.list()
-    await wrapper.findAll('button').find(button => button.text() === 'Refresh inputs')?.trigger('click')
     await vi.waitFor(() => { expect(wrapper.find('form').exists()).toBe(true) })
     const worker = await start()
     const request = worker.request
@@ -284,7 +293,9 @@ describe('Automatic project optimization', () => {
     const worker = await start(); worker.complete(); await flushPromises()
     expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(true)
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('Cutting layout')
+    expect(wrapper.find('[aria-label="Cutting layout"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('Cutting layout · Select a placed part')
+    expect(wrapper.findAll('button').some(button => button.text() === 'Refresh inputs')).toBe(false)
     expect(wrapper.find('[aria-label="Cutting plan canvas"]').exists()).toBe(true)
     expect(wrapper.find('[aria-label="Overall utilization"]').exists()).toBe(true)
     expect(wrapper.get('[aria-label="Panels used"]').text()).toContain('Side panel / 1')
@@ -433,32 +444,40 @@ describe('Automatic project optimization', () => {
     expect(workers).toHaveLength(0)
   })
   it('handles storage failures and retry without showing previous inputs as a plan', async () => {
-    const { wrapper, catalog } = await setup()
+    const fixture = await setup()
+    const { catalog, reopen } = fixture
+    let { wrapper } = fixture
     const spy = vi.spyOn(catalog.supplierProducts, 'list').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Disk unavailable' } })
-    await wrapper.get('button').trigger('click')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Could not access local storage') })
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
     spy.mockRestore()
-    await wrapper.get('button:last-child').trigger('click')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.find('form').exists()).toBe(true) })
   })
   it('shows empty scoped input states without exposing another project’s parts', async () => {
-    const { wrapper, service, project, part } = await setup()
+    const fixture = await setup()
+    const { service, project, part, reopen } = fixture
+    let { wrapper } = fixture
     await service.parts(project.id).delete(part.id)
     const saved = await service.projects.get(project.id)
     if (!saved.ok) throw new Error('Missing project')
     await service.projects.update(project.id, { ...saved.value, supplierProductIds: [] })
-    await wrapper.get('button').trigger('click')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('No parts in this project') })
     expect(wrapper.text()).toContain('No selected panels')
     expect(wrapper.text()).not.toContain('Other project part')
   })
-  it('shows loading and disables controls while refreshing repository snapshots', async () => {
-    const { wrapper, catalog } = await setup()
+  it('shows loading and disables controls when reopening repository snapshots', async () => {
+    const fixture = await setup()
+    const { catalog, mountView } = fixture
+    let { wrapper } = fixture
     const saved = await catalog.supplierProducts.list()
     let finish: () => void = () => { throw new Error('Not started') }
     vi.spyOn(catalog.supplierProducts, 'list').mockReturnValueOnce(new Promise(resolve => { finish = () => { resolve(saved) } }))
-    await wrapper.get('button').trigger('click')
+    wrapper.unmount()
+    wrapper = mountView()
+    await flushPromises()
     expect(wrapper.text()).toContain('Loading project inputs')
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
@@ -517,13 +536,15 @@ describe('Automatic project optimization', () => {
     expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(false)
   })
   it('disables unavailable and broken catalog panels without repairing records', async () => {
-    const { wrapper, catalog, persistence, product, workers } = await setup()
+    const fixture = await setup()
+    const { catalog, persistence, product, workers, reopen } = fixture
+    let { wrapper } = fixture
     await catalog.supplierProducts.update(product.id, { ...product, availability: 'unavailable' })
-    await wrapper.get('button').trigger('click')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Unavailable') })
     expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeDefined()
     await persistence.suppliers.delete(product.supplierId)
-    await wrapper.get('button').trigger('click')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Missing catalog reference') })
     expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeDefined()
     expect(workers).toHaveLength(0)
@@ -531,9 +552,11 @@ describe('Automatic project optimization', () => {
   })
 
   it('explicitly reports missing selected products without changing selections', async () => {
-    const { wrapper, persistence, product, service, project } = await setup()
+    const fixture = await setup()
+    const { persistence, product, service, project, reopen } = fixture
+    let { wrapper } = fixture
     await persistence.supplierProducts.delete(product.id)
-    await wrapper.get('button').trigger('click')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain(`Missing selected products: ${product.id}`) })
     const saved = await service.projects.get(project.id)
     expect(saved.ok && saved.value.supplierProductIds).toEqual([product.id])
@@ -560,7 +583,9 @@ describe('automatic workflow and per-panel integration', () => {
     expect(workers).toHaveLength(0)
   })
   it('persists quantities independently per project and reopens them without modifying legacy records or catalog data', async () => {
-    const { wrapper, indexedDB, persistence, service, project, other, start, catalog } = await setup()
+    const fixture = await setup()
+    const { indexedDB, persistence, service, project, other, start, catalog, reopen } = fixture
+    let { wrapper } = fixture
     const stock = await persistence.stockItems.list()
     const parts = await service.parts(project.id).list()
     const materials = await catalog.materials.list()
@@ -578,7 +603,7 @@ describe('automatic workflow and per-panel integration', () => {
     expect(await service.parts(project.id).list()).toEqual(parts)
     expect(await catalog.materials.list()).toEqual(materials)
     expect(await catalog.supplierProducts.list()).toEqual(products)
-    await wrapper.get('button').trigger('click')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '3') })
   })
   it('shows quantity persistence failures and preserves the draft for retry', async () => {
@@ -678,7 +703,9 @@ describe('automatic current result in the optimization workspace', () => {
     })
   }
   it('automatically persists edits on all panels, restores them and reuses viewing and PDF export', async () => {
-    const { wrapper, catalog, service, project, product, part, current, start, pdfGenerate, persistence } = await setup()
+    const fixture = await setup()
+    const { catalog, service, project, product, part, current, start, pdfGenerate, persistence, reopen } = fixture
+    let { wrapper } = fixture
     await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 1443, widthMm: 560 })
     await service.parts(project.id).update(part.id, { ...part, quantity: 4 })
     const stock = await persistence.stockItems.list()
@@ -692,9 +719,9 @@ describe('automatic current result in the optimization workspace', () => {
     await persisted(current, [1, 3])
     const saved = await current.load()
     expect(saved.ok && saved.value.result?.contents.panels.map(panel => panel.edited)).toEqual([true, true])
-    // Refresh exercises restoration without an explicit Open or Save action.
+    // Reopening exercises restoration without an explicit Open or Save action.
     await vi.waitFor(() => { expect(wrapper.get('button').attributes('disabled')).toBeUndefined() })
-    await click(wrapper, 'Refresh inputs')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
     expect(activeCopy(wrapper)).toContain('Side panel / 2')
     await click(wrapper, 'Continue to Export');
@@ -742,7 +769,9 @@ describe('automatic current result in the optimization workspace', () => {
     expect(list.ok && list.value).toHaveLength(1)
   })
   it('reports ambiguous legacy plans without exposing a saved-plan list or choosing a result', async () => {
-    const { wrapper, plans, current, start } = await setup()
+    const fixture = await setup()
+    const { plans, current, start, reopen } = fixture
+    let { wrapper } = fixture
     const worker = await start()
     const request = worker.request
     if (request.type !== 'optimizeProject') throw new Error('Fixture')
@@ -753,25 +782,27 @@ describe('automatic current result in the optimization workspace', () => {
     const input = { plan: selection.plan, parts: [...request.input.parts], settings: request.input.settings, sources: [{ product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: source.quantity, materialName: 'Material', supplierName: 'Supplier' }], editedPanelIndices: [] }
     const metadata = { id: 'legacy-one', projectId: 'project-one', name: 'Legacy', createdAt: '2026-10-11T12:00:00.000Z' }
     await plans.save(metadata, input); await plans.save({ ...metadata, id: 'legacy-two' }, input)
-    await click(wrapper, 'Refresh inputs')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('2 legacy saved plans were preserved') })
     expect(wrapper.find('[aria-label="Overall utilization"]').exists()).toBe(false)
     expect(wrapper.findAll('button').some(button => ['Save Plan', 'Open Plan', 'Validate Plan'].includes(button.text()))).toBe(false)
     expect(await current.load()).toMatchObject({ ok: true, value: { result: null, ambiguousLegacyCount: 2 } })
   })
   it('refuses corrupted stored geometry and restores valid historical context even if current inputs fail', async () => {
-    const { wrapper, current, persistence, catalog, start } = await setup()
+    const fixture = await setup()
+    const { current, persistence, catalog, start, reopen } = fixture
+    let { wrapper } = fixture
     const worker = await start(); worker.complete(); await persisted(current)
     const saved = await current.load()
     if (!saved.ok || !saved.value.result) throw new Error('Missing result')
     const body = saved.value.result.contents
     await persistence.savedPlanContents.update(body.id, { ...body, metrics: { ...body.metrics, placedCount: 900 } })
-    await click(wrapper, 'Refresh inputs')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('failed independent validation') })
     expect(wrapper.find('#cutting-viewer-part').exists()).toBe(false)
     await persistence.savedPlanContents.update(body.id, body)
     vi.spyOn(catalog.supplierProducts, 'list').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Disk unavailable' } })
-    await click(wrapper, 'Refresh inputs')
+    wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
     expect(wrapper.text()).toContain('Could not access local storage')
   })

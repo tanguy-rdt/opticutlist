@@ -44,6 +44,7 @@ describe('Cutting layout workspace', () => {
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.get('.canvas-toolbar').find('[aria-label="Constrained plan editing"]').exists()).toBe(true)
     expect(wrapper.find('aside').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Cutting layout · Select a placed part')
     expect(wrapper.find('.graph-paper').exists()).toBe(true)
     expect(wrapper.findAll('button').some(control => control.text().includes('Edit Mode'))).toBe(false)
     expect(wrapper.get('.canvas-toolbar').element.compareDocumentPosition(wrapper.get('figure').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

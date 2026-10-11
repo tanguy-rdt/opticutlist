@@ -208,12 +208,6 @@ onBeforeUnmount(() => {
           </div>
         </dl>
       </div>
-      <p
-        v-else
-        class="text-sm text-muted"
-      >
-        Cutting layout · Select a placed part
-      </p>
       <div
         class="canvas-tools"
         role="group"
