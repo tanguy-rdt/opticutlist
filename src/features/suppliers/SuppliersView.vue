@@ -9,6 +9,7 @@ import { useMaterialRepository } from '../materials/material-repository'
 import { useCatalogRepositories } from './catalog-repositories'
 import SupplierForm from './SupplierForm.vue'
 import ProductForm from './ProductForm.vue'
+import CatalogTransfer from './CatalogTransfer.vue'
 
 const repositories = useCatalogRepositories()
 const materialRepository = useMaterialRepository()
@@ -17,6 +18,7 @@ const products = shallowRef<readonly SupplierProduct[]>([])
 const materials = shallowRef<readonly Material[]>([])
 const loading = ref(true)
 const busy = ref(false)
+const transferBusy = ref(false)
 const loadError = ref('')
 const operationError = ref('')
 const notice = ref('')
@@ -27,7 +29,7 @@ const productVersion = ref(0)
 const initialSupplierId = ref('')
 const supplierForm = ref<InstanceType<typeof SupplierForm> | null>(null)
 const productForm = ref<InstanceType<typeof ProductForm> | null>(null)
-const disabled = computed(() => loading.value || busy.value || Boolean(loadError.value))
+const disabled = computed(() => loading.value || busy.value || transferBusy.value || Boolean(loadError.value))
 const catalog = computed(() => {
   const supplierIds = [...new Set([...suppliers.value.map((supplier) => supplier.id), ...products.value.map((product) => product.supplierId)])]
   return supplierIds.map((id) => {
@@ -166,6 +168,11 @@ onMounted(load)
         + New supplier
       </button>
     </div>
+    <CatalogTransfer
+      :disabled="loading || busy || Boolean(loadError)"
+      @busy="transferBusy = $event"
+      @imported="load"
+    />
     <p
       v-if="notice"
       role="status"

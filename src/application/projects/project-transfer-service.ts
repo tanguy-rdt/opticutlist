@@ -1,21 +1,11 @@
+import { readTransferRecords } from '../catalog/read-transfer-records'
 import type { CuttingProject } from '../../domain/model/cutting-project'
 import type { CuttingProjectId } from '../../domain/model/ids'
-import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
+import type { LocalPersistence, PersistenceResult } from '../persistence/repositories'
 import { readSavedPlan } from '../plans/saved-plan-service'
 import { remapProjectTransfer } from './remap-project-transfer'
 import { invalidTransfer, validateProjectTransfer, type ProjectJsonPort, type ProjectTransfer } from './project-transfer-format'
 
-async function existing(repositories: Repositories) {
-  const projects = await repositories.projects.list(); if (!projects.ok) return projects
-  const parts = await repositories.parts.list(); if (!parts.ok) return parts
-  const materials = await repositories.materials.list(); if (!materials.ok) return materials
-  const suppliers = await repositories.suppliers.list(); if (!suppliers.ok) return suppliers
-  const products = await repositories.supplierProducts.list(); if (!products.ok) return products
-  const plans = await repositories.savedPlanSummaries.list(); if (!plans.ok) return plans
-  const confirmations = await repositories.cuttingConfirmations.list(); if (!confirmations.ok) return confirmations
-  const stock = await repositories.stockItems.list(); if (!stock.ok) return stock
-  return { ok: true, value: { materialReferences: [...stock.value.map(item => item.materialId), ...parts.value.map(part => part.materialId), ...projects.value.flatMap(project => project.materialIds), ...products.value.map(product => product.materialId)], supplierReferences: products.value.map(product => product.supplierId), productReferences: [...projects.value.flatMap(project => project.supplierProductIds), ...stock.value.flatMap(item => item.provenance.source === 'purchase' ? [item.provenance.supplierProductId] : [])], projects: projects.value.map(project => project.id), parts: [...parts.value.map(part => part.id), ...projects.value.flatMap(project => project.partIds)], materials: [...materials.value], suppliers: [...suppliers.value], products: [...products.value], plans: [...plans.value.map(plan => plan.id), ...confirmations.value.map(receipt => receipt.id)] } } as const
-}
 export interface ImportPreview { readonly file: ProjectTransfer; readonly projectIdCollision: boolean; readonly catalogConflicts: number; readonly reusedCatalogRecords: number }
 export function createProjectTransferService(persistence: LocalPersistence, json: ProjectJsonPort) {
   function parse(text: string): PersistenceResult<ProjectTransfer> {
@@ -49,7 +39,7 @@ export function createProjectTransferService(persistence: LocalPersistence, json
     preview(text: string): Promise<PersistenceResult<ImportPreview>> {
       const file = parse(text); if (!file.ok) return Promise.resolve(file)
       return persistence.transaction(async repositories => {
-        const records = await existing(repositories); if (!records.ok) return records
+        const records = await readTransferRecords(repositories); if (!records.ok) return records
         const mapped = remapProjectTransfer(file.value, records.value)
         const imported = [...file.value.catalog.materials, ...file.value.catalog.suppliers, ...file.value.catalog.products]
         const remapped = [...mapped.catalog.materials, ...mapped.catalog.suppliers, ...mapped.catalog.products]
@@ -61,7 +51,7 @@ export function createProjectTransferService(persistence: LocalPersistence, json
       if (!confirmed) return Promise.resolve(invalidTransfer('Explicit confirmation is required before importing a project.'))
       const file = validateProjectTransfer(input); if (!file.ok) return Promise.resolve(file)
       return persistence.transaction(async repositories => {
-        const records = await existing(repositories); if (!records.ok) return records
+        const records = await readTransferRecords(repositories); if (!records.ok) return records
         const mapped = validateProjectTransfer(remapProjectTransfer(file.value, records.value)); if (!mapped.ok) return mapped
         // All relations have already passed validation. Insert-only writes plus this shared
         // transaction establish ownership/dependencies without nesting CRUD use-case transactions.

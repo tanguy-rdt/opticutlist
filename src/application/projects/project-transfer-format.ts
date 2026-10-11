@@ -1,10 +1,8 @@
+import { catalogRecordsSchema } from '../catalog/catalog-transfer-format'
 import { savedCuttingPlanIdSchema } from '../../domain/model/ids'
 import { z } from 'zod'
 import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import { partSchema } from '../../domain/model/part'
-import { materialSchema } from '../../domain/model/material'
-import { supplierSchema } from '../../domain/model/supplier'
-import { supplierProductSchema } from '../../domain/model/supplier-product'
 import { savedPlanSummarySchema, savedPlanContentsSchema } from '../../domain/model/saved-cutting-plan'
 import { restoreSavedPlan } from '../plans/saved-plan-codec'
 import type { PersistenceResult } from '../persistence/repositories'
@@ -14,14 +12,14 @@ export const projectTransferSchema = z.strictObject({
   schemaVersion: z.literal(1),
   project: cuttingProjectSchema,
   parts: z.array(partSchema),
-  catalog: z.strictObject({ materials: z.array(materialSchema), suppliers: z.array(supplierSchema), products: z.array(supplierProductSchema) }),
+  catalog: catalogRecordsSchema,
   currentResultId: savedCuttingPlanIdSchema.optional(),
   savedPlans: z.array(z.strictObject({ summary: savedPlanSummarySchema, contents: savedPlanContentsSchema })),
 })
 export type ProjectTransfer = z.infer<typeof projectTransferSchema>
 export interface ProjectJsonPort {
   parse(text: string): unknown
-  stringify(file: ProjectTransfer): string
+  stringify(file: unknown): string
 }
 export function invalidTransfer(message: string): Extract<PersistenceResult<never>, { ok: false }> { return { ok: false, error: { kind: 'invalidRecord', issues: [{ path: ['file'], message }] } } }
 /** Validate every boundary record, relationships and historical tree before any write. */

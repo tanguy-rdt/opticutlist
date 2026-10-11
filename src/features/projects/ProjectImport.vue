@@ -57,18 +57,18 @@ async function importProject(): Promise<void> {
     </h1>
     <div class="panel space-y-4 p-6">
       <p class="text-muted">
-        Select an OptiCutList project JSON file. Preview and confirm before any records are imported.
+        Select an OptiCutList .pocl project file (legacy .json files are also accepted). Preview and confirm before any records are imported.
       </p>
       <FormField
         id="project-import-file"
-        label="Project JSON file"
+        label="Project file (.pocl or .json)"
         required
       >
         <template #default="{ controlAttrs }">
           <input
             v-bind="controlAttrs"
             type="file"
-            accept=".json,application/json"
+            accept=".pocl,.json,application/json"
             class="field"
             :disabled="busy || !service"
             @change="select"

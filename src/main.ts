@@ -1,3 +1,5 @@
+import { createCatalogTransferService } from './application/catalog/catalog-transfer-service'
+import { catalogTransferServiceKey } from './features/suppliers/catalog-transfer-service'
 import { createCurrentResultService } from './application/plans/current-result-service'
 import { currentResultServiceKey } from './features/optimization/current-result-service'
 import { createProjectTransferService } from './application/projects/project-transfer-service'
@@ -31,6 +33,7 @@ app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
 app.provide(currentResultServiceKey, createCurrentResultService(persistence))
+app.provide(catalogTransferServiceKey, createCatalogTransferService(persistence, projectJson))
 app.provide(projectTransferServiceKey, createProjectTransferService(persistence, projectJson))
 app.provide(cuttingConfirmationServiceKey, createCuttingConfirmationService(persistence))
 app.provide(projectServiceKey, createProjectService(persistence))

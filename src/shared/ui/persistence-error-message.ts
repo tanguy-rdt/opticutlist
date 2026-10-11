@@ -1,6 +1,6 @@
 import type { PersistenceError } from '../../application/persistence/repositories'
 
-export function persistenceErrorMessage(error: PersistenceError, entity: 'Material' | 'Part' | 'Supplier' | 'Product' | 'Project' | 'Saved plan' | 'Current cutting result' | 'Cutting confirmation'): string {
+export function persistenceErrorMessage(error: PersistenceError, entity: 'Catalog' | 'Material' | 'Part' | 'Supplier' | 'Product' | 'Project' | 'Saved plan' | 'Current cutting result' | 'Cutting confirmation'): string {
   const noun = entity.toLowerCase()
   switch (error.kind) {
     case 'invalidRecord': return `${entity} data is invalid. No records were changed.${['Saved plan', 'Current cutting result'].includes(entity) ? ` ${error.issues.map(issue => issue.message).join('; ')}` : ''}`

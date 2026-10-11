@@ -20,9 +20,9 @@ async function setup() {
   const wrapper = mount(ProjectImport, { global: { plugins: [router], provide: { [projectTransferServiceKey]: port } } }); wrappers.push(wrapper)
   return { wrapper, port, router }
 }
-async function choose(wrapper: VueWrapper, text: string | Promise<string> = JSON.stringify(file)) {
+async function choose(wrapper: VueWrapper, text: string | Promise<string> = JSON.stringify(file), filename = 'project.pocl') {
   const input = wrapper.get('#project-import-file')
-  const selected = new File([''], 'project.json', { type: 'application/json' })
+  const selected = new File([''], filename, { type: 'application/json' })
   Object.defineProperty(selected, 'text', { value: () => Promise.resolve(text) })
   Object.defineProperty(input.element, 'files', { configurable: true, value: [selected] })
   await input.trigger('change')
@@ -31,6 +31,7 @@ async function choose(wrapper: VueWrapper, text: string | Promise<string> = JSON
 describe('project import and export controls', () => {
   it('reads a JSON file, previews counts/conflicts, requires explicit consent and links to the imported project', async () => {
     const { wrapper, port, router } = await setup()
+    expect(wrapper.get('input[type=file]').attributes('accept')).toBe('.pocl,.json,application/json')
     await choose(wrapper)
     expect(port.preview).toHaveBeenCalledWith(JSON.stringify(file)); expect(port.import).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Import preview: Workshop')
@@ -44,6 +45,12 @@ describe('project import and export controls', () => {
     expect(wrapper.text()).toContain('imported successfully')
     await wrapper.get('a[href="/projects/import-ui/parts"]').trigger('click'); await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/projects/import-ui/parts')
+  })
+  it('continues importing legacy .json project files', async () => {
+    const { wrapper, port } = await setup(); await choose(wrapper, JSON.stringify(file), 'legacy.json')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await wrapper.get('button').trigger('click'); await flushPromises()
+    expect(port.import).toHaveBeenCalledExactlyOnceWith(file, true)
   })
   it('shows malformed-file errors without a preview or a write and permits choosing a new file', async () => {
     const { wrapper, port } = await setup()
@@ -75,11 +82,12 @@ describe('project import and export controls', () => {
     const port = service()
     const create = vi.fn<(blob: Blob) => string>(() => 'blob:project-json'); const revoke = vi.fn()
     vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke })
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    let filename = ''
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { filename = this.download })
     const wrapper = mount(ProjectExport, { props: { projectId: file.project.id }, global: { provide: { [projectTransferServiceKey]: port } } }); wrappers.push(wrapper)
     vi.useFakeTimers()
     await wrapper.get('button').trigger('click'); await flushPromises()
-    expect(port.export).toHaveBeenCalledWith(file.project.id); expect(click).toHaveBeenCalledOnce()
+    expect(port.export).toHaveBeenCalledWith(file.project.id); expect(click).toHaveBeenCalledOnce(); expect(filename).toBe('Workshop.pocl')
     const blob: unknown = create.mock.calls[0]?.[0]
     expect(blob).toBeInstanceOf(Blob)
     if (!(blob instanceof Blob)) throw new Error('Blob')
