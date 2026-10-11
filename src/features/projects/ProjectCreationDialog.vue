@@ -27,7 +27,7 @@ async function create(): Promise<void> {
   busy.value = true
   const result = await service.projects.create(parsed.data)
   if (!active) return
-  if (result.ok) await router.push({ name: 'project-parts', params: { projectId: result.value.id } })
+  if (result.ok) await router.push({ name: 'project-materials', params: { projectId: result.value.id } })
   else { busy.value = false; error.value = persistenceErrorMessage(result.error, 'Project') }
 }
 </script>

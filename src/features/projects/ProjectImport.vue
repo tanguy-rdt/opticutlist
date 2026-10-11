@@ -141,7 +141,7 @@ async function importProject(): Promise<void> {
         Project “{{ imported.name }}” imported successfully.
       </p>
       <RouterLink
-        :to="{ name: 'project-parts', params: { projectId: imported.id } }"
+        :to="{ name: 'project-materials', params: { projectId: imported.id } }"
         class="button button-primary"
       >
         Open imported project

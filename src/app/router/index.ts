@@ -23,7 +23,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
       { path: '/projects', name: 'projects', component: ProjectsView },
       { path: '/import', name: 'project-import', component: ProjectImport },
       { path: '/projects/:projectId', component: ProjectWorkspace, props: true, children: [
-        { path: '', redirect: to => ({ name: 'project-parts', params: to.params }) },
+        { path: '', redirect: to => ({ name: 'project-materials', params: to.params }) },
         { path: 'parts', name: 'project-parts', component: ProjectPartsView },
         { path: 'materials', name: 'project-materials', component: MaterialsView },
         { path: 'optimization', name: 'project-optimization', component: () => import('../../features/optimization/OptimizationView.vue') },

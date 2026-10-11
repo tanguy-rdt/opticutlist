@@ -182,18 +182,23 @@ onMounted(load)
         Retry loading
       </button>
     </div>
-    <p
+    <div
       v-else-if="!loading && availableMaterials.length === 0"
-      class="panel p-4 text-sm text-muted"
+      class="panel space-y-3 p-5"
     >
-      Select materials for this project before creating or editing parts.
+      <h2 class="font-semibold">
+        Select materials to get started
+      </h2>
+      <p class="text-sm text-muted">
+        Select materials for this project before creating or editing parts. Your existing parts stay saved.
+      </p>
       <RouterLink
         :to="`/projects/${projectId}/materials`"
-        class="font-medium text-accent underline underline-offset-4"
+        class="button button-primary"
       >
-        Open project Materials
+        Select materials
       </RouterLink>
-    </p>
+    </div>
     <div class="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div
         class="panel min-w-0 overflow-hidden"
@@ -362,7 +367,10 @@ onMounted(load)
                 </th>
                 <td class="min-w-40 px-3 py-3">
                   <div class="flex items-center gap-2">
-                    <MaterialThumbnail :preset-id="materialFor(part)?.libraryPresetId" /><span>{{ materialName(part) }}</span>
+                    <MaterialThumbnail :preset-id="materialFor(part)?.libraryPresetId" /><span>{{ materialName(part) }}<span
+                      v-if="!availableIds.includes(part.materialId)"
+                      class="mt-1 block text-xs text-danger"
+                    >Not selected for this project</span></span>
                   </div>
                 </td>
                 <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">

@@ -40,6 +40,10 @@ beforeEach(async () => {
   value(await service.projects.create(first))
   value(await service.projects.create(second))
 })
+async function selectMaterial(projectId = first.id): Promise<void> {
+  const project = value(await service.projects.get(projectId))
+  value(await service.projects.update(projectId, { ...project, materialIds: [material.id] }))
+}
 afterEach(() => { for (const connection of connections) connection.close(); connections.length = 0; vi.restoreAllMocks() })
 
 describe('Project ownership and selections', () => {
@@ -52,6 +56,8 @@ describe('Project ownership and selections', () => {
     expect(value(await service.projects.get(first.id))).toEqual(first)
   })
   it('isolates Parts CRUD and preserves every physical invariant', async () => {
+    await selectMaterial()
+    await selectMaterial(second.id)
     const a = service.parts(first.id)
     const b = service.parts(second.id)
     expect(value(await a.create(part))).toEqual(part)
@@ -84,6 +90,7 @@ describe('Project ownership and selections', () => {
     expect(value(await persistence.parts.list())).toEqual([])
   })
   it('persists isolated selections and Parts on reopening without modifying the catalog or stock', async () => {
+    await selectMaterial()
     value(await service.parts(first.id).create(part))
     const owner = value(await service.projects.get(first.id))
     value(await service.projects.update(first.id, { ...owner, materialIds: [material.id], supplierProductIds: [product.id] }))
@@ -142,13 +149,15 @@ describe('Project ownership and selections', () => {
     expect(value(await service.listLegacyParts())).toEqual([part])
   })
   it('rolls back a Part insert if the ownership write fails', async () => {
+    await selectMaterial()
     const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => { throw new DOMException('Quota exceeded', 'QuotaExceededError') })
     expect(await service.parts(first.id).create(part)).toMatchObject({ ok: false, error: { kind: 'storageFailure' } })
     put.mockRestore()
     expect(value(await persistence.parts.list())).toEqual([])
-    expect(value(await service.projects.get(first.id))).toEqual(first)
+    expect(value(await service.projects.get(first.id))).toEqual({ ...first, materialIds: [material.id] })
   })
   it('rolls back a Part deletion if updating its owner fails', async () => {
+    await selectMaterial()
     value(await service.parts(first.id).create(part))
     const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => { throw new DOMException('Quota exceeded', 'QuotaExceededError') })
     expect(await service.parts(first.id).delete(part.id)).toMatchObject({ ok: false, error: { kind: 'storageFailure' } })
@@ -157,6 +166,7 @@ describe('Project ownership and selections', () => {
     expect(value(await service.projects.get(first.id)).partIds).toEqual([part.id])
   })
   it('rejects conflicting stored ownership rather than exposing or changing another project’s Part', async () => {
+    await selectMaterial()
     value(await service.parts(first.id).create(part))
     value(await persistence.projects.update(second.id, { ...second, partIds: [part.id] }))
     for (const result of [await service.parts(first.id).list(), await service.parts(second.id).get(part.id), await service.parts(second.id).delete(part.id)]) {
@@ -168,4 +178,62 @@ describe('Project ownership and selections', () => {
     value(await persistence.projects.update(first.id, { ...first, partIds: [part.id] }))
     expect(await service.parts(first.id).list()).toMatchObject({ ok: false, error: { kind: 'notFound', id: part.id } })
   })
+  it('rejects creation without project selections even when the catalog material exists', async () => {
+    const result = await service.parts(first.id).create(part)
+    expect(result).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    if (!result.ok && result.error.kind === 'referenceConflict') expect(result.error.message).toContain('Materials tab')
+    expect(value(await persistence.parts.list())).toEqual([])
+    expect(value(await service.projects.get(first.id))).toEqual(first)
+    expect(value(await persistence.materials.list())).toEqual([material])
+    expect(value(await persistence.stockItems.list())).toEqual([])
+  })
+  it('creates a Part with a directly selected material and no supplier product requirement', async () => {
+    await selectMaterial()
+    value(await persistence.supplierProducts.delete(product.id))
+    value(await persistence.suppliers.delete(product.supplierId))
+    expect(value(await service.parts(first.id).create(part))).toEqual(part)
+    expect(value(await service.projects.get(first.id)).supplierProductIds).toEqual([])
+    expect(value(await persistence.materials.list())).toEqual([material])
+  })
+  it('preserves material availability through existing selected panel products', async () => {
+    value(await service.projects.update(first.id, { ...first, supplierProductIds: [product.id] }))
+    expect(value(await service.parts(first.id).create(part))).toEqual(part)
+    expect(value(await service.projects.get(first.id)).materialIds).toEqual([])
+    expect(value(await persistence.supplierProducts.get(product.id))).toEqual(product)
+  })
+  it('rejects another project’s material choices and same-name material identities', async () => {
+    await selectMaterial()
+    expect(await service.parts(second.id).create({ ...part, id: 'second-part' })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    const different = materialSchema.parse({ ...material, id: 'different-material' })
+    value(await persistence.materials.create(different))
+    expect(await service.parts(first.id).create({ ...part, materialId: different.id })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(value(await persistence.parts.list())).toEqual([])
+    expect(value(await service.projects.get(second.id))).toEqual(second)
+  })
+  it('preserves existing Parts after deselection and rejects stale creates, updates and reassignment', async () => {
+    await selectMaterial()
+    const scoped = service.parts(first.id)
+    value(await scoped.create(part))
+    const owner = value(await service.projects.get(first.id))
+    const other = createProjectService(connect())
+    value(await other.projects.update(first.id, { ...owner, materialIds: [] }))
+    expect(value(await scoped.list())).toEqual([part])
+    expect(await scoped.create({ ...part, id: 'stale-new-part' })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(await scoped.update(part.id, { ...part, name: 'Stale edit' })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(value(await persistence.parts.get(part.id))).toEqual(part)
+    const replacement = materialSchema.parse({ ...material, id: 'replacement-material', name: 'Replacement' })
+    value(await persistence.materials.create(replacement))
+    value(await service.projects.update(first.id, { ...owner, materialIds: [replacement.id] }))
+    expect(await scoped.update(part.id, part)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(value(await scoped.update(part.id, { ...part, materialId: replacement.id }))).toEqual({ ...part, materialId: replacement.id })
+    expect(value(await persistence.stockItems.list())).toEqual([])
+  })
+  it('rejects broken selected-product references without a partial Part or ownership write', async () => {
+    value(await service.projects.update(first.id, { ...first, supplierProductIds: [product.id] }))
+    value(await persistence.supplierProducts.delete(product.id))
+    expect(await service.parts(first.id).create(part)).toMatchObject({ ok: false, error: { kind: 'notFound' } })
+    expect(value(await persistence.parts.list())).toEqual([])
+    expect(value(await service.projects.get(first.id)).partIds).toEqual([])
+  })
+
 })

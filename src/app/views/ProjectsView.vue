@@ -251,7 +251,7 @@ onMounted(load)
             aria-label="Project actions"
           >
             <RouterLink
-              :to="{ name: 'project-parts', params: { projectId: selected.id } }"
+              :to="{ name: 'project-materials', params: { projectId: selected.id } }"
               class="button button-primary"
             >
               <AppIcon name="layers" />Open project

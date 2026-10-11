@@ -78,6 +78,18 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
         if (id !== undefined && !project.partIds.includes(id)) return missing(id)
         const material = await repositories.materials.get(parsed.data.materialId)
         if (!material.ok) return material
+        // Read saved selections inside the same transaction as the Part/ownership write.
+        // Panel selections make their associated material available without requiring a
+        // separate material checkbox; a direct material choice needs no supplier product.
+        let selected = project.materialIds.includes(parsed.data.materialId)
+        if (!selected) {
+          for (const productId of project.supplierProductIds) {
+            const product = await repositories.supplierProducts.get(productId)
+            if (!product.ok) return product
+            if (product.value.materialId === parsed.data.materialId) { selected = true; break }
+          }
+        }
+        if (!selected) return conflict('Select this material in the project Materials tab before creating or editing a Part.')
         const result = id === undefined ? await repositories.parts.create(parsed.data) : await repositories.parts.update(id, parsed.data)
         if (!result.ok) return result
         if (id === undefined) {

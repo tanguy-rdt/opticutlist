@@ -83,16 +83,16 @@ onMounted(load)
           class="flex flex-wrap gap-2"
         >
           <RouterLink
-            :to="{ name: 'project-parts', params: { projectId: project.id } }"
-            class="nav-link"
-          >
-            Parts
-          </RouterLink>
-          <RouterLink
             :to="{ name: 'project-materials', params: { projectId: project.id } }"
             class="nav-link"
           >
             Materials
+          </RouterLink>
+          <RouterLink
+            :to="{ name: 'project-parts', params: { projectId: project.id } }"
+            class="nav-link"
+          >
+            Parts
           </RouterLink>
           <RouterLink
             :to="{ name: 'project-optimization', params: { projectId: project.id } }"

@@ -43,8 +43,8 @@ describe('project import and export controls', () => {
     await wrapper.get('button').trigger('click'); await flushPromises()
     expect(port.import).toHaveBeenCalledExactlyOnceWith(file, true)
     expect(wrapper.text()).toContain('imported successfully')
-    await wrapper.get('a[href="/projects/import-ui/parts"]').trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/projects/import-ui/parts')
+    await wrapper.get('a[href="/projects/import-ui/materials"]').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/projects/import-ui/materials')
   })
   it('continues importing legacy .json project files', async () => {
     const { wrapper, port } = await setup(); await choose(wrapper, JSON.stringify(file), 'legacy.json')

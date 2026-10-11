@@ -51,7 +51,7 @@ describe('Project creation', () => {
     await flushPromises()
     const input: unknown = projects.create.mock.calls[0]?.[0]
     expect(cuttingProjectSchema.parse(input)).toMatchObject({ name: 'Cabinet', partIds: [], materialIds: [], supplierProductIds: [] })
-    expect(router.currentRoute.value.path).toBe('/projects/new-project/parts')
+    expect(router.currentRoute.value.path).toBe('/projects/new-project/materials')
   })
   it('ignores a late successful creation after its dialog has unmounted', async () => {
     const { wrapper, projects, router } = setup()
@@ -118,9 +118,9 @@ describe('Project manager', () => {
     await choices[1]?.trigger('click')
     expect(choices[1]?.attributes('aria-pressed')).toBe('true')
     expect(wrapper.get('[aria-label="Project metrics"]').findAll('dd').map(item => item.text())).toEqual(['2', '1', '1'])
-    const open = wrapper.get('a[href="/projects/second-project/parts"]')
+    const open = wrapper.get('a[href="/projects/second-project/materials"]')
     await open.trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/projects/second-project/parts')
+    expect(router.currentRoute.value.path).toBe('/projects/second-project/materials')
   })
   it('searches without discarding the selected project and retains accessible actions on small screens', async () => {
     const second = cuttingProjectSchema.parse({ ...project, id: 'desk', name: 'Desk' })
@@ -131,7 +131,7 @@ describe('Project manager', () => {
     expect(wrapper.get('[aria-label="Selected project details"]').text()).toContain('Desk')
     await wrapper.get('#project-search').setValue('absent')
     expect(wrapper.text()).toContain('No matching projects')
-    expect(wrapper.find('a[href="/projects/desk/parts"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/projects/desk/materials"]').exists()).toBe(true)
   })
   it('renames using a fresh record without replacing parts, catalog selections or panel quantities', async () => {
     const latest = cuttingProjectSchema.parse({ ...project, partIds: ['part-new'], materialIds: ['material-new'], supplierProductIds: ['product-new'], panelQuantities: [{ supplierProductId: 'product-new', quantity: 4 }] })
