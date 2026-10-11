@@ -28,7 +28,7 @@ describe('Read-only cutting plan viewer', () => {
     const wrapper = setup()
     await flushPromises()
     expect(createPlanCanvas).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain('1 placed copies · 2 waste regions · 2 guillotine cuts')
+    expect(wrapper.text()).toContain('2 waste regions · 2 guillotine cuts')
     expect(wrapper.text()).toContain('100 × 80 × 18 mm')
     expect(wrapper.text()).toContain('Grain: width ↕')
     expect(wrapper.get('[role="region"]').attributes('tabindex')).toBe('0')

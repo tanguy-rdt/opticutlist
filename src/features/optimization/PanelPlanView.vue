@@ -17,17 +17,15 @@ function partName(id: string): string { return props.parts.find(part => part.id 
 <template>
   <section
     v-if="displayedPlan"
-    class="panel space-y-5 p-6"
-    aria-labelledby="panel-result-title"
+    class="panel space-y-3 p-3 sm:p-4"
+    aria-label="Panel cutting workspace"
   >
-    <h2
-      id="panel-result-title"
-      class="text-xl font-semibold"
+    <p
+      v-if="editedPlan || savedEdited"
+      role="status"
+      class="text-xs font-medium text-accent"
     >
-      {{ editedPlan || savedEdited ? 'Validated edited panel plan' : 'Validated panel plan' }}
-    </h2>
-    <p role="status">
-      {{ displayedPlan.placements.length }} copies on this panel. Other copies are accounted for in the project summary.
+      Accepted manual edits
     </p>
     <CuttingPlanViewer
       :confirm-reset="confirmReset"
@@ -38,93 +36,84 @@ function partName(id: string): string { return props.parts.find(part => part.id 
       :settings="settings"
       @plan-change="planChanged"
     />
-    <dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <div>
-        <dt class="text-sm text-muted">
-          {{ editedPlan ? 'Optimizer baseline strategy' : 'Selected strategy' }}
-        </dt><dd class="font-semibold">
-          {{ allocation.strategy }}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-sm text-muted">
-          Panel utilization
-        </dt><dd class="font-semibold">
-          {{ displayedPlan.metrics.utilizationPercent.toFixed(2) }}%
-        </dd>
-      </div>
-      <div>
-        <dt class="text-sm text-muted">
-          Waste area (including kerf and margins)
-        </dt><dd class="font-semibold">
-          {{ displayedPlan.metrics.wasteAreaMm2.toLocaleString() }} mm²
-        </dd>
-      </div>
-      <div>
-        <dt class="text-sm text-muted">
-          Panel
-        </dt><dd class="font-semibold">
-          {{ panel.name }} · {{ panel.lengthMm }} × {{ panel.widthMm }} × {{ panel.thicknessMm }} mm
-        </dd>
-      </div>
-    </dl>
-    <p class="text-sm text-muted">
-      Kerf {{ settings.kerfMm }} mm · Edge margin {{ settings.edgeMarginMm }} mm. Coordinates are measured along the panel length (x) and width (y).
-    </p>
-    <div
-      v-if="displayedPlan.placements.length"
-      class="overflow-x-auto"
-      tabindex="0"
-      role="region"
-      aria-label="Placed parts"
-    >
-      <table class="w-full text-left text-sm">
-        <caption class="sr-only">
-          Placements on the selected panel
-        </caption>
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              class="p-3"
+    <details class="border-t border-line pt-3">
+      <summary class="w-fit cursor-pointer rounded text-sm font-medium text-muted">
+        Cutting details and placements
+      </summary>
+      <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+        <div>
+          <dt class="text-xs text-muted">
+            {{ editedPlan || savedEdited ? 'Optimizer baseline strategy' : 'Selected strategy' }}
+          </dt><dd class="font-medium">
+            {{ allocation.strategy }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted">
+            Waste area (including kerf and margins)
+          </dt><dd>{{ displayedPlan.metrics.wasteAreaMm2.toLocaleString() }} mm²</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted">
+            Cutting settings
+          </dt><dd>Kerf {{ settings.kerfMm }} mm · Edge margin {{ settings.edgeMarginMm }} mm</dd>
+        </div>
+      </dl>
+      <div
+        v-if="displayedPlan.placements.length"
+        class="overflow-x-auto"
+        tabindex="0"
+        role="region"
+        aria-label="Placed parts"
+      >
+        <table class="w-full text-left text-sm">
+          <caption class="sr-only">
+            Placements on the selected panel
+          </caption>
+          <thead>
+            <tr>
+              <th
+                scope="col"
+                class="p-3"
+              >
+                Part / copy
+              </th><th
+                scope="col"
+                class="p-3"
+              >
+                Position x, y (mm)
+              </th><th
+                scope="col"
+                class="p-3"
+              >
+                Length × width × thickness (mm)
+              </th><th
+                scope="col"
+                class="p-3"
+              >
+                Orientation
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="placed in displayedPlan.placements"
+              :key="`${placed.partId}-${placed.copyIndex}`"
+              class="border-t border-line"
             >
-              Part / copy
-            </th><th
-              scope="col"
-              class="p-3"
-            >
-              Position x, y (mm)
-            </th><th
-              scope="col"
-              class="p-3"
-            >
-              Length × width × thickness (mm)
-            </th><th
-              scope="col"
-              class="p-3"
-            >
-              Orientation
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="placed in displayedPlan.placements"
-            :key="`${placed.partId}-${placed.copyIndex}`"
-            class="border-t border-line"
-          >
-            <td class="p-3">
-              {{ partName(placed.partId) }} / {{ placed.copyIndex + 1 }}
-            </td><td class="p-3">
-              {{ placed.region.xMm }}, {{ placed.region.yMm }}
-            </td><td class="p-3">
-              {{ placed.dimensions.lengthMm }} × {{ placed.dimensions.widthMm }} × {{ placed.dimensions.thicknessMm }}
-            </td><td class="p-3">
-              {{ placed.orientation }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+              <td class="p-3">
+                {{ partName(placed.partId) }} / {{ placed.copyIndex + 1 }}
+              </td><td class="p-3">
+                {{ placed.region.xMm }}, {{ placed.region.yMm }}
+              </td><td class="p-3">
+                {{ placed.dimensions.lengthMm }} × {{ placed.dimensions.widthMm }} × {{ placed.dimensions.thicknessMm }}
+              </td><td class="p-3">
+                {{ placed.orientation }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
   </section>
 </template>

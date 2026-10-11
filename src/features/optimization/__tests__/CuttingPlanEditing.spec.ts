@@ -30,10 +30,10 @@ async function selectFirst(wrapper: VueWrapper): Promise<void> {
 describe('Explicit constrained Edit Mode', () => {
   it('starts read-only and reveals editing controls only through the mode toggle', async () => {
     const wrapper = setup()
-    expect(wrapper.text()).toContain('View Mode — placements are read-only')
+    expect(wrapper.text()).toContain('View Mode — read-only')
     expect(wrapper.find('[aria-label="Constrained plan editing"]').exists()).toBe(false)
     await button(wrapper, 'Enter Edit Mode').trigger('click')
-    expect(wrapper.text()).toContain('Edit Mode — validated, constrained changes only')
+    expect(wrapper.text()).toContain('Edit Mode — constrained adjustments')
     expect(button(wrapper, 'Rotate selected copy 90°').attributes('disabled')).toBeDefined()
     expect(wrapper.get('#edit-rotation-reason').text()).toContain('Select a placed copy')
     expect(button(wrapper, 'Undo edit').attributes('disabled')).toBeDefined()
@@ -63,7 +63,7 @@ describe('Explicit constrained Edit Mode', () => {
     expect(wrapper.emitted('plan-change')?.[0]?.[1]).toBe(true)
     await button(wrapper, 'Switch to View Mode').trigger('click')
     expect(wrapper.find('[aria-label="Constrained plan editing"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Showing a manually edited plan')
+    expect(wrapper.emitted('plan-change')?.at(-1)?.[1]).toBe(true)
   })
   it('supports exact undo/redo and explicit reset without undoing viewport controls', async () => {
     const wrapper = setup()
@@ -123,8 +123,7 @@ describe('Explicit constrained Edit Mode', () => {
     await button(wrapper, 'Enter Edit Mode').trigger('click')
     await button(wrapper, 'Rotate selected copy 90°').trigger('click')
     await wrapper.setProps({ plan: structuredClone(rotationPlan) })
-    expect(wrapper.text()).toContain('View Mode — placements are read-only')
-    expect(wrapper.text()).toContain('Showing the optimized plan')
+    expect(wrapper.text()).toContain('View Mode — read-only')
     await button(wrapper, 'Enter Edit Mode').trigger('click')
     expect(button(wrapper, 'Undo edit').attributes('disabled')).toBeDefined()
     expect(button(wrapper, 'Redo edit').attributes('disabled')).toBeDefined()

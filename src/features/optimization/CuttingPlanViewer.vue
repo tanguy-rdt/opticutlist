@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <section
-    class="space-y-4"
+    class="cutting-viewer space-y-3"
     aria-labelledby="cutting-viewer-title"
   >
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -177,7 +177,7 @@ onBeforeUnmount(() => {
       </h3>
       <button
         type="button"
-        class="button"
+        class="button button-compact"
         :aria-pressed="editMode"
         :disabled="session === null || projection.status !== 'valid'"
         @click="editMode = !editMode"
@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
       >
         <button
           type="button"
-          class="button"
+          class="button button-compact"
           :disabled="!canvasReady"
           @click="zoom(1.25)"
         >
@@ -199,7 +199,7 @@ onBeforeUnmount(() => {
         </button>
         <button
           type="button"
-          class="button"
+          class="button button-compact"
           :disabled="!canvasReady"
           @click="zoom(0.8)"
         >
@@ -207,7 +207,7 @@ onBeforeUnmount(() => {
         </button>
         <button
           type="button"
-          class="button"
+          class="button button-compact"
           :disabled="!canvasReady"
           @click="fit"
         >
@@ -215,7 +215,7 @@ onBeforeUnmount(() => {
         </button>
         <button
           type="button"
-          class="button"
+          class="button button-compact"
           :disabled="!canvasReady"
           @click="reset"
         >
@@ -247,12 +247,11 @@ onBeforeUnmount(() => {
         role="status"
         class="text-sm font-semibold text-accent"
       >
-        {{ editMode ? 'Edit Mode — validated, constrained changes only. Edits are not saved.' : 'View Mode — placements are read-only.' }}
-        {{ session && session.cursor > 0 ? 'Showing a manually edited plan.' : 'Showing the optimized plan.' }}
+        {{ editMode ? 'Edit Mode — constrained adjustments' : 'View Mode — read-only' }}
       </p>
       <p
         id="cutting-viewer-help"
-        class="text-sm text-muted"
+        class="sr-only"
       >
         Drag to pan; click a part to inspect it. Keyboard: focus the canvas and use arrow keys to pan, +/− to zoom, 0 to fit. Dragging only pans the viewport. Use Edit Mode controls for constrained changes.
       </p>
@@ -263,7 +262,7 @@ onBeforeUnmount(() => {
       >
         {{ canvasError }}
       </p>
-      <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_16rem]">
         <figure class="min-w-0 space-y-3">
           <div
             tabindex="0"
@@ -276,39 +275,47 @@ onBeforeUnmount(() => {
             <div
               ref="host"
               aria-hidden="true"
-              class="h-80 w-full touch-none sm:h-[400px]"
+              class="cutting-canvas-host w-full touch-none"
             />
           </div>
-          <figcaption class="space-y-2 text-sm text-muted">
-            <p>{{ projection.scene.parts.length }} placed copies · {{ projection.scene.waste.length }} waste regions · {{ projection.scene.kerfs.length }} guillotine cuts.</p>
-            <p v-if="!projection.scene.parts.length">
-              No parts were placed. The panel contains only waste and margins.
-            </p>
-            <p>Panel: {{ panel.lengthMm }} × {{ panel.widthMm }} × {{ panel.thicknessMm }} mm · Grain: {{ panel.grainDirection }}{{ panel.grainDirection === 'length' ? ' ↔' : panel.grainDirection === 'width' ? ' ↕' : '' }}.</p>
-            <ul
-              class="flex flex-wrap gap-x-4 gap-y-2"
-              aria-label="Layout legend"
-            >
-              <li>
-                <span
-                  aria-hidden="true"
-                  class="mr-1 inline-block h-3 w-3 border border-success bg-success-surface"
-                />Placed part
-              </li>
-              <li>
-                <span
-                  aria-hidden="true"
-                  class="mr-1 inline-block h-3 w-3 border border-dashed border-muted bg-subtle"
-                />Waste
-              </li>
-              <li>
-                <span
-                  aria-hidden="true"
-                  class="mr-1 inline-block h-3 w-3 border border-danger bg-danger"
-                />Saw kerf (zero kerf is a line)
-              </li>
-              <li>Outer outline: full panel · Dashed outline: usable area · Edge band: margins · Arrows: grain</li>
-            </ul>
+          <figcaption class="text-xs text-muted">
+            <details>
+              <summary class="w-fit cursor-pointer rounded">
+                Legend and canvas shortcuts
+              </summary>
+              <div class="mt-2 space-y-2">
+                <p>{{ projection.scene.waste.length }} waste regions · {{ projection.scene.kerfs.length }} guillotine cuts.</p>
+                <p>Drag to pan · Click to inspect · Arrow keys to pan · +/− to zoom · 0 to fit</p>
+                <p v-if="!projection.scene.parts.length">
+                  No parts were placed. The panel contains only waste and margins.
+                </p>
+                <p>Panel: {{ panel.lengthMm }} × {{ panel.widthMm }} × {{ panel.thicknessMm }} mm · Grain: {{ panel.grainDirection }}{{ panel.grainDirection === 'length' ? ' ↔' : panel.grainDirection === 'width' ? ' ↕' : '' }}.</p>
+                <ul
+                  class="flex flex-wrap gap-x-4 gap-y-2"
+                  aria-label="Layout legend"
+                >
+                  <li>
+                    <span
+                      aria-hidden="true"
+                      class="mr-1 inline-block h-3 w-3 border border-success bg-success-surface"
+                    />Placed part
+                  </li>
+                  <li>
+                    <span
+                      aria-hidden="true"
+                      class="mr-1 inline-block h-3 w-3 border border-dashed border-muted bg-subtle"
+                    />Waste
+                  </li>
+                  <li>
+                    <span
+                      aria-hidden="true"
+                      class="mr-1 inline-block h-3 w-3 border border-danger bg-danger"
+                    />Saw kerf (zero kerf is a line)
+                  </li>
+                  <li>Outer outline: full panel · Dashed outline: usable area · Edge band: margins · Arrows: grain</li>
+                </ul>
+              </div>
+            </details>
           </figcaption>
         </figure>
         <aside
@@ -318,7 +325,6 @@ onBeforeUnmount(() => {
           <FormField
             id="cutting-viewer-part"
             label="Inspect a placed copy"
-            hint="Keyboard alternative to clicking the canvas."
           >
             <template #default="{ controlAttrs }">
               <select
@@ -405,7 +411,7 @@ onBeforeUnmount(() => {
             >
               <button
                 type="button"
-                class="button"
+                class="button button-compact"
                 :disabled="!session || session.cursor === 0"
                 @click="undo"
               >
@@ -413,7 +419,7 @@ onBeforeUnmount(() => {
               </button>
               <button
                 type="button"
-                class="button"
+                class="button button-compact"
                 :disabled="!session || session.cursor >= session.history.length - 1"
                 @click="redo"
               >
@@ -421,7 +427,7 @@ onBeforeUnmount(() => {
               </button>
               <button
                 type="button"
-                class="button"
+                class="button button-compact"
                 :disabled="!session || session.history.length === 1"
                 @click="resetOptimized"
               >
@@ -498,3 +504,8 @@ onBeforeUnmount(() => {
     </template>
   </section>
 </template>
+
+<style scoped>
+.cutting-canvas-host { height: clamp(320px, 55dvh, 680px); }
+.cutting-viewer :deep(.field) { min-height: 2.25rem; padding-block: 0.375rem; font-size: 0.875rem; }
+</style>
