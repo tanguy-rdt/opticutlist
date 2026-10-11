@@ -407,6 +407,25 @@ describe('SuppliersView', () => {
     expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(created.id)
   })
 
+  it('shows supplier favicons in navigation/header and updates material previews when products are selected', async () => {
+    const repositories = setup()
+    const pine = materialSchema.parse({ ...material, name: 'Pin Douglas', libraryPresetId: 'pin' })
+    const custom = materialSchema.parse({ ...material, id: 'custom-material', name: 'Chêne' })
+    const otherProduct = supplierProductSchema.parse({ ...product, id: 'other-product', materialId: custom.id })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [pine, custom] })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product, otherProduct] })
+    const wrapper = render(repositories); await flushPromises()
+    expect(wrapper.get('nav[aria-label="Catalog suppliers"] img').attributes('src')).toBe('https://timber.example.com/favicon.ico')
+    expect(wrapper.get('.catalog-supplier-header img').attributes('src')).toBe('https://timber.example.com/favicon.ico')
+    expect(wrapper.find('#product-details figure img').exists()).toBe(true)
+    const rows = wrapper.findAll('button[aria-label="View product ' + product.name + '"]')
+    await rows[1]?.trigger('click')
+    expect(wrapper.find('#product-details figure img').exists()).toBe(false)
+    expect(wrapper.get('#product-details figure').text()).toContain('No texture available')
+    await rows[0]?.trigger('click')
+    expect(wrapper.find('#product-details figure img').exists()).toBe(true)
+  })
+
   it('offers the local presets without creating records, keeps a renamed thumbnail and the product draft', async () => {
     const repositories = setup()
     repositories.materials.create.mockImplementation(record => Promise.resolve({ ok: true, value: materialSchema.parse(record) }))

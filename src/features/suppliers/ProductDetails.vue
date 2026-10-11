@@ -4,10 +4,12 @@ import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { StockItem } from '../../domain/model/stock-item'
+import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 const props = defineProps<{ product: SupplierProduct | undefined; materials: readonly Material[]; suppliers: readonly Supplier[]; stock: readonly StockItem[]; stockAvailable: boolean; stockError: string; disabled: boolean }>()
 const emit = defineEmits<{ edit: [product: SupplierProduct]; delete: [product: SupplierProduct] }>()
-const materialName = computed(() => props.materials.find(item => item.id === props.product?.materialId)?.name ?? 'Missing material')
+const material = computed(() => props.materials.find(item => item.id === props.product?.materialId))
+const materialName = computed(() => material.value?.name ?? 'Missing material')
 const ownedQuantity = computed(() => props.stock.reduce((quantity, item) => quantity + item.quantity, 0))
 function grain(product: SupplierProduct): string { return product.grainDirection === 'none' ? 'None' : product.grainDirection === 'length' ? 'Along length' : 'Along width' }
 function availability(product: SupplierProduct): string { return product.availability === 'available' ? 'Available' : product.availability === 'unavailable' ? 'Unavailable' : 'Unknown' }
@@ -35,6 +37,18 @@ function availability(product: SupplierProduct): string { return product.availab
         </p>
         <span class="mt-2 inline-flex rounded-md border border-selection-line bg-icon-surface px-2.5 py-0.5 text-xs font-medium text-accent">Supplier product</span>
       </header>
+      <figure
+        class="my-4"
+        aria-label="Material preview"
+      >
+        <MaterialThumbnail
+          :preset-id="material?.libraryPresetId"
+          variant="preview"
+        />
+        <figcaption class="mt-2 text-xs text-muted">
+          {{ materialName }} · Material preview
+        </figcaption>
+      </figure>
       <section
         aria-label="Product specifications"
         class="mt-4"

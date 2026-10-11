@@ -12,6 +12,7 @@ import ProductForm from './ProductForm.vue'
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import CatalogTransfer from './CatalogTransfer.vue'
 import ProductDetails from './ProductDetails.vue'
+import SupplierLogo from './SupplierLogo.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import CatalogFormDialog from './CatalogFormDialog.vue'
 
@@ -362,7 +363,8 @@ onMounted(load)
             :aria-label="`Select supplier ${supplier.name}`"
             @click="selectSupplier(supplier.id)"
           >
-            <span class="min-w-0">
+            <SupplierLogo :website-url="supplier.supplier?.websiteUrl" />
+            <span class="min-w-0 flex-1">
               <span class="block font-semibold [overflow-wrap:anywhere]">{{ supplier.name }}</span>
               <span class="mt-1 block text-xs text-muted">{{ supplier.count }} product references</span>
             </span>
@@ -389,7 +391,11 @@ onMounted(load)
         <div class="panel catalog-supplier-header space-y-3 p-4">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="flex min-w-0 items-start gap-4">
-              <span class="catalog-supplier-symbol hidden xl:flex"><AppIcon name="supplier" /></span>
+              <SupplierLogo
+                :website-url="selectedSupplier?.websiteUrl"
+                size="large"
+                class="hidden xl:flex"
+              />
               <div class="min-w-0 pt-2">
                 <h2
                   id="supplier-content-title"
