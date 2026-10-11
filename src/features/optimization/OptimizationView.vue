@@ -652,15 +652,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         </p>
       </aside>
       <div class="min-w-0">
-        <div
-          v-if="activeChoice"
-          class="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm"
-          aria-label="Selected panel"
-        >
-          <h2 class="font-semibold">
-            Panel {{ panelIndex + 1 }} · {{ activeChoice.product.lengthMm }} × {{ activeChoice.product.widthMm }} × {{ activeChoice.product.thicknessMm }} mm
-          </h2>
-        </div>
         <KeepAlive
           v-if="result"
           :key="result.requestId"
