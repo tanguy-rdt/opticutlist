@@ -1,9 +1,9 @@
-import { materialSchema, type Material } from '../../domain/model/material'
+import { type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
 import type { LocalPersistence, PersistenceResult, Repositories, Repository } from '../persistence/repositories'
 
-import { builtInMaterialPresets } from './material-presets'
+import { resolvePresetMaterial } from './resolve-preset-material'
 
 export interface CatalogProductRepository extends Repository<SupplierProduct> {
   saveWithPreset(record: unknown, presetId: string, updatingId?: SupplierProduct['id']): Promise<PersistenceResult<SupplierProduct>>
@@ -18,17 +18,12 @@ export function createCatalogRepositories(persistence: LocalPersistence): Pick<R
   function saveProduct(record: unknown, id?: SupplierProduct['id'], presetId?: string): Promise<PersistenceResult<SupplierProduct>> {
     const parsed = supplierProductSchema.safeParse(record)
     if (!parsed.success) return Promise.resolve({ ok: false, error: { kind: 'invalidRecord', issues: parsed.error.issues } })
-    const preset = presetId === undefined ? undefined : builtInMaterialPresets.find(item => item.id === presetId)
-    if (presetId !== undefined && !preset) return Promise.resolve(conflict('Choose a supported built-in material preset.'))
     return persistence.transaction(async (repositories) => {
       const supplier = await repositories.suppliers.get(parsed.data.supplierId)
       if (!supplier.ok) return supplier
       let product = parsed.data
-      if (preset) {
-        const materials = await repositories.materials.list()
-        if (!materials.ok) return materials
-        const existing = materials.value.find(item => item.libraryPresetId === preset.id && item.name === preset.name && item.category === preset.category)
-        const material = existing ? { ok: true as const, value: existing } : await repositories.materials.create(materialSchema.parse({ id: crypto.randomUUID(), name: preset.name, category: preset.category, libraryPresetId: preset.id }))
+      if (presetId !== undefined) {
+        const material = await resolvePresetMaterial(repositories, presetId)
         if (!material.ok) return material
         product = { ...product, materialId: material.value.id }
       } else {

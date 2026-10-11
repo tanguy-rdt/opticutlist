@@ -4,6 +4,7 @@ import Dexie from 'dexie'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { createLocalPersistence, DATABASE_VERSION, DATABASE_STORES, DATABASE_V3_STORES } from '../../../infrastructure/persistence/local-database'
 import { createSavedPlanService } from '../../plans/saved-plan-service'
+import { createStockRepository } from '../stock-repository'
 import { createCuttingConfirmationService } from '../cutting-confirmation-service'
 import { optimizeProject } from '../../../domain/optimizer/optimize-project'
 import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
@@ -35,6 +36,25 @@ async function setup() {
   return { indexedDB, persistence, plans, service: createCuttingConfirmationService(persistence).forProject(project.id) }
 }
 describe('explicit cutting confirmation', () => {
+  it('retains finalized history and idempotency after manual stock adjustments and offcut deletion', async () => {
+    const { persistence, service } = await setup()
+    const confirmed = await service.confirm(metadata.id, { ...request, offcuts: [{ panelIndex: 0, wasteIndex: 0 }] })
+    if (!confirmed.ok) throw new Error('Expected confirmation')
+    const repository = createStockRepository(persistence)
+    const remaining = await repository.get(stock.id)
+    if (!remaining.ok) throw new Error('Expected remaining stock')
+    expect((await repository.update(stock.id, { ...remaining.value, quantity: 5 }, remaining.value)).ok).toBe(true)
+    const offcut = confirmed.value.offcuts[0]
+    if (!offcut) throw new Error('Expected offcut')
+    expect((await repository.delete(offcut.id, offcut)).ok).toBe(true)
+    expect(await repository.history(stock.id)).toEqual({ ok: true, value: [confirmed.value] })
+    expect(await repository.history(offcut.id)).toEqual({ ok: true, value: [confirmed.value] })
+    const before = await persistence.stockItems.list()
+    expect(await service.confirm(metadata.id, request)).toEqual(confirmed)
+    expect(await persistence.stockItems.list()).toEqual(before)
+    expect(await repository.get(offcut.id)).toMatchObject({ ok: false, error: { kind: 'notFound' } })
+  })
+
   it('consumes exactly confirmed stock with no offcuts and retains immutable movement history after reload', async () => {
     const { persistence, service, indexedDB } = await setup()
     const catalog = await persistence.supplierProducts.list()

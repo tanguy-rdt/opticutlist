@@ -1,18 +1,70 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
+import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
 import { useCatalogStockRepository } from '../suppliers/catalog-repositories'
 import { useMaterialRepository } from '../materials/material-repository'
+import { useStockRepository } from './stock-repository'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
-const repository = useCatalogStockRepository()
+import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
+import AppIcon from '../../shared/ui/AppIcon.vue'
+import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
+import StockForm from './StockForm.vue'
+import StockDetails from './StockDetails.vue'
+
+const writer = useStockRepository()
+const repository = writer ?? useCatalogStockRepository()
 const materialRepository = useMaterialRepository()
 const stock = shallowRef<readonly StockItem[]>([])
 const materials = shallowRef<readonly Material[]>([])
+const history = shallowRef<readonly CuttingConfirmation[]>([])
+const historyLoading = ref(false)
+const historyError = ref('')
 const loading = ref(true)
 const error = ref('')
+const writeError = ref('')
+const notice = ref('')
+const busy = ref(false)
+const formOpen = ref(false)
+const editing = shallowRef<StockItem | null>(null)
+const detailsOpen = ref(false)
+const materialFilter = ref('')
+const search = ref('')
+const kindFilter = ref('')
+const grainFilter = ref('')
+const selectedId = ref('')
 let generation = 0
-onBeforeUnmount(() => { generation++ })
+let historyGeneration = 0
+onBeforeUnmount(() => { generation++; historyGeneration++ })
+function materialName(id: string): string { return materials.value.find(material => material.id === id)?.name ?? 'Missing material' }
+const materialGroups = computed(() => [...new Set(stock.value.map(item => item.materialId))].map(id => ({ id, material: materials.value.find(material => material.id === id), name: materialName(id), items: stock.value.filter(item => item.materialId === id) })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)))
+const visible = computed(() => stock.value.filter(item => {
+  const text = `${materialName(item.materialId)} ${item.id} ${item.kind === 'offcut' ? 'Offcut' : 'Full panel'} ${String(item.lengthMm)} ${String(item.widthMm)} ${String(item.thicknessMm)} ${item.provenance.source}`.toLocaleLowerCase()
+  return (!materialFilter.value || item.materialId === materialFilter.value) && (!kindFilter.value || item.kind === kindFilter.value) && (!grainFilter.value || item.grainDirection === grainFilter.value) && text.includes(search.value.trim().toLocaleLowerCase())
+}))
+const sections = computed(() => materialGroups.value.map(group => ({ ...group, items: visible.value.filter(item => item.materialId === group.id) })).filter(group => group.items.length))
+const selected = computed(() => visible.value.find(item => item.id === selectedId.value))
+const selectedMaterial = computed(() => materials.value.find(material => material.id === selected.value?.materialId))
+const summaries = computed(() => [
+  { label: 'Owned panels', value: stock.value.filter(item => item.kind === 'fullPanel').reduce((sum, item) => sum + item.quantity, 0), icon: 'stock' as const },
+  { label: 'Owned offcuts', value: stock.value.filter(item => item.kind === 'offcut').reduce((sum, item) => sum + item.quantity, 0), icon: 'products' as const },
+  { label: 'Materials in stock', value: materialGroups.value.length, icon: 'layers' as const },
+  { label: 'Stock references', value: stock.value.length, icon: 'info' as const },
+])
+watch(visible, items => { if (!items.some(item => item.id === selectedId.value)) selectedId.value = items[0]?.id ?? '' })
+watch(selected, async item => {
+  const current = ++historyGeneration
+  history.value = []; historyError.value = ''; historyLoading.value = false
+  if (!item) return
+  if (!writer) { historyError.value = 'Movement history is unavailable.'; return }
+  historyLoading.value = true
+  const result = await writer.history(item.id)
+  if (current !== historyGeneration) return
+  historyLoading.value = false
+  if (result.ok) history.value = result.value
+  else historyError.value = persistenceErrorMessage(result.error, 'Cutting confirmation')
+})
 async function load(): Promise<void> {
   const current = ++generation; loading.value = true; error.value = ''
   if (!repository) { error.value = 'Inventory information is not available.'; loading.value = false; return }
@@ -20,14 +72,43 @@ async function load(): Promise<void> {
   if (current !== generation) return
   if (!items.ok) error.value = persistenceErrorMessage(items.error, 'Stock item')
   else if (!names.ok) error.value = persistenceErrorMessage(names.error, 'Material')
-  else { stock.value = items.value; materials.value = names.value }
+  else { stock.value = items.value; materials.value = names.value; if (materialFilter.value && !items.value.some(item => item.materialId === materialFilter.value)) materialFilter.value = '' }
   loading.value = false
+}
+async function openForm(item: StockItem | null = null): Promise<void> {
+  if (!writer || busy.value || loading.value || error.value) return
+  detailsOpen.value = false; editing.value = item; writeError.value = ''; formOpen.value = true
+  await nextTick(); document.getElementById('stock-material')?.focus()
+}
+function closeForm(): void { if (!busy.value) { formOpen.value = false; editing.value = null; writeError.value = '' } }
+async function save(item: StockItem, presetId?: string): Promise<void> {
+  if (!writer || busy.value) return
+  busy.value = true; writeError.value = ''; notice.value = ''
+  const current = generation
+  const result = presetId !== undefined ? await writer.saveWithPreset(item, presetId, editing.value ?? undefined) : editing.value ? await writer.update(editing.value.id, item, editing.value) : await writer.create(item)
+  if (current !== generation) return
+  busy.value = false
+  if (result.ok) {
+    notice.value = editing.value ? 'Stock item updated.' : 'Stock item added.'
+    formOpen.value = false; editing.value = null; selectedId.value = result.value.id; materialFilter.value = ''; search.value = ''; kindFilter.value = ''; grainFilter.value = ''
+    await load()
+  } else writeError.value = persistenceErrorMessage(result.error, 'Stock item')
+}
+async function remove(item: StockItem): Promise<void> {
+  if (!writer || busy.value || !window.confirm(`Delete this ${item.kind === 'offcut' ? 'offcut' : 'panel'} stock reference and all ${String(item.quantity)} owned items? Past cutting records will be preserved.`)) return
+  busy.value = true; writeError.value = ''; notice.value = ''
+  const current = generation
+  const result = await writer.delete(item.id, item)
+  if (current !== generation) return
+  busy.value = false
+  if (result.ok) { detailsOpen.value = false; notice.value = 'Stock item deleted.'; await load() }
+  else writeError.value = persistenceErrorMessage(result.error, 'Stock item')
 }
 onMounted(load)
 </script>
 <template>
   <section class="space-y-5">
-    <div class="flex flex-wrap items-start justify-between gap-3">
+    <header class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-2xl font-semibold">
           Stock
@@ -35,108 +116,339 @@ onMounted(load)
           Physically owned panels and offcuts. Catalog products are not inventory.
         </p>
       </div>
-      <button
-        type="button"
-        class="button button-compact"
-        :disabled="loading"
-        @click="load"
-      >
-        Refresh stock
-      </button>
-    </div>
-    <p class="text-sm text-muted">
-      Inventory changes are recorded through cutting finalization inside a project.
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="button button-compact"
+          :disabled="loading || busy || formOpen"
+          @click="load"
+        >
+          Refresh stock
+        </button><button
+          type="button"
+          class="button button-primary"
+          :disabled="!writer || loading || !!error || busy"
+          @click="openForm()"
+        >
+          <AppIcon name="plus" />Add to stock
+        </button>
+      </div>
+    </header>
+    <p
+      v-if="notice"
+      role="status"
+      class="rounded-lg bg-success-surface p-3 text-sm text-success"
+    >
+      {{ notice }}
+    </p>
+    <p
+      v-if="writeError && !formOpen"
+      role="alert"
+      class="text-sm text-danger"
+    >
+      {{ writeError }}
     </p>
     <p
       v-if="loading"
       role="status"
+      class="panel p-5 text-sm text-muted"
     >
       Loading owned stock…
     </p>
     <p
       v-else-if="error"
       role="alert"
-      class="text-danger"
+      class="panel p-5 text-danger"
     >
       {{ error }}
     </p>
-    <p
-      v-else-if="!stock.length"
-      class="panel p-5 text-sm text-muted"
-    >
-      No physical stock items yet.
-    </p>
-    <div
-      v-else
-      class="panel overflow-x-auto"
-      tabindex="0"
-      role="region"
-      aria-label="Physical stock table"
-    >
-      <table class="w-full text-left text-sm">
-        <caption class="sr-only">
-          Owned panels and offcuts; dimensions in millimeters
-        </caption>
-        <thead class="bg-subtle text-xs text-muted">
-          <tr>
-            <th
-              scope="col"
-              class="px-4 py-3"
-            >
-              Material
-            </th><th
-              scope="col"
-              class="px-4 py-3"
-            >
-              Type
-            </th><th
-              scope="col"
-              class="px-4 py-3"
-            >
-              Length × width × thickness (mm)
-            </th><th
-              scope="col"
-              class="px-4 py-3"
-            >
-              Quantity
-            </th><th
-              scope="col"
-              class="px-4 py-3"
-            >
-              Grain
-            </th><th
-              scope="col"
-              class="px-4 py-3"
-            >
-              Origin
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="item in stock"
-            :key="item.id"
-            class="border-t border-line"
+    <template v-else>
+      <dl
+        aria-label="Stock summary"
+        class="grid grid-cols-2 gap-3 lg:grid-cols-4"
+      >
+        <div
+          v-for="summary in summaries"
+          :key="summary.label"
+          class="panel flex items-center gap-3 p-4"
+        >
+          <span class="flex size-10 items-center justify-center rounded-lg bg-icon-surface text-accent"><AppIcon :name="summary.icon" /></span><div>
+            <dt class="text-xs text-muted">
+              {{ summary.label }}
+            </dt><dd class="mt-1 text-xl font-semibold tabular-nums">
+              {{ summary.value }}
+            </dd>
+          </div>
+        </div>
+      </dl>
+      <section
+        v-if="!stock.length"
+        class="panel flex min-h-64 flex-col items-center justify-center gap-3 p-6 text-center"
+        aria-label="Empty inventory"
+      >
+        <AppIcon
+          name="stock"
+          class="size-10 text-accent"
+        /><h2 class="text-lg font-semibold">
+          No physical stock items yet.
+        </h2><p class="max-w-md text-sm text-muted">
+          No physical inventory is recorded. Add panels or offcuts you already own to start managing your workshop stock.
+        </p><button
+          type="button"
+          class="button button-primary"
+          :disabled="!writer"
+          @click="openForm()"
+        >
+          Add first stock item
+        </button>
+      </section>
+      <div
+        v-else
+        class="grid min-w-0 items-start gap-4 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_300px] 2xl:grid-cols-[220px_minmax(0,1fr)_330px]"
+      >
+        <nav
+          aria-label="Stock materials"
+          class="panel space-y-4 p-4"
+        >
+          <h2 class="font-semibold">
+            Materials <span class="text-sm text-muted">{{ materialGroups.length }}</span>
+          </h2>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm"
+            :class="!materialFilter ? 'bg-success-surface text-accent' : 'hover:bg-subtle'"
+            :aria-pressed="!materialFilter"
+            @click="materialFilter = ''"
           >
-            <th
-              scope="row"
-              class="px-4 py-3 font-medium"
+            All materials<span>{{ stock.reduce((sum, item) => sum + item.quantity, 0) }}</span>
+          </button>
+          <button
+            v-for="group in materialGroups"
+            :key="group.id"
+            type="button"
+            class="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left"
+            :class="materialFilter === group.id ? 'bg-success-surface text-accent' : 'hover:bg-subtle'"
+            :aria-pressed="materialFilter === group.id"
+            @click="materialFilter = group.id"
+          >
+            <MaterialThumbnail :preset-id="group.material?.libraryPresetId" /><span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ group.name }}</span><span class="text-xs text-muted">{{ group.items.reduce((sum, item) => sum + item.quantity, 0) }} owned · {{ group.items.length }} references</span></span>
+          </button>
+        </nav>
+        <div class="min-w-0 space-y-4">
+          <div class="panel grid gap-3 p-4 sm:grid-cols-3">
+            <div>
+              <label
+                for="stock-search"
+                class="mb-2 block text-xs font-medium text-muted"
+              >Search inventory</label><input
+                id="stock-search"
+                v-model="search"
+                class="field"
+                type="search"
+                placeholder="Material, dimensions or source…"
+              >
+            </div>
+            <div>
+              <label
+                for="stock-type-filter"
+                class="mb-2 block text-xs font-medium text-muted"
+              >Item type</label><select
+                id="stock-type-filter"
+                v-model="kindFilter"
+                class="field"
+              >
+                <option value="">
+                  All types
+                </option><option value="fullPanel">
+                  Full panels
+                </option><option value="offcut">
+                  Offcuts
+                </option>
+              </select>
+            </div>
+            <div>
+              <label
+                for="stock-grain-filter"
+                class="mb-2 block text-xs font-medium text-muted"
+              >Grain</label><select
+                id="stock-grain-filter"
+                v-model="grainFilter"
+                class="field"
+              >
+                <option value="">
+                  Any grain
+                </option><option value="none">
+                  No constraint
+                </option><option value="length">
+                  Along length
+                </option><option value="width">
+                  Along width
+                </option>
+              </select>
+            </div>
+          </div>
+          <p
+            v-if="!sections.length"
+            class="panel p-5 text-sm text-muted"
+          >
+            No stock matches these filters.
+          </p>
+          <section
+            v-for="group in sections"
+            :key="group.id"
+            class="panel min-w-0 overflow-hidden"
+          >
+            <header class="flex items-center gap-3 border-b border-line bg-quiet-surface p-4">
+              <MaterialThumbnail :preset-id="group.material?.libraryPresetId" /><div>
+                <h2 class="text-sm font-semibold">
+                  {{ group.name }}
+                </h2><p class="mt-1 text-xs text-muted">
+                  {{ group.items.length }} references · {{ group.items.reduce((sum, item) => sum + item.quantity, 0) }} owned
+                </p>
+              </div>
+            </header>
+            <div
+              class="overflow-x-auto"
+              tabindex="0"
+              role="region"
+              :aria-label="`Physical stock table: ${group.name}`"
             >
-              {{ materials.find(material => material.id === item.materialId)?.name ?? 'Missing material' }}<span class="block text-xs font-normal text-muted">{{ item.id }}</span>
-            </th><td class="px-4 py-3">
-              {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}
-            </td><td class="whitespace-nowrap px-4 py-3 tabular-nums">
-              {{ item.lengthMm }} × {{ item.widthMm }} × {{ item.thicknessMm }}
-            </td><td class="px-4 py-3 tabular-nums">
-              {{ item.quantity }}
-            </td><td class="px-4 py-3">
-              {{ item.grainDirection }}
-            </td><td class="px-4 py-3">
-              {{ item.provenance.source }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+              <table class="w-full text-left text-sm">
+                <caption class="sr-only">
+                  {{ group.name }} owned panels and offcuts; dimensions in millimeters
+                </caption>
+                <thead class="bg-quiet-surface text-xs text-muted">
+                  <tr>
+                    <th
+                      scope="col"
+                      class="px-3 py-2"
+                    >
+                      Item type
+                    </th><th
+                      scope="col"
+                      class="px-3 py-2"
+                    >
+                      Length × width (mm)
+                    </th><th
+                      scope="col"
+                      class="px-3 py-2"
+                    >
+                      Thickness (mm)
+                    </th><th
+                      scope="col"
+                      class="px-3 py-2"
+                    >
+                      Quantity
+                    </th><th
+                      scope="col"
+                      class="px-3 py-2"
+                    >
+                      Provenance
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in group.items"
+                    :key="item.id"
+                    class="border-t border-line hover:bg-subtle"
+                    :class="selectedId === item.id ? 'bg-success-surface' : ''"
+                    @click="selectedId = item.id"
+                  >
+                    <th
+                      scope="row"
+                      class="px-3 py-3 font-medium"
+                    >
+                      <button
+                        type="button"
+                        class="rounded text-left text-accent"
+                        :aria-label="`Select stock item ${item.id}`"
+                        :aria-pressed="selectedId === item.id"
+                        @click.stop="selectedId = item.id"
+                      >
+                        {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}
+                      </button><span class="mt-1 block max-w-32 truncate text-xs font-normal text-muted">{{ item.id }}</span>
+                    </th><td class="whitespace-nowrap px-3 py-3 tabular-nums">
+                      {{ item.lengthMm }} × {{ item.widthMm }}
+                    </td><td class="px-3 py-3 tabular-nums">
+                      {{ item.thicknessMm }}
+                    </td><td class="px-3 py-3 tabular-nums">
+                      {{ item.quantity }}
+                    </td><td class="px-3 py-3 text-xs capitalize text-muted">
+                      {{ item.provenance.source }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <button
+            v-if="selected"
+            type="button"
+            class="button w-full md:hidden"
+            @click="detailsOpen = true"
+          >
+            View stock details
+          </button>
+        </div>
+        <aside class="panel hidden min-w-0 p-5 md:col-start-2 md:block xl:sticky xl:top-5 xl:col-start-3 xl:row-start-1">
+          <StockDetails
+            v-if="selected"
+            :item="selected"
+            :material="selectedMaterial"
+            :history="history"
+            :history-loading="historyLoading"
+            :history-error="historyError"
+            :writable="!!writer"
+            :busy="busy"
+            @edit="openForm(selected)"
+            @delete="remove(selected)"
+          /><p
+            v-else
+            class="text-sm text-muted"
+          >
+            Select a stock item to inspect it.
+          </p>
+        </aside>
+      </div>
+    </template>
+    <CatalogFormDialog
+      v-if="detailsOpen && selected"
+      title="Stock details"
+      close-label="Close details"
+      :busy="busy"
+      @close="detailsOpen = false"
+    >
+      <StockDetails
+        :item="selected"
+        :material="selectedMaterial"
+        :history="history"
+        :history-loading="historyLoading"
+        :history-error="historyError"
+        :writable="!!writer"
+        :busy="busy"
+        @edit="openForm(selected)"
+        @delete="remove(selected)"
+      />
+    </CatalogFormDialog>
+    <CatalogFormDialog
+      v-if="formOpen"
+      :title="editing ? 'Edit stock item' : 'Add to stock'"
+      :busy="busy"
+      @close="closeForm"
+    >
+      <StockForm
+        :item="editing"
+        :materials="materials"
+        :disabled="busy"
+        @save="save"
+      /><p
+        v-if="writeError"
+        role="alert"
+        class="mt-4 text-sm text-danger"
+      >
+        {{ writeError }}
+      </p>
+    </CatalogFormDialog>
   </section>
 </template>

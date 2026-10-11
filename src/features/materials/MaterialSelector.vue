@@ -4,7 +4,7 @@ import AppIcon from '../../shared/ui/AppIcon.vue'
 import MaterialThumbnail from './MaterialThumbnail.vue'
 
 export type MaterialOption = { value: string; name: string; group: string; presetId: string | undefined }
-const props = defineProps<{ id: string; modelValue: string; options: readonly MaterialOption[]; disabled: boolean }>()
+const props = withDefaults(defineProps<{ id: string; modelValue: string; options: readonly MaterialOption[]; disabled: boolean; allowCustomCreation?: boolean }>(), { allowCustomCreation: true })
 const emit = defineEmits<{ 'update:modelValue': [value: string]; create: [] }>()
 defineOptions({ inheritAttrs: false })
 const root = ref<HTMLElement | null>(null)
@@ -163,7 +163,10 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside); })
           No matching materials.
         </p>
       </div>
-      <div class="border-t border-line p-2">
+      <div
+        v-if="allowCustomCreation !== false"
+        class="border-t border-line p-2"
+      >
         <button
           type="button"
           class="button w-full justify-start text-accent"
