@@ -19,14 +19,14 @@
 
 :root {
   color-scheme: light;
-  --canvas: #f5f6f3;
+  --canvas: #f5f3ee;
   --surface: #ffffff;
   --subtle: #eaf0e9;
   --ink: #1e2925;
   --muted: #526059;
-  --line: #ccd5ce;
+  --line: #dddeda;
   --control-line: #7c8b80;
-  --accent: #286348;
+  --accent: #24563d;
   --accent-hover: #1e4e37;
   --on-accent: #ffffff;
   --danger: #a12727;
@@ -92,6 +92,8 @@
   .button { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold transition-colors hover:bg-subtle; }
   .button-primary { @apply border-transparent bg-accent text-on-accent hover:bg-accent-hover; }
   .button-danger { @apply text-danger hover:bg-danger-surface; }
+  .button-compact { @apply min-h-9 px-3 py-1.5 text-xs; }
+  .catalog-workspace .field { @apply min-h-9 py-1.5 text-sm; }
   .field { @apply block min-h-11 w-full rounded-lg border border-control-line bg-surface px-3 py-2 text-ink; }
   .field::placeholder { @apply text-muted opacity-100; }
   .field[aria-invalid='true'] { @apply border-danger; }

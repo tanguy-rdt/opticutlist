@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, type Router, type RouterHistory } from 'vue-router'
 
+import StockView from '../../features/inventory/StockView.vue'
 import ProjectPartsView from '../../features/projects/ProjectPartsView.vue'
 import ProjectWorkspace from '../../features/projects/ProjectWorkspace.vue'
 import SuppliersView from '../../features/suppliers/SuppliersView.vue'
@@ -18,6 +19,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
       { path: '/materials', redirect: '/projects' },
       { path: '/parts', redirect: '/projects' },
       { path: '/catalog', alias: '/suppliers', name: 'suppliers', component: SuppliersView },
+      { path: '/stock', name: 'stock', component: StockView },
       { path: '/projects', name: 'projects', component: ProjectsView },
       { path: '/import', name: 'project-import', component: ProjectImport },
       { path: '/projects/:projectId', component: ProjectWorkspace, props: true, children: [

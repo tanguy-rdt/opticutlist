@@ -107,13 +107,29 @@ describe('SuppliersView', () => {
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }))
     const wrapper = render(repositories); await flushPromises()
     const layout = wrapper.get('.catalog-workspace')
-    expect(layout.classes()).toContain('md:grid-cols-[13rem_minmax(0,1fr)]')
-    expect(layout.classes()).toContain('xl:grid-cols-[14rem_minmax(0,1fr)_19rem]')
+    expect(layout.classes()).toContain('md:grid-cols-[200px_minmax(0,1fr)]')
+    expect(layout.classes()).toContain('xl:grid-cols-[240px_minmax(0,1fr)_300px]')
     const control = wrapper.get(`button[aria-label="View product ${product.name}"]`)
     expect(control.attributes('type')).toBe('button'); expect(control.attributes('aria-controls')).toBe('product-details')
     await control.trigger('click')
+    expect(wrapper.get('dialog').attributes('aria-labelledby')).toBe('catalog-dialog-title')
     expect(document.activeElement).toBe(wrapper.get('#product-details-title').element)
     expect(control.attributes('aria-pressed')).toBe('true')
+    await button(wrapper, 'Close details').trigger('click')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+  })
+
+  it('closes mobile details when the viewport expands and detaches its listener on exit', async () => {
+    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    let listener: (() => void) | undefined
+    const media = { matches: true, addEventListener: vi.fn((_event: string, callback: () => void) => { listener = callback }), removeEventListener: vi.fn() }
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(media))
+    const wrapper = render(repositories); await flushPromises()
+    await wrapper.get(`button[aria-label="View product ${product.name}"]`).trigger('click')
+    expect(wrapper.find('dialog').exists()).toBe(true)
+    media.matches = false; listener?.(); await flushPromises()
+    expect(wrapper.find('dialog').exists()).toBe(false); expect(wrapper.find('#product-details').exists()).toBe(true)
+    wrapper.unmount(); expect(media.removeEventListener).toHaveBeenCalledWith('change', listener)
   })
 
   it('shows only real purchase-linked inventory, with its actual dimensions, without writing stock', async () => {
@@ -123,6 +139,8 @@ describe('SuppliersView', () => {
     const inventory = fakeRepository(purchased, [purchased, unrelated])
     const wrapper = render(repositories, { [catalogStockRepositoryKey]: inventory }); await flushPromises()
     expect(wrapper.get('table').text()).toContain('3 owned')
+    expect(wrapper.get('[aria-label="Catalog summary"]').findAll('dd').map(value => value.text())).toEqual(['1', '1', '1', '2'])
+    expect(wrapper.text()).toContain('12 owned units for this material')
     await selectProduct(wrapper)
     const details = wrapper.get('#product-details')
     expect(details.text()).toContain('3 offcut(s) · 800 × 400.5 × 18 mm')
@@ -136,6 +154,7 @@ describe('SuppliersView', () => {
     const inventory = { list: vi.fn().mockResolvedValue(failure) }
     const wrapper = render(repositories, { [catalogStockRepositoryKey]: inventory }); await flushPromises(); await selectProduct(wrapper)
     expect(wrapper.get('#product-details [role="alert"]').text()).toContain('Could not access local storage')
+    expect(wrapper.get('[aria-label="Catalog summary"]').findAll('dd')[3]?.text()).toBe('—')
     expect(wrapper.get(`button[aria-label="Edit product ${product.name}"]`).attributes('disabled')).toBeUndefined()
   })
 
@@ -690,7 +709,10 @@ describe('SuppliersView', () => {
       first.close()
       const reopened = render(createCatalogRepositories(second))
       await vi.waitFor(() => { expect(reopened.text()).toContain(product.name) })
-      expect(reopened.text()).toContain('2500 × 1250 × 18')
+      expect(reopened.get('table').text()).toContain('2500 × 1250')
+      expect(reopened.get('table tbody td').text()).toBe('2500 × 1250')
+      await selectProduct(reopened)
+      expect(reopened.get('#product-details').text()).toContain('2500 × 1250 × 18')
       expect(await second.stockItems.list()).toEqual({ ok: true, value: [] })
     } finally { first.close(); second.close() }
   })

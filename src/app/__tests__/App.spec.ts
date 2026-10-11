@@ -27,7 +27,7 @@ import { projectServiceKey } from '../../features/projects/project-service'
 import { createProjectService } from '../../application/projects/project-service'
 import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import { createLocalPersistence } from '../../infrastructure/persistence/local-database'
-import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../features/suppliers/catalog-repositories'
+import { catalogStockRepositoryKey, supplierRepositoryKey, supplierProductRepositoryKey } from '../../features/suppliers/catalog-repositories'
 import { createCatalogRepositories } from '../../application/catalog/catalog-repositories'
 import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../domain/model/__tests__/fixtures'
 
@@ -70,6 +70,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
         [cuttingConfirmationServiceKey]: createCuttingConfirmationService(persistence),
         [materialRepositoryKey]: catalog.materials,
         [projectServiceKey]: service,
+        [catalogStockRepositoryKey]: persistence.stockItems,
         [supplierRepositoryKey]: catalog.suppliers,
         [supplierProductRepositoryKey]: catalog.supplierProducts,
       },
@@ -92,13 +93,43 @@ describe('Home and application navigation', () => {
     expect(wrapper.get('[aria-labelledby="catalog-title"] svg').attributes('aria-hidden')).toBe('true')
   })
 
-  it('keeps only the logo and theme selector in the header', async () => {
+  it('keeps branding and theme selection accessible in the persistent application sidebar', async () => {
     const { wrapper } = await mountAt('/')
     expect(wrapper.find('header nav').exists()).toBe(false)
     expect(wrapper.findAll('header a')).toHaveLength(1)
     expect(wrapper.get('header a').attributes('aria-label')).toBe('OptiCutList home')
     expect(wrapper.find('#theme-preference').exists()).toBe(true)
-    expect(wrapper.find('aside').exists()).toBe(false)
+    expect(wrapper.find('aside[aria-label="Application navigation"]').exists()).toBe(true)
+    expect(wrapper.findAll('nav[aria-label="Main navigation"] a').map(link => link.text())).toEqual(['Home', 'Projects', 'Catalog', 'Stock'])
+  })
+
+  it('navigates the sidebar with active states and collapses the small-screen menu after navigation or Escape', async () => {
+    const { wrapper, router } = await mountAt('/')
+    const nav = wrapper.get('nav[aria-label="Main navigation"]')
+    expect(nav.get('a[href="/"]').attributes('aria-current')).toBe('page')
+    const toggle = wrapper.get('button[aria-controls="app-sidebar-content"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click'); expect(toggle.attributes('aria-expanded')).toBe('true')
+    await nav.get('a[href="/projects"]').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/projects'); expect(nav.get('a[href="/projects"]').attributes('aria-current')).toBe('page')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click'); await wrapper.get('aside[aria-label="Application navigation"]').trigger('keydown', { key: 'Escape' })
+    expect(toggle.attributes('aria-expanded')).toBe('false'); expect(document.activeElement).toBe(toggle.element)
+    await nav.get('a[href="/stock"]').trigger('click'); await flushPromises()
+    expect(wrapper.get('h1').text()).toBe('Stock'); expect(nav.get('a[href="/stock"]').attributes('aria-current')).toBe('page')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('No physical stock items yet') })
+    await router.push('/suppliers'); await flushPromises(); expect(nav.get('a[href="/catalog"]').attributes('aria-current')).toBe('page')
+  })
+
+  it('opens persisted physical stock through sidebar navigation without changing its records', async () => {
+    const { wrapper, persistence } = await mountAt('/')
+    await persistence.materials.create(validMaterialInput); await persistence.stockItems.create(validStockItemInput)
+    const before = await persistence.stockItems.list()
+    await wrapper.get('nav[aria-label="Main navigation"] a[href="/stock"]').trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find('table').exists()).toBe(true) })
+    expect(wrapper.get('table').text()).toContain(validMaterialInput.name)
+    expect(wrapper.get('table').text()).toContain('800 × 400.5 × 18')
+    expect(await persistence.stockItems.list()).toEqual(before)
   })
 
   it('opens import through the keyboard-accessible full-surface Home tile', async () => {
@@ -124,7 +155,7 @@ describe('Home and application navigation', () => {
     await tile.get('svg').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/catalog')
-    expect(wrapper.get('h1').text()).toBe('Catalogue')
+    expect(wrapper.get('h1').text()).toBe('Catalog')
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Add Supplier') })
   })
 
@@ -153,13 +184,13 @@ describe('Home and application navigation', () => {
     expect(catalogue.text()).not.toContain('Open catalog')
   })
 
-  it.each(['/catalog', '/suppliers'])('provides Back to Home from %s without a project', async (path) => {
+  it.each(['/catalog', '/suppliers'])('returns Home through the sidebar from %s without a project', async (path) => {
     const { wrapper, router } = await mountAt(path)
-    expect(wrapper.get('h1').text()).toBe('Catalogue')
+    expect(wrapper.get('h1').text()).toBe('Catalog')
     expect(router.currentRoute.value.name).toBe('suppliers')
-    expect(wrapper.get('main').classes()).toContain('max-w-[1800px]')
-    const back = wrapper.get('main a[href="/"]')
-    expect(back.text()).toContain('Back to Home')
+    expect(wrapper.get('main').classes()).toContain('max-w-none')
+    const back = wrapper.get('nav[aria-label="Main navigation"] a[href="/"]')
+    expect(back.text()).toBe('Home')
     await back.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
@@ -171,7 +202,7 @@ describe('Home and application navigation', () => {
     const { wrapper, router } = await mountAt('/parts')
     expect(router.currentRoute.value.path).toBe('/projects')
     expect(wrapper.get('h1').text()).toBe('New Project')
-    expect(wrapper.find('nav').exists()).toBe(false)
+    expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(false)
     await router.push('/materials')
     expect(router.currentRoute.value.path).toBe('/projects')
   })
@@ -189,11 +220,11 @@ describe('Home and application navigation', () => {
     expect(path).toMatch(/^\/projects\/[^/]+\/parts$/)
     expect(wrapper.text()).toContain('Workshop cabinet')
     expect(wrapper.get('h1').text()).toBe('Parts')
-    await wrapper.get('nav a').trigger('click')
+    await wrapper.get('nav[aria-label="Project"] a').trigger('click')
     await router.push(path.replace(/parts$/, 'materials'))
     await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe('Materials') })
     await wrapper.get('main a[href="/"]').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.find('nav').exists()).toBe(false) })
+    await vi.waitFor(() => { expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(false) })
     await vi.waitFor(() => { expect(wrapper.find(`a[href="${path}"]`).exists()).toBe(true) })
     await wrapper.get(`a[href="${path}"]`).trigger('click')
     await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe('Parts') })
@@ -257,14 +288,14 @@ describe('Home and application navigation', () => {
     await vi.waitFor(() => { expect(reopened.wrapper.text()).toContain('2 requested copies') })
     expect(reopened.wrapper.text()).toContain('First cutting project')
     await reopened.wrapper.get('main a[href="/"]').trigger('click')
-    await vi.waitFor(() => { expect(reopened.wrapper.find('nav').exists()).toBe(false) })
+    await vi.waitFor(() => { expect(reopened.wrapper.find('nav[aria-label="Project"]').exists()).toBe(false) })
   })
 
   it('shows missing projects without mounting global Parts or Materials', async () => {
     const { wrapper } = await mountAt('/projects/missing/parts')
     await vi.waitFor(() => { expect(wrapper.find('[role="alert"]').exists()).toBe(true) })
     expect(wrapper.get('h1').text()).toBe('Could not open project')
-    expect(wrapper.find('nav').exists()).toBe(false)
+    expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(false)
     expect(wrapper.find('#part-name').exists()).toBe(false)
   })
 
@@ -424,7 +455,7 @@ it('imports an exported project from Home with collision preview and opens its r
   expect(wrapper.text()).toContain('This project ID already exists')
   expect((await persistence.projects.list())).toMatchObject({ ok: true, value: [{ id: project.id }] })
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  await wrapper.get('button').trigger('click')
+  await wrapper.get('main button').trigger('click')
   await vi.waitFor(() => { expect(wrapper.text()).toContain('imported successfully') })
   const open = wrapper.findAll('a').find(link => link.text() === 'Open imported project')
   if (!open) throw new Error('Open')

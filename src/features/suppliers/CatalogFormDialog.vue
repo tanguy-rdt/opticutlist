@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-const props = defineProps<{ title: string; busy: boolean }>()
+const props = defineProps<{ title: string; busy: boolean; closeLabel?: string }>()
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 let previousFocus: HTMLElement | null = null
@@ -32,7 +32,7 @@ onBeforeUnmount(() => { if (typeof dialog.value?.close === 'function') dialog.va
         :disabled="busy"
         @click="close"
       >
-        Close form
+        {{ closeLabel ?? 'Close form' }}
       </button>
     </div>
     <slot />

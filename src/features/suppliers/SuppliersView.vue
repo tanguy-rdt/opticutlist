@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, shallowRef } from 'vue'
-import { RouterLink } from 'vue-router'
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
@@ -20,6 +19,13 @@ const stock = shallowRef<readonly StockItem[]>([])
 const stockError = ref('')
 const selectedSupplierId = ref('')
 const selectedProductId = ref('')
+const detailsOpen = ref(false)
+const compactDetails = ref(false)
+const viewport = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null
+function updateViewport(): void { compactDetails.value = viewport?.matches ?? false; if (!compactDetails.value) detailsOpen.value = false }
+updateViewport()
+onMounted(() => { if (typeof viewport?.addEventListener === 'function') viewport.addEventListener('change', updateViewport) })
+onBeforeUnmount(() => { if (typeof viewport?.removeEventListener === 'function') viewport.removeEventListener('change', updateViewport) })
 const search = ref('')
 const supplierSearch = ref('')
 const categoryFilter = ref('')
@@ -62,16 +68,14 @@ const sections = computed(() => {
   }
   return [...grouped].map(([id, items]) => ({ id, material: materials.value.find(item => item.id === id), items }))
 })
-function selectSupplier(id: string): void { selectedSupplierId.value = id; selectedProductId.value = ''; materialFilter.value = ''; categoryFilter.value = '' }
+function selectSupplier(id: string): void { selectedSupplierId.value = id; selectedProductId.value = ''; detailsOpen.value = false; materialFilter.value = ''; categoryFilter.value = '' }
 async function inspectProduct(id: string): Promise<void> {
   selectedProductId.value = id
+  if (compactDetails.value) detailsOpen.value = true
   await nextTick()
-  if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1279px)').matches) {
-    const heading = document.getElementById('product-details-title')
-    heading?.focus({ preventScroll: true })
-    if (typeof heading?.scrollIntoView === 'function') heading.scrollIntoView({ block: 'nearest', behavior: 'instant' })
-  }
+  if (compactDetails.value) document.getElementById('product-details-title')?.focus()
 }
+
 function linkedStock(product: SupplierProduct): readonly StockItem[] { return stock.value.filter(item => item.provenance.source === 'purchase' && item.provenance.supplierProductId === product.id) }
 function stockLabel(product: SupplierProduct): string { return !stockRepository ? 'Not available' : stockError.value ? 'Read error' : `${String(linkedStock(product).reduce((quantity, item) => quantity + item.quantity, 0))} owned` }
 function availability(product: SupplierProduct): string { return product.availability === 'available' ? 'Available' : product.availability === 'unavailable' ? 'Unavailable' : 'Unknown' }
@@ -103,6 +107,7 @@ async function load(): Promise<void> {
 }
 async function editSupplier(supplier: Supplier | null): Promise<void> {
   if (disabled.value) return
+  detailsOpen.value = false
   formMode.value = 'supplier'
   editingSupplier.value = supplier
   supplierVersion.value++
@@ -113,6 +118,7 @@ async function editSupplier(supplier: Supplier | null): Promise<void> {
 }
 async function editProduct(product: SupplierProduct | null, supplierId = ''): Promise<void> {
   if (disabled.value) return
+  detailsOpen.value = false
   formMode.value = 'product'
   editingProduct.value = product
   initialSupplierId.value = supplierId
@@ -195,17 +201,11 @@ async function removeProduct(product: SupplierProduct): Promise<void> {
 onMounted(load)
 </script>
 <template>
-  <section class="min-w-0 space-y-6">
+  <section class="min-w-0 space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="space-y-3">
-        <RouterLink
-          to="/"
-          class="text-sm font-medium text-accent hover:underline"
-        >
-          ← Back to Home
-        </RouterLink>
-        <h1 class="text-3xl font-semibold tracking-tight">
-          Catalogue
+        <h1 class="text-2xl font-semibold tracking-tight">
+          Catalog
         </h1>
         <p class="text-sm text-muted">
           Your global library of suppliers, materials and purchasable panels.
@@ -217,6 +217,44 @@ onMounted(load)
         @imported="load"
       />
     </div>
+    <dl
+      aria-label="Catalog summary"
+      class="grid grid-cols-2 gap-3 xl:grid-cols-4"
+    >
+      <div class="panel px-4 py-3">
+        <dt class="text-xs text-muted">
+          Suppliers
+        </dt><dd class="mt-1 text-xl font-semibold tabular-nums">
+          {{ loading || loadError ? '—' : suppliers.length }}
+        </dd>
+      </div>
+      <div class="panel px-4 py-3">
+        <dt class="text-xs text-muted">
+          Materials
+        </dt><dd class="mt-1 text-xl font-semibold tabular-nums">
+          {{ loading || loadError ? '—' : materials.length }}
+        </dd>
+      </div>
+      <div class="panel px-4 py-3">
+        <dt class="text-xs text-muted">
+          Product references
+        </dt><dd class="mt-1 text-xl font-semibold tabular-nums">
+          {{ loading || loadError ? '—' : products.length }}
+        </dd>
+      </div>
+      <div class="panel px-4 py-3">
+        <dt class="text-xs text-muted">
+          Owned stock items
+        </dt><dd class="mt-1 text-xl font-semibold tabular-nums">
+          {{ loading || !stockRepository || stockError ? '—' : stock.length }}
+        </dd><p
+          v-if="stockError || !stockRepository"
+          class="text-xs text-muted"
+        >
+          Inventory unavailable
+        </p>
+      </div>
+    </dl>
     <p
       v-if="notice"
       role="status"
@@ -250,7 +288,7 @@ onMounted(load)
       </p>
       <button
         type="button"
-        class="button"
+        class="button button-compact"
         :disabled="busy"
         @click="load"
       >
@@ -259,7 +297,7 @@ onMounted(load)
     </div>
     <div
       v-else
-      class="catalog-workspace grid min-w-0 items-start gap-5 md:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[14rem_minmax(0,1fr)_19rem] 2xl:grid-cols-[16rem_minmax(0,1fr)_21rem]"
+      class="catalog-workspace grid min-w-0 items-start gap-4 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_300px]"
     >
       <aside
         class="panel space-y-4 p-4 md:sticky md:top-5"
@@ -277,7 +315,7 @@ onMounted(load)
         <button
           ref="addSupplierButton"
           type="button"
-          class="button button-primary w-full"
+          class="button button-compact button-primary w-full"
           :disabled="disabled"
           @click="editSupplier(null)"
         >
@@ -302,7 +340,7 @@ onMounted(load)
             v-for="supplier in supplierNavigation.filter(item => item.name.toLocaleLowerCase().includes(supplierSearch.toLocaleLowerCase().trim()))"
             :key="supplier.id"
             type="button"
-            class="flex min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left text-sm md:min-w-0"
+            class="flex min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm md:min-w-0"
             :class="selectedSupplierId === supplier.id ? 'border-accent bg-subtle text-accent' : 'border-transparent hover:bg-subtle'"
             :aria-pressed="selectedSupplierId === supplier.id"
             :aria-label="`Select supplier ${supplier.name}`"
@@ -329,7 +367,7 @@ onMounted(load)
         class="min-w-0 space-y-5"
         aria-labelledby="supplier-content-title"
       >
-        <div class="panel space-y-4 p-5">
+        <div class="panel space-y-3 p-4">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="eyebrow">
@@ -337,7 +375,7 @@ onMounted(load)
               </p>
               <h2
                 id="supplier-content-title"
-                class="mt-1 text-2xl font-semibold"
+                class="mt-1 text-lg font-semibold"
               >
                 {{ selectedSupplier?.name ?? (selectedSupplierId ? 'Missing supplier' : 'Select a supplier') }}
               </h2>
@@ -355,7 +393,7 @@ onMounted(load)
             >
               <button
                 type="button"
-                class="button"
+                class="button button-compact"
                 :disabled="disabled"
                 :aria-label="`Edit supplier ${selectedSupplier.name}`"
                 @click="editSupplier(selectedSupplier)"
@@ -364,7 +402,7 @@ onMounted(load)
               </button>
               <button
                 type="button"
-                class="button button-danger"
+                class="button button-compact button-danger"
                 :disabled="disabled"
                 :aria-label="`Delete supplier ${selectedSupplier.name}`"
                 @click="removeSupplier(selectedSupplier)"
@@ -379,7 +417,7 @@ onMounted(load)
             </p>
             <button
               type="button"
-              class="button button-primary"
+              class="button button-compact button-primary"
               :disabled="disabled || !selectedSupplier"
               :aria-label="`Add product for ${selectedSupplier?.name ?? 'supplier'}`"
               @click="editProduct(null, selectedSupplierId)"
@@ -387,7 +425,7 @@ onMounted(load)
               + Add Product
             </button>
           </div>
-          <div class="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+          <div class="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
             <div>
               <label
                 for="catalog-search"
@@ -480,7 +518,7 @@ onMounted(load)
           class="panel min-w-0 overflow-hidden"
           :aria-label="section.material?.name ?? 'Missing material'"
         >
-          <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-subtle/50 px-4 py-3">
             <div>
               <p class="eyebrow">
                 {{ section.material?.category ?? 'Missing material' }}
@@ -488,7 +526,11 @@ onMounted(load)
                 {{ section.material?.name ?? 'Missing material' }}
               </h3>
             </div>
-            <span class="text-xs text-muted">{{ section.items.length }} references</span>
+            <div class="text-right text-xs text-muted">
+              <p>{{ section.items.length }} references</p><p v-if="stockRepository && !stockError">
+                {{ stock.filter(item => item.materialId === section.id).reduce((quantity, item) => quantity + item.quantity, 0) }} owned units for this material
+              </p>
+            </div>
           </div>
           <div
             class="overflow-x-auto"
@@ -504,29 +546,39 @@ onMounted(load)
                 <tr>
                   <th
                     scope="col"
-                    class="px-4 py-3"
+                    class="px-3 py-2"
                   >
                     Product
                   </th><th
                     scope="col"
-                    class="px-4 py-3"
+                    class="px-3 py-2"
                   >
-                    Length × width × thickness (mm)
+                    Length × width (mm)
                   </th><th
                     scope="col"
-                    class="px-4 py-3"
+                    class="px-3 py-2"
+                  >
+                    Thickness (mm)
+                  </th><th
+                    scope="col"
+                    class="px-3 py-2"
                   >
                     Price / panel
                   </th><th
                     scope="col"
-                    class="px-4 py-3"
+                    class="px-3 py-2"
                   >
-                    Availability
+                    Owned quantity
                   </th><th
                     scope="col"
-                    class="px-4 py-3"
+                    class="px-3 py-2"
                   >
-                    Owned stock
+                    Supplier availability
+                  </th><th
+                    scope="col"
+                    class="px-3 py-2"
+                  >
+                    <span class="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -540,7 +592,7 @@ onMounted(load)
                 >
                   <th
                     scope="row"
-                    class="min-w-40 px-4 py-3 font-medium"
+                    class="min-w-40 px-3 py-2.5 font-medium"
                   >
                     <button
                       type="button"
@@ -553,18 +605,32 @@ onMounted(load)
                       {{ product.name }}
                     </button>
                   </th>
-                  <td class="whitespace-nowrap px-4 py-3 tabular-nums">
-                    {{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }}
-                  </td><td class="whitespace-nowrap px-4 py-3 tabular-nums">
+                  <td class="whitespace-nowrap px-3 py-2.5 tabular-nums">
+                    {{ product.lengthMm }} × {{ product.widthMm }}
+                  </td><td class="whitespace-nowrap px-3 py-2.5 tabular-nums">
+                    {{ product.thicknessMm }}
+                  </td><td class="whitespace-nowrap px-3 py-2.5 tabular-nums">
                     {{ product.price }} {{ product.currency }}
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="whitespace-nowrap px-3 py-2.5 text-xs text-muted">
+                    {{ stockLabel(product) }}
+                  </td>
+                  <td class="px-3 py-2.5">
                     <span
                       class="inline-flex rounded-md px-2 py-1 text-xs font-medium"
                       :class="product.availability === 'available' ? 'bg-success-surface text-success' : 'bg-subtle text-muted'"
                     >{{ availability(product) }}</span>
-                  </td><td class="whitespace-nowrap px-4 py-3 text-xs text-muted">
-                    {{ stockLabel(product) }}
+                  </td>
+                  <td class="px-3 py-2.5">
+                    <button
+                      type="button"
+                      class="rounded-md p-2 text-xs font-medium text-accent hover:bg-subtle"
+                      :disabled="disabled"
+                      :aria-label="`Edit panel ${product.name}`"
+                      @click.stop="editProduct(product)"
+                    >
+                      Edit
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -573,7 +639,7 @@ onMounted(load)
         </section>
         <button
           type="button"
-          class="button"
+          class="button button-compact"
           :disabled="disabled"
           @click="load"
         >
@@ -581,6 +647,7 @@ onMounted(load)
         </button>
       </section>
       <ProductDetails
+        v-if="!compactDetails"
         :product="selectedProduct"
         :materials="materials"
         :suppliers="suppliers"
@@ -593,6 +660,26 @@ onMounted(load)
         @clear="selectedProductId = ''"
       />
     </div>
+    <CatalogFormDialog
+      v-if="compactDetails && detailsOpen && selectedProduct"
+      title="Product details"
+      close-label="Close details"
+      :busy="busy"
+      @close="detailsOpen = false"
+    >
+      <ProductDetails
+        :product="selectedProduct"
+        :materials="materials"
+        :suppliers="suppliers"
+        :stock="selectedProduct ? linkedStock(selectedProduct) : []"
+        :stock-available="Boolean(stockRepository)"
+        :stock-error="stockError"
+        :disabled="disabled"
+        @edit="editProduct"
+        @delete="removeProduct"
+        @clear="detailsOpen = false"
+      />
+    </CatalogFormDialog>
     <CatalogFormDialog
       v-if="formMode"
       :title="formMode === 'supplier' ? 'Supplier information' : 'Panel product information'"

@@ -11,7 +11,7 @@ function availability(product: SupplierProduct): string { return product.availab
 <template>
   <aside
     id="product-details"
-    class="panel min-w-0 space-y-5 p-5 md:col-start-2 xl:sticky xl:top-5 xl:col-start-3 xl:row-start-1"
+    class="panel min-w-0 space-y-4 p-4 md:col-start-2 xl:sticky xl:top-5 xl:col-start-3 xl:row-start-1"
     aria-labelledby="product-details-title"
   >
     <div class="flex items-start justify-between gap-2">
@@ -34,11 +34,11 @@ function availability(product: SupplierProduct): string { return product.availab
       <div>
         <p class="eyebrow">
           {{ materials.find(item => item.id === product?.materialId)?.category ?? 'Missing material' }}
-        </p><h3 class="mt-2 text-xl font-semibold [overflow-wrap:anywhere]">
+        </p><h3 class="mt-2 text-lg font-semibold [overflow-wrap:anywhere]">
           {{ product.name }}
         </h3>
       </div>
-      <dl class="space-y-3 text-sm">
+      <dl class="space-y-3 border-y border-line py-4 text-sm">
         <div>
           <dt class="text-muted">
             Material
@@ -86,7 +86,7 @@ function availability(product: SupplierProduct): string { return product.availab
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
-          class="button"
+          class="button button-compact"
           :disabled="disabled"
           :aria-label="`Edit product ${product.name}`"
           @click="emit('edit', product)"
@@ -95,7 +95,7 @@ function availability(product: SupplierProduct): string { return product.availab
         </button>
         <button
           type="button"
-          class="button button-danger"
+          class="button button-compact button-danger"
           :disabled="disabled"
           :aria-label="`Delete product ${product.name}`"
           @click="emit('delete', product)"
@@ -147,7 +147,7 @@ function availability(product: SupplierProduct): string { return product.availab
     </template>
     <p
       v-else
-      class="py-8 text-sm text-muted"
+      class="py-3 text-sm text-muted"
     >
       Select a panel product to inspect its specifications and owned stock.
     </p>
