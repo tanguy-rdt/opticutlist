@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 const props = defineProps<{ title: string; busy: boolean; closeLabel?: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -28,11 +29,12 @@ onBeforeUnmount(() => { if (typeof dialog.value?.close === 'function') dialog.va
       </h2>
       <button
         type="button"
-        class="button"
+        class="button size-9 shrink-0 justify-center p-2"
+        :aria-label="closeLabel ?? 'Close form'"
         :disabled="busy"
         @click="close"
       >
-        {{ closeLabel ?? 'Close form' }}
+        <AppIcon name="close" />
       </button>
     </div>
     <slot />

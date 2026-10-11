@@ -7,6 +7,7 @@ const paths = {
   stock: 'm3 7 9-5 9 5-9 5ZM3 7v10l9 5 9-5V7M12 12v10M7 5l10 5',
   edit: 'm4 16-1 5 5-1L21 7l-4-4ZM14 6l4 4',
   delete: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
+  close: 'M6 6l12 12M18 6 6 18',
   plus: 'M12 5v14M5 12h14',
   search: 'M21 21l-6-6M17 9a7 7 0 1 1-14 0 7 7 0 0 1 14 0',
   external: 'M14 3h7v7M21 3 11 13M10 5H4v15h15v-6',

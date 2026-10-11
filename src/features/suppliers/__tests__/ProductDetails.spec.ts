@@ -4,7 +4,7 @@ import { materialSchema } from '../../../domain/model/material'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validMaterialInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { stockItemSchema } from '../../../domain/model/stock-item'
-import { materialPresets, materialThumbnail } from '../../materials/material-library'
+import { materialPresets, materialPreview } from '../../materials/material-library'
 import ProductDetails from '../ProductDetails.vue'
 const material = materialSchema.parse(validMaterialInput)
 const product = supplierProductSchema.parse(validSupplierProductInput)
@@ -15,7 +15,7 @@ describe('product material preview', () => {
     const associated = materialSchema.parse({ ...material, name: preset.name, libraryPresetId: preset.id })
     const wrapper = mount(ProductDetails, { props: { ...props, materials: [associated] } })
     const preview = wrapper.get('figure[aria-label="Material preview"]')
-    expect(preview.get('img').attributes('src')).toBe(materialThumbnail(preset.id))
+    expect(preview.get('img').attributes('src')).toBe(materialPreview(preset.id))
     expect(preview.get('img').attributes('loading')).toBe('lazy')
     expect(preview.element.compareDocumentPosition(wrapper.get('[aria-label="Product specifications"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     wrapper.unmount()
@@ -47,11 +47,11 @@ describe('product material preview', () => {
     const oak = materialSchema.parse({ ...material, id: 'oak-material', name: 'Custom oak', libraryPresetId: 'chene' })
     const second = supplierProductSchema.parse({ ...product, id: 'second-product', materialId: oak.id, name: product.name })
     const wrapper = mount(ProductDetails, { props: { ...props, materials: [pine, oak] } })
-    expect(wrapper.get('figure img').attributes('src')).toBe(materialThumbnail('pin'))
+    expect(wrapper.get('figure img').attributes('src')).toBe(materialPreview('pin'))
     expect(wrapper.get('figcaption').text()).toContain('Pin Douglas')
     const oldImage = wrapper.get('figure img')
     await wrapper.setProps({ product: second }); await oldImage.trigger('error')
-    expect(wrapper.get('figure img').attributes('src')).toBe(materialThumbnail('chene'))
+    expect(wrapper.get('figure img').attributes('src')).toBe(materialPreview('chene'))
     expect(wrapper.get('figcaption').text()).toContain('Custom oak')
     wrapper.unmount()
   })

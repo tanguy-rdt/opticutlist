@@ -1,0 +1,145 @@
+{
+  "version": 2,
+  "materials": [
+    {
+      "id": "chene",
+      "name": "Chêne",
+      "category": "feuillus",
+      "texture": "textures/chene.webp",
+      "preview": "previews/chene.webp"
+    },
+    {
+      "id": "hetre",
+      "name": "Hêtre",
+      "category": "feuillus",
+      "texture": "textures/hetre.webp",
+      "preview": "previews/hetre.webp"
+    },
+    {
+      "id": "frene",
+      "name": "Frêne",
+      "category": "feuillus",
+      "texture": "textures/frene.webp",
+      "preview": "previews/frene.webp"
+    },
+    {
+      "id": "erable",
+      "name": "Érable",
+      "category": "feuillus",
+      "texture": "textures/erable.webp",
+      "preview": "previews/erable.webp"
+    },
+    {
+      "id": "noyer",
+      "name": "Noyer",
+      "category": "feuillus",
+      "texture": "textures/noyer.webp",
+      "preview": "previews/noyer.webp"
+    },
+    {
+      "id": "merisier",
+      "name": "Merisier",
+      "category": "feuillus",
+      "texture": "textures/merisier.webp",
+      "preview": "previews/merisier.webp"
+    },
+    {
+      "id": "bouleau",
+      "name": "Bouleau",
+      "category": "feuillus",
+      "texture": "textures/bouleau.webp",
+      "preview": "previews/bouleau.webp"
+    },
+    {
+      "id": "peuplier",
+      "name": "Peuplier",
+      "category": "feuillus",
+      "texture": "textures/peuplier.webp",
+      "preview": "previews/peuplier.webp"
+    },
+    {
+      "id": "pin",
+      "name": "Pin",
+      "category": "resineux",
+      "texture": "textures/pin.webp",
+      "preview": "previews/pin.webp"
+    },
+    {
+      "id": "sapin",
+      "name": "Sapin",
+      "category": "resineux",
+      "texture": "textures/sapin.webp",
+      "preview": "previews/sapin.webp"
+    },
+    {
+      "id": "epicea",
+      "name": "Épicéa",
+      "category": "resineux",
+      "texture": "textures/epicea.webp",
+      "preview": "previews/epicea.webp"
+    },
+    {
+      "id": "cedre",
+      "name": "Cèdre",
+      "category": "resineux",
+      "texture": "textures/cedre.webp",
+      "preview": "previews/cedre.webp"
+    },
+    {
+      "id": "teck",
+      "name": "Teck",
+      "category": "exotiques",
+      "texture": "textures/teck.webp",
+      "preview": "previews/teck.webp"
+    },
+    {
+      "id": "acajou",
+      "name": "Acajou",
+      "category": "exotiques",
+      "texture": "textures/acajou.webp",
+      "preview": "previews/acajou.webp"
+    },
+    {
+      "id": "iroko",
+      "name": "Iroko",
+      "category": "exotiques",
+      "texture": "textures/iroko.webp",
+      "preview": "previews/iroko.webp"
+    },
+    {
+      "id": "wenge",
+      "name": "Wengé",
+      "category": "exotiques",
+      "texture": "textures/wenge.webp",
+      "preview": "previews/wenge.webp"
+    },
+    {
+      "id": "contreplaque",
+      "name": "Contreplaqué",
+      "category": "derives",
+      "texture": "textures/contreplaque.webp",
+      "preview": "previews/contreplaque.webp"
+    },
+    {
+      "id": "mdf",
+      "name": "MDF",
+      "category": "derives",
+      "texture": "textures/mdf.webp",
+      "preview": "previews/mdf.webp"
+    },
+    {
+      "id": "osb",
+      "name": "OSB",
+      "category": "derives",
+      "texture": "textures/osb.webp",
+      "preview": "previews/osb.webp"
+    },
+    {
+      "id": "agglomere",
+      "name": "Aggloméré",
+      "category": "derives",
+      "texture": "textures/agglomere.webp",
+      "preview": "previews/agglomere.webp"
+    }
+  ]
+}

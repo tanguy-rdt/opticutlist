@@ -8,7 +8,7 @@ import FormField from '../../shared/ui/FormField.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import MaterialPresetPicker from '../materials/MaterialPresetPicker.vue'
 import { materialPresets, type MaterialPreset } from '../materials/material-library'
-import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
+import MaterialSelector from '../materials/MaterialSelector.vue'
 import { useMaterialRepository } from '../materials/material-repository'
 
 const props = defineProps<{ product: SupplierProduct | null; suppliers: readonly Supplier[]; materials: readonly Material[]; initialSupplierId: string; disabled: boolean }>()
@@ -41,7 +41,7 @@ async function closeMaterialForm(): Promise<void> {
   if (props.disabled || materialBusy.value) return
   creatingMaterial.value = false
   await nextTick()
-  form.value?.querySelector<HTMLSelectElement>('#product-material')?.focus()
+  form.value?.querySelector<HTMLButtonElement>('#product-material')?.focus()
 }
 async function createMaterial(): Promise<void> {
   if (props.disabled || materialBusy.value) return
@@ -70,7 +70,7 @@ async function createMaterial(): Promise<void> {
     selectedPreset.value = undefined
     materialNotice.value = existing ? 'Existing material selected; no duplicate created.' : 'Material created and selected.'
     await nextTick()
-    form.value?.querySelector<HTMLSelectElement>('#product-material')?.focus()
+    form.value?.querySelector<HTMLButtonElement>('#product-material')?.focus()
   } else materialStorageError.value = persistenceErrorMessage(result.error, 'Material')
 }
 const form = ref<HTMLFormElement | null>(null)
@@ -83,7 +83,10 @@ function presetValue(id: string): string {
   return value
 }
 const productPreset = computed(() => materialPresets.find(preset => presetValue(preset.id) === materialId.value))
-const selectedThumbnailId = computed(() => productPreset.value?.id ?? props.materials.find(material => material.id === materialId.value)?.libraryPresetId)
+const materialOptions = computed(() => [
+  ...materialPresets.map(preset => ({ value: presetValue(preset.id), name: preset.name, group: preset.category, presetId: preset.id })),
+  ...props.materials.map(material => ({ value: material.id, name: material.name, group: 'Existing catalog materials', presetId: material.libraryPresetId })),
+])
 const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; thicknessMm: number | string; price: number | string }>({ lengthMm: props.product?.lengthMm ?? '', widthMm: props.product?.widthMm ?? '', thicknessMm: props.product?.thicknessMm ?? '', price: props.product?.price ?? '' })
 const currency = ref(props.product?.currency ?? 'EUR')
 const productUrl = ref(props.product?.productUrl ?? '')
@@ -122,7 +125,7 @@ async function submit(): Promise<void> {
   >
     <h2
       id="product-form-title"
-      class="mb-2 text-xl font-semibold"
+      class="sr-only"
     >
       {{ product ? 'Edit product' : 'New catalog product' }}
     </h2>
@@ -196,68 +199,17 @@ async function submit(): Promise<void> {
           :error="errors.get('materialId') ?? ''"
         >
           <template #default="{ controlAttrs }">
-            <select
+            <MaterialSelector
               v-model="materialId"
               v-bind="controlAttrs"
-              class="field"
-              :disabled="disabled"
-            >
-              <option
-                value=""
-                disabled
-              >
-                Select a material
-              </option>
-              <option
-                v-if="materialId && !productPreset && !materials.some((material) => material.id === materialId)"
-                :value="materialId"
-                disabled
-              >
-                Missing material — choose another
-              </option>
-              <optgroup label="Built-in material presets">
-                <option
-                  v-for="preset in materialPresets"
-                  :key="preset.id"
-                  :value="presetValue(preset.id)"
-                >
-                  {{ preset.name }} · {{ preset.category }}
-                </option>
-              </optgroup>
-              <optgroup
-                v-if="materials.length"
-                label="Existing catalog materials"
-              >
-                <option
-                  v-for="material in materials"
-                  :key="material.id"
-                  :value="material.id"
-                >
-                  {{ material.name }} · {{ material.category }}
-                </option>
-              </optgroup>
-            </select>
-            <div
-              v-if="materialId"
-              class="mt-2 flex items-center gap-2 text-xs text-muted"
-            >
-              <MaterialThumbnail :preset-id="selectedThumbnailId" />
-              {{ productPreset ? 'Built-in preset · resolved when the product is saved' : 'Existing catalog material' }}
-            </div>
+              :options="materialOptions"
+              :disabled="disabled || materialBusy"
+              @create="showMaterialForm"
+            />
           </template>
         </FormField>
       </div>
       <div class="space-y-3">
-        <button
-          type="button"
-          class="button"
-          :disabled="disabled || materialBusy"
-          :aria-expanded="creatingMaterial"
-          aria-controls="inline-material-fields"
-          @click="showMaterialForm"
-        >
-          + New material
-        </button>
         <fieldset
           v-if="creatingMaterial"
           id="inline-material-fields"
