@@ -31,6 +31,14 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
         return conflict('This panel product is unavailable. Choose another catalog product.')
       }
     }
+    for (const id of project.stockItemIds ?? []) {
+      const stock = await repositories.stockItems.get(id)
+      if (!stock.ok) {
+        return stock.error.kind === 'notFound' ? conflict('A selected stock panel no longer exists. Remove its selection.') : stock
+      }
+      const material = await repositories.materials.get(stock.value.materialId)
+      if (!material.ok) return material
+    }
     return { ok: true, value: undefined }
   }
 

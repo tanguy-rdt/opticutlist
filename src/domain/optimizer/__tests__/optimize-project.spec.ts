@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { validPartInput, validSupplierProductInput } from '../../model/__tests__/fixtures'
+import { validPartInput, validSupplierProductInput, validStockItemInput } from '../../model/__tests__/fixtures'
 import { partSchema } from '../../model/part'
 import { supplierProductSchema } from '../../model/supplier-product'
+import { stockItemSchema } from '../../model/stock-item'
+import { stockPanel, stockPanelSchema } from '../panel-source'
 import { optimizeProject } from '../optimize-project'
 import { validateProjectPlan } from '../validate-project-plan'
 import type { OptimizeProjectInput } from '../project-plan'
@@ -17,6 +19,22 @@ function run(value: OptimizeProjectInput = input) {
   return result.plan
 }
 describe('automatic panel allocation', () => {
+  it('uses stock and catalog as distinct sources with exact compatibility, quantity limits and immutable geometry', () => {
+    const stock = stockItemSchema.parse({ ...validStockItemInput, id: product.id, lengthMm: 100, widthMm: 100, grainDirection: 'none' })
+    const source = stockPanel(stock)
+    const snapshot = structuredClone(stock)
+    const plan = run({ ...input, panels: [{ product, quantity: 1 }, { product: source, quantity: stock.quantity }] })
+    expect(plan.metrics).toMatchObject({ placedCount: 2, panelCount: 2, unplacedCount: 0 })
+    expect(plan.panels.map(panel => panel.supplierProductId)).toEqual([product.id, source.id])
+    expect(stock).toEqual(snapshot)
+    const limited = run({ ...input, panels: [{ product: source, quantity: stock.quantity }] })
+    expect(limited.metrics).toMatchObject({ placedCount: 1, unplacedCount: 1 })
+    const incompatible = run({ ...input, panels: [{ product: stockPanel({ ...stock, thicknessMm: 18.000001 }), quantity: 2 }] })
+    expect(incompatible.panels).toEqual([])
+    expect(stockPanelSchema.safeParse({ ...source, stockItemId: 'different-id' }).success).toBe(false)
+    expect(optimizeProject({ ...input, panels: [{ product: { ...product, id: source.id }, quantity: 1 }, { product: source, quantity: 1 }] })).toMatchObject({ ok: false, error: { kind: 'invalidInput' } })
+  })
+
   it('uses one sufficient panel instead of allocating empty or unnecessary panels', () => {
     const panels = [{ product: { ...product, lengthMm: 200 }, quantity: 10 }]
     const plan = run({ ...input, panels })

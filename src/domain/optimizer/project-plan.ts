@@ -1,10 +1,10 @@
 import type { CuttingSettings } from '../model/cutting-settings'
 import type { Part } from '../model/part'
-import type { SupplierProduct } from '../model/supplier-product'
+import type { OptimizationPanel } from './panel-source'
 import type { PartId, SupplierProductId } from '../model/ids'
 import type { AreaMetrics, PanelCuttingPlan, PlacementStrategy } from './plan-with-strategy'
 
-export interface AvailablePanel { readonly product: SupplierProduct; readonly quantity: number }
+export interface AvailablePanel { readonly product: OptimizationPanel; readonly quantity: number }
 export interface OptimizeProjectInput {
   readonly panels: readonly AvailablePanel[]
   readonly parts: readonly Part[]

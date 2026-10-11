@@ -1,7 +1,7 @@
 import { panelQuantitySchema } from '../model/cutting-project'
 import { cuttingSettingsSchema } from '../model/cutting-settings'
 import { partSchema } from '../model/part'
-import { supplierProductSchema } from '../model/supplier-product'
+import { optimizationPanelSchema } from './panel-source'
 import { isCompatible } from '../compatibility'
 import type { CuttingTreeNode } from '../cutting-tree/cutting-tree'
 import type { PartId } from '../model/ids'
@@ -22,7 +22,7 @@ function comparePlans(a: ProjectCuttingPlan, b: ProjectCuttingPlan): number {
 /** Deterministic greedy schedules, compared globally; no claim of an exhaustive/optimal search. */
 export function optimizeProject(input: OptimizeProjectInput): OptimizeProjectResult {
   const fail = (kind: 'invalidInput' | 'invalidPlan', message: string): OptimizeProjectResult => ({ ok: false, error: { kind, message, issues: [] } })
-  if (!cuttingSettingsSchema.safeParse(input.settings).success || input.parts.some(part => !partSchema.safeParse(part).success) || input.panels.some(panel => !supplierProductSchema.safeParse(panel.product).success || !panelQuantitySchema.safeParse(panel.quantity).success)) return fail('invalidInput', 'Invalid optimization inputs')
+  if (!cuttingSettingsSchema.safeParse(input.settings).success || input.parts.some(part => !partSchema.safeParse(part).success) || input.panels.some(panel => !optimizationPanelSchema.safeParse(panel.product).success || !panelQuantitySchema.safeParse(panel.quantity).success)) return fail('invalidInput', 'Invalid optimization inputs')
   if (new Set(input.parts.map(part => part.id)).size !== input.parts.length || new Set(input.panels.map(panel => panel.product.id)).size !== input.panels.length || !Number.isSafeInteger(input.parts.reduce((total, part) => total + part.quantity, 0))) return fail('invalidInput', 'Duplicate references or unsupported total quantity')
   try {
     function schedule(firstReference: number | null, preferSmall: boolean): ProjectCuttingPlan {

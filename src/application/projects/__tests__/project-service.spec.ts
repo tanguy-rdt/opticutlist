@@ -7,7 +7,7 @@ import { cuttingProjectIdSchema } from '../../../domain/model/ids'
 import { materialSchema } from '../../../domain/model/material'
 import { partSchema } from '../../../domain/model/part'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
-import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { createProjectService } from '../project-service'
 import { createCatalogRepositories } from '../../catalog/catalog-repositories'
 import type { PersistenceResult } from '../../persistence/repositories'
@@ -105,6 +105,23 @@ describe('Project ownership and selections', () => {
     expect(value(await reopened.supplierProducts.list())).toEqual([product])
     expect(value(await reopened.stockItems.list())).toEqual([])
   })
+  it('persists isolated stock selections, rejects missing references and retains disappeared sources for explicit removal', async () => {
+    const stock = value(await persistence.stockItems.create(validStockItemInput))
+    expect(await service.projects.update(first.id, { ...first, stockItemIds: ['missing-stock'] })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    value(await service.projects.update(first.id, { ...first, stockItemIds: [stock.id] }))
+    expect(value(await service.projects.get(second.id))).toEqual(second)
+    const reopened = connect()
+    expect(value(await reopened.projects.get(first.id)).stockItemIds).toEqual([stock.id])
+    expect(value(await reopened.stockItems.list())).toEqual([stock])
+    value(await persistence.stockItems.delete(stock.id))
+    const owner = value(await service.projects.get(first.id))
+    expect(owner.stockItemIds).toEqual([stock.id])
+    expect(await service.projects.update(first.id, { ...owner, name: 'Keep selections' })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(value(await service.projects.get(first.id))).toEqual(owner)
+    value(await service.projects.update(first.id, { ...owner, stockItemIds: [] }))
+    expect(value(await persistence.stockItems.list())).toEqual([])
+  })
+
   it('rejects invalid catalog selections without changing either project', async () => {
     for (const selections of [{ materialIds: ['missing'] }, { supplierProductIds: ['missing'] }]) {
       expect(await service.projects.update(first.id, { ...first, ...selections })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })

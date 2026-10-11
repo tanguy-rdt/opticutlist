@@ -7,13 +7,16 @@ import { createProjectService, type ProjectService } from '../../../application/
 import { projectIdKey, projectServiceKey } from '../../projects/project-service'
 import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../suppliers/catalog-repositories'
 import type { LocalPersistence, PersistenceResult, Repository } from '../../../application/persistence/repositories'
-import { validMaterialInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { materialSchema, type Material } from '../../../domain/model/material'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
 import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../../../app/router'
 import MaterialsView from '../MaterialsView.vue'
+import { stockRepositoryKey } from '../../inventory/stock-repository'
+import { createStockRepository } from '../../../application/inventory/stock-repository'
+import { stockItemSchema } from '../../../domain/model/stock-item'
 import { materialRepositoryKey } from '../material-repository'
 
 const project = cuttingProjectSchema.parse({ id: 'materials-project', name: 'Cabinet', partIds: [], materialIds: [], supplierProductIds: [] })
@@ -44,7 +47,7 @@ function projectRepository() {
     }),
   }
 }
-function render(repository: Repository<Material>, service?: ProjectService, catalog?: Pick<LocalPersistence, 'suppliers' | 'supplierProducts'>, id = project.id) {
+function render(repository: Repository<Material>, service?: ProjectService, catalog?: Pick<LocalPersistence, 'suppliers' | 'supplierProducts'> & Partial<LocalPersistence>, id = project.id) {
   const emptyCatalog = {
     create: vi.fn(), get: vi.fn(), update: vi.fn(), delete: vi.fn(),
     list: vi.fn().mockResolvedValue({ ok: true, value: [] }),
@@ -60,7 +63,8 @@ function render(repository: Repository<Material>, service?: ProjectService, cata
       plugins: [createAppRouter(createMemoryHistory())],
       provide: {
         [materialRepositoryKey]: repository, [projectServiceKey]: source, [projectIdKey]: id,
-        [supplierRepositoryKey]: catalog?.suppliers ?? emptyCatalog, [supplierProductRepositoryKey]: catalog?.supplierProducts ?? emptyCatalog,
+        [supplierRepositoryKey]: catalog?.suppliers ?? { ...emptyCatalog, list: vi.fn().mockResolvedValue({ ok: true, value: [validSupplierInput] }) }, [supplierProductRepositoryKey]: catalog?.supplierProducts ?? { ...emptyCatalog, list: vi.fn().mockResolvedValue({ ok: true, value: [validSupplierProductInput, { ...validSupplierProductInput, id: 'oak-panel', materialId: 'oak' }] }) },
+        ...(catalog?.stockItems ? { [stockRepositoryKey]: catalog.stockItems } : {}),
       },
     },
   })
@@ -94,7 +98,7 @@ describe('MaterialsView', () => {
     expect(button(wrapper, 'Refresh').attributes('disabled')).toBeDefined()
     resolveList?.({ ok: true, value: [] })
     await flushPromises()
-    expect(wrapper.text()).toContain('No catalog materials yet')
+    expect(wrapper.text()).toContain('No panel sources available')
     expect(wrapper.get('a[href="/suppliers"]').text()).toBe('Open supplier catalog')
     expect(wrapper.find('form').exists()).toBe(false)
     expect(wrapper.findAll('button').some((candidate) => candidate.text() === 'Create material')).toBe(false)
@@ -120,7 +124,7 @@ describe('MaterialsView', () => {
     const wrapper = render(repository)
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
-    expect(wrapper.text()).not.toContain('No catalog materials yet')
+    expect(wrapper.text()).not.toContain('No panel sources available')
     await button(wrapper, 'Try again').trigger('click')
     await flushPromises()
     expect(wrapper.get('[aria-labelledby="library-title"]').text()).toContain(material.name)
@@ -131,7 +135,7 @@ describe('MaterialsView', () => {
     const wrapper = render(repository)
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Material data is invalid')
-    expect(wrapper.text()).not.toContain('No catalog materials yet')
+    expect(wrapper.text()).not.toContain('No panel sources available')
   })
   it('persists selections on remount without changing catalog records', async () => {
     const indexedDB = new IDBFactory()
@@ -221,6 +225,8 @@ describe('MaterialsView', () => {
     const persistence = createLocalPersistence('selection-failure-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
     try {
       await persistence.materials.create(material)
+      await persistence.suppliers.create(validSupplierInput)
+      await persistence.supplierProducts.create(validSupplierProductInput)
       const service = createProjectService(persistence)
       await service.projects.create(project)
       const update = vi.spyOn(service.projects, 'update').mockResolvedValueOnce(storageFailure)
@@ -418,28 +424,92 @@ describe('MaterialsView', () => {
       expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [] })
     } finally { persistence.close() }
   })
-  it('explains that a material without panel references can still be selected for Parts', async () => {
+  it('shows catalog-only, stock-only and mixed materials and persists stock choices without consumption', async () => {
+    const indexedDB = new IDBFactory()
+    const persistence = createLocalPersistence('stock-source-selections', { indexedDB, IDBKeyRange })
+    const next = createLocalPersistence('stock-source-selections', { indexedDB, IDBKeyRange })
+    try {
+      const stockOnly = materialSchema.parse({ ...material, id: 'stock-only', name: 'Stock only' })
+      const hidden = materialSchema.parse({ ...material, id: 'no-panels', name: 'No panels' })
+      const mixed = materialSchema.parse({ ...material, id: 'both-sources', name: 'Both sources' })
+      for (const record of [material, stockOnly, hidden, mixed]) await persistence.materials.create(record)
+      await persistence.suppliers.create(validSupplierInput)
+      await persistence.supplierProducts.create(validSupplierProductInput)
+      await persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'mixed-product', materialId: mixed.id })
+      const item = stockItemSchema.parse({ ...validStockItemInput, materialId: stockOnly.id })
+      await createStockRepository(persistence).create({ ...item, provenance: { source: 'manual' } })
+      await createStockRepository(persistence).create({ ...item, id: 'mixed-stock', materialId: mixed.id, kind: 'fullPanel', provenance: { source: 'manual' } })
+      const inventory = await persistence.stockItems.list()
+      const service = createProjectService(persistence)
+      await service.projects.create(project)
+      const wrapper = render(persistence.materials, service, persistence)
+      await vi.waitFor(() => { expect(wrapper.get('input[aria-label="Search materials"]').attributes('disabled')).toBeUndefined() })
+      expect(wrapper.find(`input[aria-label="Use ${hidden.name}"]`).exists()).toBe(false)
+      for (const name of [material.name, stockOnly.name, mixed.name]) expect(wrapper.find(`input[aria-label="Use ${name}"]`).exists()).toBe(true)
+      await wrapper.get(`button[aria-label="Show panels for ${stockOnly.name}"]`).trigger('click')
+      expect(wrapper.get('.panel-references').text()).toContain(`${String(item.quantity)} available`)
+      expect(wrapper.get('.panel-references').text()).toContain('Stock · Offcut')
+      await wrapper.get(`input[aria-label="Use stock ${item.id}"]`).setValue(true)
+      await autosaved(wrapper)
+      expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { materialIds: [], supplierProductIds: [], stockItemIds: [item.id] } })
+      expect(wrapper.get('aside').findAll('dd').map(value => value.text())).toEqual(['0', '1'])
+      expect(await persistence.stockItems.list()).toEqual(inventory)
+      wrapper.unmount()
+      const reopened = render(next.materials, createProjectService(next), next)
+      await vi.waitFor(() => { expect(reopened.get('input[aria-label="Search materials"]').attributes('disabled')).toBeUndefined() })
+      await reopened.get(`button[aria-label="Show panels for ${stockOnly.name}"]`).trigger('click')
+      expect(reopened.get<HTMLInputElement>(`input[aria-label="Use stock ${item.id}"]`).element.checked).toBe(true)
+      await reopened.get(`button[aria-label="Remove stock ${item.id}"]`).trigger('click')
+      await autosaved(reopened)
+      expect(await next.projects.get(project.id)).toMatchObject({ ok: true, value: { stockItemIds: [] } })
+      await reopened.get(`button[aria-label="Show panels for ${mixed.name}"]`).trigger('click')
+      expect(reopened.get('.panel-references').findAll('input[type="checkbox"]')).toHaveLength(2)
+      expect(await next.stockItems.list()).toEqual(inventory)
+    } finally { persistence.close(); next.close() }
+  })
+
+  it('hides a material after its last stock source disappears while retaining saved choices until explicit removal', async () => {
+    const persistence = createLocalPersistence('lost-stock-source', { indexedDB: new IDBFactory(), IDBKeyRange })
+    try {
+      await persistence.materials.create(material)
+      const stock = stockItemSchema.parse(validStockItemInput)
+      await persistence.stockItems.create(stock)
+      const selected = { ...project, materialIds: [material.id], stockItemIds: [stock.id] }
+      const service = createProjectService(persistence)
+      await service.projects.create(selected)
+      const wrapper = render(persistence.materials, service, persistence)
+      await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(true) })
+      await createStockRepository(persistence).delete(stock.id)
+      await button(wrapper, 'Refresh').trigger('click')
+      await vi.waitFor(() => { expect(wrapper.get('.material-library').text()).toContain('No panel sources available') })
+      expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(false)
+      expect(wrapper.get('aside').text()).toContain('material selection retained')
+      expect(wrapper.get('aside').text()).toContain(stock.id)
+      expect(await service.projects.get(project.id)).toEqual({ ok: true, value: cuttingProjectSchema.parse(selected) })
+      await button(wrapper, 'Remove missing selections').trigger('click')
+      await autosaved(wrapper)
+      expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { materialIds: [material.id], stockItemIds: [] } })
+      expect(await persistence.materials.list()).toEqual({ ok: true, value: [material] })
+      expect(await persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [] })
+    } finally { persistence.close() }
+  })
+
+  it('hides materials with no panels without deleting stored selections or materials', async () => {
     const repository = fakeRepository()
     repository.list.mockResolvedValue({ ok: true, value: [material] })
-    const wrapper = render(repository)
+    const projects = projectRepository()
+    projects.get.mockResolvedValue({ ok: true, value: { ...project, materialIds: [material.id] } })
+    const empty = { create: vi.fn(), get: vi.fn(), update: vi.fn(), delete: vi.fn(), list: vi.fn().mockResolvedValue({ ok: true, value: [] }) }
+    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
+    const wrapper = render(repository, source, { suppliers: empty, supplierProducts: empty })
     await flushPromises()
-    expect(wrapper.get('.panel-references').text()).toContain('No panel references for this material')
-    expect(wrapper.get('.panel-references').text()).toContain('You can still select this material for creating Parts')
-    expect(wrapper.get(`button[aria-label="Show panels for ${material.name}"]`).attributes('type')).toBe('button')
-    wrapper.get<HTMLButtonElement>(`button[aria-label="Show panels for ${material.name}"]`).element.focus()
-    expect(document.activeElement).toBe(wrapper.get(`button[aria-label="Show panels for ${material.name}"]`).element)
-    await wrapper.get(`button[aria-label="Show panels for ${material.name}"]`).trigger('click')
-    expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${material.name}"]`).element.checked).toBe(false)
-    expect(wrapper.get('aside').text()).not.toContain('Unsaved changes')
-    await wrapper.get(`input[aria-label="Use ${material.name}"]`).setValue(true)
-    expect(wrapper.get('aside').findAll('dd').map(value => value.text())).toEqual(['1', '0'])
-    expect(wrapper.get('.material-library').text()).toContain('0 available references')
+    expect(wrapper.get('.material-library').text()).not.toContain(material.name)
+    expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(false)
+    expect(wrapper.get('aside').text()).toContain(material.name)
+    expect(wrapper.get('aside').text()).toContain('material selection retained')
+    expect(projects.update).not.toHaveBeenCalled()
+    expect(repository.delete).not.toHaveBeenCalled()
     expect(wrapper.get('.materials-workspace').element.children).toHaveLength(3)
-    expect(wrapper.get('.materials-workspace').element.children[0]?.classList.contains('material-library')).toBe(true)
-    expect(wrapper.get('.materials-workspace').element.children[1]?.classList.contains('panel-references')).toBe(true)
-    expect(wrapper.get('.materials-workspace').element.children[2]?.classList.contains('project-selection')).toBe(true)
-    await autosaved(wrapper)
-    expect(wrapper.find('.project-selection > footer').exists()).toBe(false)
   })
 
   it('retains previously saved panel choices, including unavailable panels, without writing on open', async () => {

@@ -6,7 +6,7 @@ describe('CuttingProject', () => {
   it('validates a named project and its stable catalog and Part references', () => {
     expect(cuttingProjectSchema.parse(record)).toEqual({ ...record, name: 'Cabinet' })
   })
-  it.each(['partIds', 'materialIds', 'supplierProductIds'])('rejects duplicate, blank and malformed %s rather than discarding them', field => {
+  it.each(['partIds', 'materialIds', 'supplierProductIds', 'stockItemIds'])('rejects duplicate, blank and malformed %s rather than discarding them', field => {
     for (const ids of [['same', 'same'], [''], ['has space'], [1], null]) {
       expect(cuttingProjectSchema.safeParse({ ...record, [field]: ids }).success).toBe(false)
     }
@@ -20,6 +20,8 @@ describe('CuttingProject', () => {
 
 describe('project panel quantities', () => {
   it('accepts legacy records unchanged and explicit zero/non-negative safe quantities', () => {
+    expect(cuttingProjectSchema.parse(record)).not.toHaveProperty('stockItemIds')
+    expect(cuttingProjectSchema.parse({ ...record, stockItemIds: ['owned'] }).stockItemIds).toEqual(['owned'])
     expect(cuttingProjectSchema.parse(record)).not.toHaveProperty('panelQuantities')
     expect(cuttingProjectSchema.parse({ ...record, panelQuantities: [{ supplierProductId: 'panel', quantity: 0 }] }).panelQuantities).toEqual([{ supplierProductId: 'panel', quantity: 0 }])
   })

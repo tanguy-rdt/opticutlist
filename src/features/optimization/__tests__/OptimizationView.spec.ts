@@ -22,6 +22,10 @@ import { materialRepositoryKey } from '../../materials/material-repository'
 import { projectIdKey, projectServiceKey } from '../../projects/project-service'
 import { supplierProductRepositoryKey, supplierRepositoryKey } from '../../suppliers/catalog-repositories'
 import OptimizationView from '../OptimizationView.vue'
+import { stockRepositoryKey } from '../../inventory/stock-repository'
+import { createStockRepository } from '../../../application/inventory/stock-repository'
+import { stockPanel } from '../../../domain/optimizer/panel-source'
+import { stockItemSchema } from '../../../domain/model/stock-item'
 import { optimizationServiceFactoryKey } from '../optimization-service'
 import { createCuttingPlanPdfService, type ProjectCuttingPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
 import { cuttingPlanPdfServiceKey } from '../pdf-export-service'
@@ -85,7 +89,7 @@ async function setup() {
     attachTo: document.body,
     global: { plugins: [router], provide: {
       [currentResultServiceKey]: { forProject: () => current }, [projectIdKey]: project.id, [projectServiceKey]: service,
-      [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers,
+      [stockRepositoryKey]: createStockRepository(persistence), [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers,
       [supplierProductRepositoryKey]: catalog.supplierProducts, [optimizationServiceFactoryKey]: factory,
       [cuttingPlanPdfServiceKey]: createCuttingPlanPdfService({ generate: vi.fn(), generateProject: pdfGenerate }),
     } },
@@ -103,6 +107,29 @@ async function setup() {
   return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB, plans, current, router }
 }
 describe('Automatic project optimization', () => {
+  it('uses selected owned stock with its real quantity and geometry without consuming inventory', async () => {
+    const { wrapper, persistence, service, project, start, current } = await setup()
+    const owner = await service.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    const stock = stockItemSchema.parse({ ...validStockItemInput, lengthMm: 2500, widthMm: 1250, quantity: 2 })
+    await persistence.stockItems.update(stock.id, stock)
+    expect((await service.projects.update(project.id, { ...owner.value, supplierProductIds: [], stockItemIds: [stock.id] })).ok).toBe(true)
+    const before = await persistence.stockItems.list()
+    await wrapper.findAll('button').find(button => button.text() === 'Refresh inputs')?.trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find('form').exists()).toBe(true) })
+    const worker = await start()
+    const request = worker.request
+    if (request.type !== 'optimizeProject') throw new Error('Wrong request')
+    expect(request.input.panels).toEqual([{ product: stockPanel(stock), quantity: stock.quantity }])
+    worker.complete()
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Validated project cutting plan') })
+    await vi.waitFor(async () => { const saved = await current.load(); expect(saved.ok && saved.value.result?.contents.sources[0]?.product.stockItemId).toBe(stock.id) })
+    expect(await persistence.stockItems.list()).toEqual(before)
+    expect(await persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [] })
+    const saved = await current.load()
+    expect(saved.ok && saved.value.result?.plan.metrics.placedCount).toBe(2)
+  })
+
   it('edits and exports the displayed plan with undo/reset while leaving saved parts, selections and inventory unchanged', async () => {
     const { wrapper, persistence, service, project, workers, start, pdfGenerate } = await setup()
     const stock = await persistence.stockItems.list()
@@ -307,7 +334,7 @@ describe('Automatic project optimization', () => {
     if (!saved.ok) throw new Error('Missing project')
     await service.projects.update(project.id, { ...saved.value, supplierProductIds: [] })
     await wrapper.get('form').trigger('submit')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Select catalog panels in this project') })
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Select catalog or stock panels in this project') })
     expect(workers).toHaveLength(0)
   })
   it('handles storage failures and retry without showing previous inputs as a plan', async () => {
@@ -328,7 +355,7 @@ describe('Automatic project optimization', () => {
     await service.projects.update(project.id, { ...saved.value, supplierProductIds: [] })
     await wrapper.get('button').trigger('click')
     await vi.waitFor(() => { expect(wrapper.text()).toContain('No parts in this project') })
-    expect(wrapper.text()).toContain('No selected catalog panels')
+    expect(wrapper.text()).toContain('No selected panels')
     expect(wrapper.text()).not.toContain('Other project part')
   })
   it('shows loading and disables controls while refreshing repository snapshots', async () => {

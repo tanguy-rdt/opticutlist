@@ -1,6 +1,7 @@
 import { cuttingSettingsSchema } from '../../domain/model/cutting-settings'
 import { partSchema } from '../../domain/model/part'
-import { supplierProductSchema } from '../../domain/model/supplier-product'
+import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
+import { optimizationPanelSchema } from '../../domain/optimizer/panel-source'
 import { panelQuantitySchema } from '../../domain/model/cutting-project'
 import type { OptimizeProjectInput, OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import { PLACEMENT_STRATEGIES } from '../../domain/optimizer/plan-with-strategy'
@@ -69,7 +70,7 @@ export function isOptimizeRequest(data: unknown): data is OptimizeRequest {
 
 export function isOptimizeProjectRequest(data: unknown): data is OptimizeProjectRequest {
   if (!isRecord(data) || data.type !== 'optimizeProject' || !isRequestId(data.requestId) || !isRecord(data.input)) return false
-  return Array.isArray(data.input.panels) && data.input.panels.every((source: unknown) => isRecord(source) && supplierProductSchema.safeParse(source.product).success && panelQuantitySchema.safeParse(source.quantity).success) &&
+  return Array.isArray(data.input.panels) && data.input.panels.every((source: unknown) => isRecord(source) && optimizationPanelSchema.safeParse(source.product).success && panelQuantitySchema.safeParse(source.quantity).success) &&
     Array.isArray(data.input.parts) && data.input.parts.every((part: unknown) => partSchema.safeParse(part).success) && cuttingSettingsSchema.safeParse(data.input.settings).success
 }
 
@@ -108,7 +109,7 @@ export function isOptimizationResponse(data: unknown): data is OptimizationRespo
       (issue.panelIndex === undefined || typeof issue.panelIndex === 'number' && Number.isSafeInteger(issue.panelIndex) && issue.panelIndex >= 0))
     if (selection.ok !== true || !isRecord(selection.plan)) return false
     const plan = selection.plan
-    return Array.isArray(plan.panels) && plan.panels.every((panel: unknown) => isRecord(panel) && supplierProductSchema.shape.id.safeParse(panel.supplierProductId).success &&
+    return Array.isArray(plan.panels) && plan.panels.every((panel: unknown) => isRecord(panel) && panelSnapshotSchema.shape.id.safeParse(panel.supplierProductId).success &&
       typeof panel.panelCopyIndex === 'number' && PLACEMENT_STRATEGIES.some(strategy => strategy === panel.strategy) && isRecord(panel.plan) && hasTreeStructure(panel.plan.tree) &&
       Array.isArray(panel.plan.placements) && Array.isArray(panel.plan.unplaced) && isRecord(panel.plan.metrics)) &&
       Array.isArray(plan.unplaced) && plan.unplaced.every((item: unknown) => isRecord(item) && partSchema.shape.id.safeParse(item.partId).success && typeof item.firstCopyIndex === 'number' && typeof item.count === 'number' &&

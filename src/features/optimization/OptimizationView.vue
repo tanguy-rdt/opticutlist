@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { stockPanel } from '../../domain/optimizer/panel-source'
+import { useStockRepository } from '../inventory/stock-repository'
 import { isCompatible } from '../../domain/compatibility'
 import { panelQuantitySchema } from '../../domain/model/cutting-project'
 import { cuttingSettingsSchema, type CuttingSettings } from '../../domain/model/cutting-settings'
@@ -25,6 +27,7 @@ const projectId = useProjectId()
 const projects = useProjectService()
 const catalogs = useCatalogRepositories()
 const materials = useMaterialRepository()
+const stockRepository = useStockRepository()
 const optimizer = useOptimizationService()
 const currentResults = useCurrentResultService()?.forProject(projectId)
 const cutting = useCuttingConfirmationService()?.forProject(projectId)
@@ -37,7 +40,7 @@ const savedSummary = shallowRef<SavedPlanSummary | null>(null)
 const savedFingerprint = ref<string | null>(null)
 const editedPlans = shallowRef<ReadonlyMap<number, PanelCuttingPlan>>(new Map())
 type State = 'loading' | 'ready' | 'running' | 'success' | 'failure' | 'cancelled'
-interface PanelChoice { product: PanelSnapshot; materialName: string; label: string; problem: string; broken: boolean; supplierName: string; availability: 'available' | 'unavailable' | 'unknown' }
+interface PanelChoice { stockQuantity?: number; product: PanelSnapshot; materialName: string; label: string; problem: string; broken: boolean; supplierName: string; availability: 'available' | 'unavailable' | 'unknown' }
 interface RunResult {
   requestId: number
   selection: Extract<OptimizeProjectResult, { ok: true }>
@@ -122,17 +125,18 @@ watch(quantities, () => {
 }, { deep: true, flush: 'sync' })
 
 async function readInputs() {
-  const [project, scopedParts, products, supplierRecords, materialRecords] = await Promise.all([
+  const [project, scopedParts, products, supplierRecords, materialRecords, stockRecords] = await Promise.all([
     projects.projects.get(projectId), projects.parts(projectId).list(),
-    catalogs.supplierProducts.list(), catalogs.suppliers.list(), materials.list(),
+    catalogs.supplierProducts.list(), catalogs.suppliers.list(), materials.list(), stockRepository?.list() ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
   if (!project.ok) throw new Error(persistenceErrorMessage(project.error, 'Project'))
   if (!scopedParts.ok) throw new Error(persistenceErrorMessage(scopedParts.error, 'Part'))
   if (!products.ok) throw new Error(persistenceErrorMessage(products.error, 'Product'))
   if (!supplierRecords.ok) throw new Error(persistenceErrorMessage(supplierRecords.error, 'Supplier'))
   if (!materialRecords.ok) throw new Error(persistenceErrorMessage(materialRecords.error, 'Material'))
+  if (!stockRecords.ok) throw new Error(persistenceErrorMessage(stockRecords.error, 'Stock item'))
   const selected = new Set(project.value.supplierProductIds)
-  const choices = products.value.filter(product => selected.has(product.id)).map(product => {
+  const choices: PanelChoice[] = products.value.filter(product => selected.has(product.id)).map(product => {
     const supplier = supplierRecords.value.find(record => record.id === product.supplierId)
     const material = materialRecords.value.find(record => record.id === product.materialId)
     const broken = supplier === undefined || material === undefined
@@ -141,9 +145,15 @@ async function readInputs() {
         : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : ''
     return { product, materialName: material?.name ?? product.materialId, label: `${supplier?.name ?? 'Missing supplier'} / ${material?.name ?? 'Missing material'} / ${product.name}`, problem, broken, supplierName: supplier?.name ?? 'Missing supplier', availability: product.availability }
   })
+  for (const item of stockRecords.value.filter(item => project.value.stockItemIds?.includes(item.id))) {
+    const product = stockPanel(item)
+    if (products.value.some(catalogProduct => catalogProduct.id === product.id)) throw new Error('A catalog ID conflicts with a stock allocation key. No optimization was started.')
+    const material = materialRecords.value.find(record => record.id === item.materialId)
+    choices.push({ product, stockQuantity: item.quantity, materialName: material?.name ?? item.materialId, label: `Stock / ${material?.name ?? 'Missing material'} / ${product.name}`, problem: !material ? 'Missing stock material' : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : '', broken: !material, supplierName: 'Owned stock', availability: 'available' })
+  }
   return {
-    project: project.value, parts: scopedParts.value, panels: choices,
-    missingIds: project.value.supplierProductIds.filter(id => !products.value.some(product => product.id === id)),
+    catalogProducts: products.value, project: project.value, parts: scopedParts.value, panels: choices,
+    missingIds: [...project.value.supplierProductIds.filter(id => !products.value.some(product => product.id === id)), ...(project.value.stockItemIds ?? []).filter(id => !stockRecords.value.some(item => item.id === id)).map(id => `Stock ${id}`)],
   }
 }
 function applyInputs(inputs: Awaited<ReturnType<typeof readInputs>>): void {
@@ -162,7 +172,7 @@ async function load(): Promise<void> {
     const inputs = await readInputs()
     if (current !== generation) return
     applyInputs(inputs)
-    quantities.value = Object.fromEntries(inputs.panels.map(choice => [choice.product.id, inputs.project.panelQuantities?.find(item => item.supplierProductId === choice.product.id)?.quantity ?? 1]))
+    quantities.value = Object.fromEntries(inputs.panels.map(choice => [choice.product.id, choice.stockQuantity ?? inputs.project.panelQuantities?.find(item => item.supplierProductId === choice.product.id)?.quantity ?? 1]))
     state.value = 'ready'
   } catch (cause) {
     if (current !== generation) return
@@ -192,17 +202,20 @@ async function start(): Promise<void> {
     if (current !== generation) return
     applyInputs(inputs)
     if (inputs.parts.length === 0) throw new Error('Add project parts before optimizing.')
-    if (inputs.panels.length === 0) throw new Error('Select catalog panels in this project’s Materials section.')
+    if (inputs.panels.length === 0) throw new Error('Select catalog or stock panels in this project’s Materials section.')
     const available = inputs.panels.map(choice => {
-      const parsed = panelQuantitySchema.safeParse(quantities.value[choice.product.id] ?? inputs.project.panelQuantities?.find(item => item.supplierProductId === choice.product.id)?.quantity ?? 1)
+      const parsed = panelQuantitySchema.safeParse(choice.stockQuantity ?? quantities.value[choice.product.id] ?? inputs.project.panelQuantities?.find(item => item.supplierProductId === choice.product.id)?.quantity ?? 1)
       if (!parsed.success) quantityErrors.value[choice.product.id] = parsed.error.issues[0]?.message ?? 'Enter a non-negative safe integer.'
-      return { product: choice.product, quantity: parsed.success ? parsed.data : 0 }
+      const product = choice.product.stockItemId === undefined ? inputs.catalogProducts.find(product => product.id === choice.product.id) : { ...choice.product, stockItemId: choice.product.stockItemId, availability: 'available' as const }
+      if (!product) throw new Error('Missing panel source')
+      return { product, quantity: parsed.success ? parsed.data : 0 }
     })
     if (Object.keys(quantityErrors.value).length) { state.value = 'ready'; return }
-    const changed = available.some(source => source.quantity !== (inputs.project.panelQuantities?.find(item => item.supplierProductId === source.product.id)?.quantity ?? 1))
+    const catalogAvailable = available.filter(source => !('stockItemId' in source.product))
+    const changed = catalogAvailable.some(source => source.quantity !== (inputs.project.panelQuantities?.find(item => item.supplierProductId === source.product.id)?.quantity ?? 1))
     if (changed) {
       const saved = await projects.projects.update(projectId, { ...inputs.project, panelQuantities: [
-        ...available.map(source => ({ supplierProductId: source.product.id, quantity: source.quantity })),
+        ...catalogAvailable.map(source => ({ supplierProductId: source.product.id, quantity: source.quantity })),
         ...(inputs.project.panelQuantities?.filter(item => inputs.missingIds.includes(item.supplierProductId)) ?? []),
       ] })
       if (current !== generation) return
@@ -222,7 +235,7 @@ async function start(): Promise<void> {
       result.value = { requestId: outcome.requestId, selection: outcome.selection, choices: inputs.panels, parts: inputs.parts, settings: settings.data, sources: available.filter(source => outcome.selection.ok && outcome.selection.plan.panels.some(panel => panel.supplierProductId === source.product.id)).map(source => {
         const choice = inputs.panels.find(choice => choice.product.id === source.product.id)
         const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = source.product
-        return { product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: source.quantity, materialName: choice?.materialName ?? materialId, supplierName: choice?.supplierName ?? 'Missing supplier' }
+        return { product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection, ...('stockItemId' in source.product ? { stockItemId: source.product.stockItemId } : {}) }), quantity: source.quantity, materialName: choice?.materialName ?? materialId, supplierName: choice?.supplierName ?? 'Missing supplier' }
       }), savedEdited: [], savedBaseline: false }
       state.value = 'success'
       persistCurrent()
@@ -390,7 +403,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           role="status"
           class="text-muted"
         >
-          No selected catalog panels. <RouterLink
+          No selected panels. <RouterLink
             :to="{ name: 'project-materials', params: { projectId } }"
             class="text-accent underline"
           >
@@ -410,7 +423,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           @submit.prevent="start"
         >
           <p class="text-sm text-muted">
-            Available quantities are saved for this project when you optimize. Existing selections default to one panel each; zero excludes a reference from this run. These are planning limits, not owned stock.
+            Available quantities are saved for this project when you optimize. Existing selections default to one panel each; zero excludes a reference from this run. Catalog quantities are planning limits; stock quantities come from owned inventory and are not consumed by optimization.
           </p>
           <div class="grid gap-4 lg:grid-cols-2">
             <div
@@ -445,7 +458,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
                     min="0"
                     step="1"
                     class="field"
-                    :disabled="busy || choice.broken || choice.availability === 'unavailable'"
+                    :disabled="busy || choice.stockQuantity !== undefined || choice.broken || choice.availability === 'unavailable'"
                   >
                 </template>
               </FormField>

@@ -87,6 +87,8 @@ describe('Home and application navigation', () => {
   it('protects pending Materials choices across tabs and project changes without changing navigation', async () => {
     const { wrapper, router, persistence, service } = await mountAt('/')
     await persistence.materials.create(validMaterialInput)
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.supplierProducts.create(validSupplierProductInput)
     const first = cuttingProjectSchema.parse({ id: 'draft-project', name: 'First', materialIds: [], supplierProductIds: [], partIds: [] })
     const second = cuttingProjectSchema.parse({ ...first, id: 'other-draft-project', name: 'Second' })
     await service.projects.create(first)
@@ -114,6 +116,8 @@ describe('Home and application navigation', () => {
   it('waits for Materials autosave before opening Parts and restores choices when reopened', async () => {
     const { wrapper, router, persistence, service } = await mountAt('/')
     await persistence.materials.create(validMaterialInput)
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.supplierProducts.create(validSupplierProductInput)
     const project = cuttingProjectSchema.parse({ id: 'autosave-project', name: 'Auto', materialIds: [], supplierProductIds: [], partIds: [] })
     await service.projects.create(project)
     await router.push(`/projects/${project.id}/materials`)
@@ -398,6 +402,8 @@ describe('Home and application navigation', () => {
   it('requires project material selection from a direct Parts route and preserves Parts after deselection', async () => {
     const { wrapper, router, service, persistence } = await mountAt('/')
     expect((await persistence.materials.create(validMaterialInput)).ok).toBe(true)
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.supplierProducts.create(validSupplierProductInput)
     const project = cuttingProjectSchema.parse({ id: 'material-first', name: 'Material first', partIds: [], materialIds: [], supplierProductIds: [] })
     expect((await service.projects.create(project)).ok).toBe(true)
     await router.push('/projects/material-first/parts')

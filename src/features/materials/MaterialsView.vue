@@ -3,6 +3,8 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } 
 import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
+import type { StockItem } from '../../domain/model/stock-item'
+import { useStockRepository } from '../inventory/stock-repository'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useProjectId, useProjectService } from '../projects/project-service'
@@ -16,6 +18,10 @@ import SupplierLogo from '../suppliers/SupplierLogo.vue'
 const repository = useMaterialRepository()
 const catalog = useCatalogRepositories()
 const service = useProjectService()
+const stockRepository = useStockRepository()
+const stock = shallowRef<readonly StockItem[]>([])
+const selectedStockIds = ref<readonly StockItem['id'][]>([])
+const savedStockIds = shallowRef<readonly StockItem['id'][]>([])
 const projectId = useProjectId()
 const materials = shallowRef<readonly Material[]>([])
 const products = shallowRef<readonly SupplierProduct[]>([])
@@ -29,10 +35,17 @@ const savedMaterialIds = shallowRef<readonly Material['id'][]>([])
 const savedProductIds = shallowRef<readonly SupplierProduct['id'][]>([])
 const dirty = computed(() => selectedIds.value.length !== savedMaterialIds.value.length
   || selectedIds.value.some(id => !savedMaterialIds.value.includes(id))
+  || selectedStockIds.value.length !== savedStockIds.value.length
+  || selectedStockIds.value.some(id => !savedStockIds.value.includes(id))
   || selectedProductIds.value.length !== savedProductIds.value.length
   || selectedProductIds.value.some(id => !savedProductIds.value.includes(id)))
-const categories = computed(() => [...new Set(materials.value.map(material => material.category))])
-const visibleMaterials = computed(() => materials.value.filter(material =>
+const availableMaterials = computed(() => materials.value.filter(material => products.value.some(product => product.materialId === material.id) || stock.value.some(item => item.materialId === material.id)))
+const activeStock = computed(() => stock.value.filter(item => item.materialId === activeMaterial.value?.id))
+function materialStock(material: Material): readonly StockItem[] { return stock.value.filter(item => item.materialId === material.id) }
+function summaryStock(material: Material): readonly StockItem[] { return materialStock(material).filter(item => selectedStockIds.value.includes(item.id)) }
+function toggleStock(item: StockItem): void { selectedStockIds.value = selectedStockIds.value.includes(item.id) ? selectedStockIds.value.filter(id => id !== item.id) : [...selectedStockIds.value, item.id] }
+const categories = computed(() => [...new Set(availableMaterials.value.map(material => material.category))])
+const visibleMaterials = computed(() => availableMaterials.value.filter(material =>
   material.name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())
   && (!categoryFilter.value || material.category === categoryFilter.value)))
 const materialGroups = computed(() => categories.value.map(name => ({ name, materials: visibleMaterials.value.filter(material => material.category === name) })).filter(group => group.materials.length))
@@ -40,12 +53,14 @@ const activeMaterial = computed(() => visibleMaterials.value.find(material => ma
 const activeProducts = computed(() => products.value.filter(product => product.materialId === activeMaterial.value?.id))
 const orphanProducts = computed(() => products.value.filter(product => selectedProductIds.value.includes(product.id) && !materials.value.some(material => material.id === product.materialId)))
 const summaryMaterials = computed(() => materials.value.filter(material => selectedIds.value.includes(material.id)
-  || products.value.some(product => product.materialId === material.id && selectedProductIds.value.includes(product.id))))
+  || products.value.some(product => product.materialId === material.id && selectedProductIds.value.includes(product.id))
+  || stock.value.some(item => item.materialId === material.id && selectedStockIds.value.includes(item.id))))
 function materialProducts(material: Material): readonly SupplierProduct[] { return products.value.filter(product => product.materialId === material.id) }
 function summaryProducts(material: Material): readonly SupplierProduct[] { return materialProducts(material).filter(product => selectedProductIds.value.includes(product.id)) }
 function supplierName(product: SupplierProduct): string { return suppliers.value.find(supplier => supplier.id === product.supplierId)?.name ?? 'Missing supplier' }
 function removeProduct(product: SupplierProduct): void { selectedProductIds.value = selectedProductIds.value.filter(id => id !== product.id) }
 function removeMissing(): void {
+  selectedStockIds.value = selectedStockIds.value.filter(id => stock.value.some(item => item.id === id))
   selectedIds.value = selectedIds.value.filter(id => materials.value.some(material => material.id === id))
   selectedProductIds.value = selectedProductIds.value.filter(id => products.value.some(product => product.id === id))
 }
@@ -59,6 +74,7 @@ if (inject(matchedRouteKey, undefined)) { onBeforeRouteLeave(canDiscard); onBefo
 onBeforeUnmount(() => { disposed = true; window.removeEventListener('beforeunload', beforeUnload) })
 const missingSelections = computed(() => [
   ...selectedIds.value.filter(id => !materials.value.some(material => material.id === id)),
+  ...selectedStockIds.value.filter(id => !stock.value.some(item => item.id === id)),
   ...selectedProductIds.value.filter(id => !products.value.some(product => product.id === id)),
 ])
 const loading = ref(true)
@@ -68,10 +84,13 @@ const saveError = ref('')
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
-  const [result, project, productResult, supplierResult] = await Promise.all([
-    repository.list(), service.projects.get(projectId), catalog.supplierProducts.list(), catalog.suppliers.list(),
+  const [result, project, productResult, supplierResult, stockResult] = await Promise.all([
+    repository.list(), service.projects.get(projectId), catalog.supplierProducts.list(), catalog.suppliers.list(), stockRepository?.list() ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
-  if (result.ok && project.ok && productResult.ok && supplierResult.ok) {
+  if (result.ok && project.ok && productResult.ok && supplierResult.ok && stockResult.ok) {
+    stock.value = stockResult.value
+    selectedStockIds.value = project.value.stockItemIds ?? []
+    savedStockIds.value = project.value.stockItemIds ?? []
     materials.value = result.value
     selectedIds.value = project.value.materialIds
     selectedProductIds.value = project.value.supplierProductIds
@@ -80,9 +99,9 @@ async function load(): Promise<void> {
     products.value = productResult.value
     suppliers.value = supplierResult.value
   } else {
-    const failure = [result, project, productResult, supplierResult].find(record => !record.ok)
-    if (failure) loadError.value = persistenceErrorMessage(failure.error, failure === result ? 'Material' : 'Project')
-    materials.value = []; products.value = []; suppliers.value = []
+    const failure = [result, project, productResult, supplierResult, stockResult].find(record => !record.ok)
+    if (failure) loadError.value = persistenceErrorMessage(failure.error, failure === result ? 'Material' : failure === stockResult ? 'Stock item' : 'Project')
+    materials.value = []; products.value = []; suppliers.value = []; stock.value = []
   }
   loading.value = false
 }
@@ -116,23 +135,26 @@ async function persistSelections(): Promise<void> {
   try {
     while (dirty.value && !disposed) {
       const materialIds = [...selectedIds.value]
+      const stockItemIds = [...selectedStockIds.value]
       const supplierProductIds = [...selectedProductIds.value]
       // Snapshot each write; newer changes stay in the draft and are saved next.
       // Reread ownership so a concurrent Part write cannot be overwritten.
       const project = await service.projects.get(projectId)
       const result = project.ok ? await service.projects.update(projectId, {
         ...project.value, materialIds, supplierProductIds,
+        ...(project.value.stockItemIds !== undefined || stockItemIds.length ? { stockItemIds } : {}),
         ...(project.value.panelQuantities === undefined ? {} : { panelQuantities: project.value.panelQuantities.filter(item => supplierProductIds.includes(item.supplierProductId)) }),
       }) : project
       if (!result.ok) { saveError.value = persistenceErrorMessage(result.error, 'Project'); return }
       savedMaterialIds.value = materialIds
       savedProductIds.value = supplierProductIds
+      savedStockIds.value = stockItemIds
     }
   } catch {
     saveError.value = 'Could not save project selections to local storage.'
   }
 }
-watch([selectedIds, selectedProductIds], () => { if (!loading.value) void save() })
+watch([selectedIds, selectedProductIds, selectedStockIds], () => { if (!loading.value) void save() })
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
 </script>
 
@@ -147,7 +169,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           Materials
         </h1>
         <p class="mt-2 text-sm text-muted">
-          Choose materials and panel references from your catalog.
+          Choose materials and panel references from your catalog and stock.
         </p>
       </div>
     </header>
@@ -163,7 +185,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
               id="library-title"
               class="font-semibold"
             >
-              Material library <span class="ml-2 text-sm font-normal text-muted">{{ materials.length }}</span>
+              Material library <span class="ml-2 text-sm font-normal text-muted">{{ availableMaterials.length }}</span>
             </h2>
             <button
               type="button"
@@ -235,14 +257,14 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           </button>
         </div>
         <div
-          v-else-if="!materials.length"
+          v-else-if="!availableMaterials.length"
           class="space-y-3 p-8 text-center"
         >
           <h3 class="font-semibold">
-            No catalog materials yet
+            No panel sources available
           </h3>
           <p class="text-sm text-muted">
-            Create materials in a supplier product's Material field, then choose them here.
+            Add catalog panels or record owned panels in Stock, then choose their materials here.
           </p>
           <RouterLink
             to="/suppliers"
@@ -340,7 +362,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           Panel references could not be loaded. Retry from the material library.
         </p>
         <div
-          v-else-if="!activeProducts.length"
+          v-else-if="!activeProducts.length && !activeStock.length"
           class="space-y-2 p-6"
         >
           <h3 class="text-sm font-semibold">
@@ -356,7 +378,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
             v-else
             class="text-sm text-muted"
           >
-            {{ materials.length ? 'Adjust your search or category filter to view panel references.' : 'No catalog products yet. Add purchasable panels in the Catalogue.' }}
+            {{ availableMaterials.length ? 'Adjust your search or category filter to view panel references.' : 'No catalog products yet. Add purchasable panels in the Catalogue.' }}
           </p>
         </div>
         <ul
@@ -387,6 +409,29 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
               </span>
             </label>
           </li>
+          <li
+            v-for="item in activeStock"
+            :key="`stock-${item.id}`"
+          >
+            <label
+              class="flex items-start gap-3 px-4 py-3"
+              :class="selectedStockIds.includes(item.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
+            >
+              <input
+                type="checkbox"
+                class="mt-1 size-4 shrink-0 accent-accent"
+                :aria-label="`Use stock ${item.id}`"
+                :checked="selectedStockIds.includes(item.id)"
+                :disabled="loading"
+                @change="toggleStock(item)"
+              >
+              <span class="grid min-w-0 flex-1 gap-2 text-sm">
+                <span class="font-semibold">Stock · {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}</span>
+                <span class="tabular-nums">{{ item.lengthMm }} × {{ item.widthMm }} × {{ item.thicknessMm }} mm</span>
+                <span class="text-xs text-muted">{{ item.quantity }} available · {{ item.grainDirection }} grain</span>
+              </span>
+            </label>
+          </li>
         </ul>
       </section>
       <aside
@@ -411,7 +456,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
               <dt class="text-muted">
                 Panel references
               </dt><dd class="mt-1 text-2xl font-semibold tabular-nums">
-                {{ selectedProductIds.length }}
+                {{ selectedProductIds.length + selectedStockIds.length }}
               </dd>
             </div>
           </dl>
@@ -485,6 +530,33 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                     </button>
                   </li>
                 </ul>
+                <ul
+                  v-if="summaryStock(material).length"
+                  class="space-y-2"
+                >
+                  <li
+                    v-for="item in summaryStock(material)"
+                    :key="item.id"
+                    class="flex items-center gap-2 rounded-lg bg-quiet-surface p-2"
+                  >
+                    <span class="min-w-0 flex-1 text-xs"><span class="font-medium">Stock · {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}</span><span class="block text-muted">{{ item.lengthMm }} × {{ item.widthMm }} × {{ item.thicknessMm }} mm · {{ item.quantity }} available</span></span>
+                    <button
+                      type="button"
+                      class="button button-compact px-2"
+                      :aria-label="`Remove stock ${item.id}`"
+                      :disabled="loading || Boolean(loadError)"
+                      @click="toggleStock(item)"
+                    >
+                      <AppIcon name="close" />
+                    </button>
+                  </li>
+                </ul>
+                <p
+                  v-if="!materialProducts(material).length && !materialStock(material).length"
+                  class="text-xs text-danger"
+                >
+                  No panel sources · material selection retained
+                </p>
               </li>
             </ul>
             <div

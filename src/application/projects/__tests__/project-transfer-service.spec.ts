@@ -11,6 +11,8 @@ import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import { panelSnapshotSchema, savedPlanSummarySchema } from '../../../domain/model/saved-cutting-plan'
 import { partSchema } from '../../../domain/model/part'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
+import { stockItemSchema } from '../../../domain/model/stock-item'
+import { stockPanel } from '../../../domain/optimizer/panel-source'
 import { optimizeProject } from '../../../domain/optimizer/optimize-project'
 import { applyPlanEdit, createPlanEditingSession, currentEditingPlan } from '../../optimization/plan-editing-session'
 import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
@@ -51,6 +53,38 @@ async function inventorySnapshot(persistence: ReturnType<typeof createLocalPersi
   return { projects: await persistence.projects.list(), parts: await persistence.parts.list(), materials: await persistence.materials.list(), suppliers: await persistence.suppliers.list(), products: await persistence.supplierProducts.list(), summaries: await persistence.savedPlanSummaries.list(), contents: await persistence.savedPlanContents.list(), stock: await persistence.stockItems.list(), confirmations: await persistence.cuttingConfirmations.list() }
 }
 describe('portable project transfer', () => {
+  it('preserves stock selections and historical stock layouts without transferring inventory or remapping them as catalog products', async () => {
+    const original = await source()
+    const owner = await original.persistence.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    const stock = stockItemSchema.parse({ ...validStockItemInput, lengthMm: 200, widthMm: 100, quantity: 2, grainDirection: 'none' })
+    await original.persistence.stockItems.update(stock.id, stock)
+    const sourcePanel = stockPanel(stock)
+    const settings = { kerfMm: 0, edgeMarginMm: 0 }
+    const plan = optimizeProject({ parts: [part], settings, panels: [{ product: sourcePanel, quantity: stock.quantity }] })
+    if (!plan.ok) throw new Error('Invalid stock fixture')
+    const selected = { ...owner.value, stockItemIds: [stock.id] }
+    expect((await createProjectService(original.persistence).projects.update(project.id, selected)).ok).toBe(true)
+    const saved = await createSavedPlanService(original.persistence).forProject(project.id).save({ ...summary, id: 'stock-plan' }, { plan: plan.plan, parts: [part], settings, sources: [{ product: panelSnapshotSchema.parse({ id: sourcePanel.id, stockItemId: stock.id, name: sourcePanel.name, materialId: stock.materialId, lengthMm: stock.lengthMm, widthMm: stock.widthMm, thicknessMm: stock.thicknessMm, grainDirection: stock.grainDirection }), quantity: stock.quantity, materialName: 'Birch', supplierName: 'Owned stock' }], editedPanelIndices: [] })
+    expect(saved.ok).toBe(true)
+    const exported = await original.transfer.export(project.id)
+    if (!exported.ok) throw new Error('Export failed')
+    const file = validateProjectTransfer(projectJson.parse(exported.value.text))
+    if (!file.ok) throw new Error('Invalid file')
+    const target = database()
+    const imported = await target.transfer.import(file.value, true)
+    if (!imported.ok) throw new Error('Import failed')
+    expect(imported.value.stockItemIds).toEqual([stock.id])
+    expect(await target.persistence.stockItems.list()).toEqual({ ok: true, value: [] })
+    const plans = await createSavedPlanService(target.persistence).forProject(imported.value.id).list()
+    if (!plans.ok) throw new Error('Missing imported plans')
+    const stored = plans.value.find(record => record.id === 'stock-plan')
+    if (!stored) throw new Error('Missing stock plan')
+    const opened = await createSavedPlanService(target.persistence).forProject(imported.value.id).get(stored.id)
+    expect(opened.ok && opened.value.contents.sources[0]?.product.stockItemId).toBe(stock.id)
+    expect(opened.ok && opened.value.plan.metrics.placedCount).toBe(4)
+  })
+
   it('round-trips UTF-8 Parts, selections, complete edited multi-panel plans and timestamps into an empty installation', async () => {
     const original = await source(); const target = database()
     const before = await inventorySnapshot(original.persistence)
