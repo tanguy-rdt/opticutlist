@@ -6,6 +6,9 @@ import { supplierSchema } from '../../../domain/model/supplier'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { stockItemSchema } from '../../../domain/model/stock-item'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
+import { builtInMaterialPresets } from '../material-presets'
+import { createCatalogTransferService } from '../catalog-transfer-service'
+import { projectJson } from '../../../infrastructure/projects/project-json'
 import { createCatalogRepositories } from '../catalog-repositories'
 
 const supplier = supplierSchema.parse(validSupplierInput)
@@ -22,6 +25,63 @@ beforeEach(async () => {
 afterEach(() => { persistence.close(); vi.restoreAllMocks() })
 
 describe('catalog application repositories', () => {
+  it('resolves one preset material across repeated and concurrent product saves without seeding others', async () => {
+    await persistence.materials.delete(material.id)
+    expect(await persistence.materials.list()).toEqual({ ok: true, value: [] })
+    const saved = await Promise.all(['first', 'second'].map(id => catalog.supplierProducts.saveWithPreset({ ...product, id }, 'pin')))
+    expect(saved.every(result => result.ok)).toBe(true)
+    const materials = await persistence.materials.list(); if (!materials.ok) throw new Error('Read')
+    expect(materials.value).toHaveLength(1)
+    expect(materials.value[0]).toMatchObject({ name: 'Pin', category: 'Softwoods', libraryPresetId: 'pin' })
+    for (const result of saved) if (result.ok) {
+      expect(result.value.materialId).toBe(materials.value[0]?.id)
+      expect((await catalog.supplierProducts.saveWithPreset(result.value, 'pin', result.value.id)).ok).toBe(true)
+    }
+    expect(await persistence.materials.list()).toEqual(materials)
+    expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [] })
+  })
+
+  it('reuses an imported canonical preset by metadata while leaving customized and same-name materials separate', async () => {
+    const preset = builtInMaterialPresets.find(item => item.id === 'pin'); if (!preset) throw new Error('Preset')
+    const canonical = materialSchema.parse({ id: 'imported-preset', name: preset.name, category: preset.category, libraryPresetId: preset.id })
+    const custom = materialSchema.parse({ ...canonical, id: 'custom-pine', name: 'Pin Douglas' })
+    const sameName = materialSchema.parse({ ...canonical, id: 'same-name', libraryPresetId: undefined })
+    for (const item of [custom, sameName, canonical]) await catalog.materials.create(item)
+    const saved = await catalog.supplierProducts.saveWithPreset(product, 'pin')
+    expect(saved).toMatchObject({ ok: true, value: { materialId: canonical.id } })
+    expect(await catalog.materials.get(custom.id)).toEqual({ ok: true, value: custom })
+    expect(await catalog.materials.get(sameName.id)).toEqual({ ok: true, value: sameName })
+    const transfer = createCatalogTransferService(persistence, projectJson)
+    const exported = await transfer.export(); if (!exported.ok) throw new Error('Export')
+    const target = createLocalPersistence('preset-transfer', { indexedDB: new IDBFactory(), IDBKeyRange })
+    try {
+      const importer = createCatalogTransferService(target, projectJson)
+      const preview = await importer.preview(exported.value); if (!preview.ok) throw new Error('Preview')
+      expect((await importer.import(preview.value.file, true)).ok).toBe(true)
+      const reopened = createCatalogRepositories(target)
+      expect(await reopened.supplierProducts.saveWithPreset({ ...product, id: 'next-product' }, 'pin')).toMatchObject({ ok: true, value: { materialId: canonical.id } })
+      expect(await target.materials.list()).toEqual(await persistence.materials.list())
+    } finally { target.close() }
+  })
+
+  it('rolls back newly resolved materials when product creation or update fails', async () => {
+    await catalog.supplierProducts.create(product)
+    const before = await persistence.materials.list()
+    expect(await catalog.supplierProducts.saveWithPreset(product, 'pin')).toMatchObject({ ok: false, error: { kind: 'duplicateId' } })
+    expect(await persistence.materials.list()).toEqual(before)
+    expect(await catalog.supplierProducts.saveWithPreset(product, 'pin', supplierProductSchema.parse({ ...product, id: 'missing' }).id)).toMatchObject({ ok: false })
+    expect(await persistence.materials.list()).toEqual(before)
+    expect(await persistence.supplierProducts.list()).toEqual({ ok: true, value: [product] })
+  })
+
+  it('rejects unknown presets, invalid dimensions and missing suppliers before material creation', async () => {
+    const before = await persistence.materials.list()
+    expect((await catalog.supplierProducts.saveWithPreset(product, 'unknown')).ok).toBe(false)
+    expect((await catalog.supplierProducts.saveWithPreset({ ...product, thicknessMm: 0 }, 'pin')).ok).toBe(false)
+    expect((await catalog.supplierProducts.saveWithPreset({ ...product, supplierId: 'missing' }, 'pin')).ok).toBe(false)
+    expect(await persistence.materials.list()).toEqual(before)
+  })
+
   it('supports supplier and product CRUD without creating owned stock', async () => {
     expect(await catalog.suppliers.get(supplier.id)).toEqual({ ok: true, value: supplier })
     const updatedSupplier = supplierSchema.parse({ ...supplier, name: 'Updated store' })

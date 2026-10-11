@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, reactive, ref, shallowRef } from 'vue'
+import { computed, nextTick, reactive, ref, shallowRef } from 'vue'
 import { materialSchema, type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import { grainDirectionSchema } from '../../domain/model/orientation'
@@ -7,11 +7,12 @@ import { supplierProductSchema, productAvailabilitySchema, type SupplierProduct 
 import FormField from '../../shared/ui/FormField.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import MaterialPresetPicker from '../materials/MaterialPresetPicker.vue'
-import type { MaterialPreset } from '../materials/material-library'
+import { materialPresets, type MaterialPreset } from '../materials/material-library'
+import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import { useMaterialRepository } from '../materials/material-repository'
 
 const props = defineProps<{ product: SupplierProduct | null; suppliers: readonly Supplier[]; materials: readonly Material[]; initialSupplierId: string; disabled: boolean }>()
-const emit = defineEmits<{ save: [product: SupplierProduct]; cancel: []; materialCreated: [material: Material]; materialBusy: [busy: boolean] }>()
+const emit = defineEmits<{ save: [product: SupplierProduct, presetId?: string]; cancel: []; materialCreated: [material: Material]; materialBusy: [busy: boolean] }>()
 const materialRepository = useMaterialRepository()
 const creatingMaterial = ref(false)
 const materialBusy = ref(false)
@@ -56,7 +57,7 @@ async function createMaterial(): Promise<void> {
   }
   materialBusy.value = true
   emit('materialBusy', true)
-  const existing = props.materials.find(material => material.name === parsed.data.name && material.category === parsed.data.category && material.libraryPresetId === parsed.data.libraryPresetId)
+  const existing = selectedPreset.value ? props.materials.find(material => material.name === parsed.data.name && material.category === parsed.data.category && material.libraryPresetId === parsed.data.libraryPresetId) : undefined
   const result = existing ? { ok: true as const, value: existing } : await materialRepository.create(parsed.data)
   materialBusy.value = false
   emit('materialBusy', false)
@@ -76,6 +77,13 @@ const form = ref<HTMLFormElement | null>(null)
 const name = ref(props.product?.name ?? '')
 const supplierId = ref<string>(props.product?.supplierId ?? props.initialSupplierId)
 const materialId = ref<string>(props.product?.materialId ?? '')
+function presetValue(id: string): string {
+  let value = `preset:${id}`
+  while (props.materials.some(material => material.id === value)) value += ':'
+  return value
+}
+const productPreset = computed(() => materialPresets.find(preset => presetValue(preset.id) === materialId.value))
+const selectedThumbnailId = computed(() => productPreset.value?.id ?? props.materials.find(material => material.id === materialId.value)?.libraryPresetId)
 const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; thicknessMm: number | string; price: number | string }>({ lengthMm: props.product?.lengthMm ?? '', widthMm: props.product?.widthMm ?? '', thicknessMm: props.product?.thicknessMm ?? '', price: props.product?.price ?? '' })
 const currency = ref(props.product?.currency ?? 'EUR')
 const productUrl = ref(props.product?.productUrl ?? '')
@@ -90,21 +98,21 @@ function numberInput(value: number | string): number | undefined { return typeof
 function focusName(): void { form.value?.querySelector<HTMLInputElement>('input')?.focus() }
 defineExpose({ focusName })
 async function submit(): Promise<void> {
-  if (props.disabled || materialBusy.value || creatingMaterial.value || props.suppliers.length === 0 || props.materials.length === 0) return
+  if (props.disabled || materialBusy.value || creatingMaterial.value || props.suppliers.length === 0) return
   const result = supplierProductSchema.safeParse({
-    id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: supplierId.value, materialId: materialId.value,
+    id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: supplierId.value, materialId: productPreset.value ? crypto.randomUUID() : materialId.value,
     lengthMm: numberInput(numbers.lengthMm), widthMm: numberInput(numbers.widthMm), thicknessMm: numberInput(numbers.thicknessMm), price: numberInput(numbers.price),
     currency: currency.value.trim(), grainDirection: grainDirection.value, availability: availability.value,
     ...(productUrl.value.trim() ? { productUrl: productUrl.value.trim() } : {}),
   })
   const issues = new Map(result.success ? [] : result.error.issues.map((issue) => [String(issue.path[0]), issue.message]))
   if (!props.suppliers.some((supplier) => supplier.id === supplierId.value)) issues.set('supplierId', 'Choose an existing supplier.')
-  if (!props.materials.some((material) => material.id === materialId.value)) issues.set('materialId', 'Choose an existing material.')
+  if (!productPreset.value && !props.materials.some((material) => material.id === materialId.value)) issues.set('materialId', 'Choose an existing material.')
   errors.value = issues
   if (issues.size > 0) {
     await nextTick()
     form.value?.querySelector<HTMLInputElement | HTMLSelectElement>('[aria-invalid="true"]')?.focus()
-  } else if (result.success) emit('save', result.data)
+  } else if (result.success) emit('save', result.data, productPreset.value?.id)
 }
 </script>
 <template>
@@ -192,7 +200,7 @@ async function submit(): Promise<void> {
               v-model="materialId"
               v-bind="controlAttrs"
               class="field"
-              :disabled="disabled || materials.length === 0"
+              :disabled="disabled"
             >
               <option
                 value=""
@@ -201,20 +209,41 @@ async function submit(): Promise<void> {
                 Select a material
               </option>
               <option
-                v-if="materialId && !materials.some((material) => material.id === materialId)"
+                v-if="materialId && !productPreset && !materials.some((material) => material.id === materialId)"
                 :value="materialId"
                 disabled
               >
                 Missing material — choose another
               </option>
-              <option
-                v-for="material in materials"
-                :key="material.id"
-                :value="material.id"
+              <optgroup label="Built-in material presets">
+                <option
+                  v-for="preset in materialPresets"
+                  :key="preset.id"
+                  :value="presetValue(preset.id)"
+                >
+                  {{ preset.name }} · {{ preset.category }}
+                </option>
+              </optgroup>
+              <optgroup
+                v-if="materials.length"
+                label="Existing catalog materials"
               >
-                {{ material.name }} · {{ material.category }}
-              </option>
+                <option
+                  v-for="material in materials"
+                  :key="material.id"
+                  :value="material.id"
+                >
+                  {{ material.name }} · {{ material.category }}
+                </option>
+              </optgroup>
             </select>
+            <div
+              v-if="materialId"
+              class="mt-2 flex items-center gap-2 text-xs text-muted"
+            >
+              <MaterialThumbnail :preset-id="selectedThumbnailId" />
+              {{ productPreset ? 'Built-in preset · resolved when the product is saved' : 'Existing catalog material' }}
+            </div>
           </template>
         </FormField>
       </div>
@@ -418,7 +447,7 @@ async function submit(): Promise<void> {
         <button
           type="submit"
           class="button button-primary"
-          :disabled="disabled || materialBusy || creatingMaterial || suppliers.length === 0 || materials.length === 0"
+          :disabled="disabled || materialBusy || creatingMaterial || suppliers.length === 0"
         >
           {{ product ? 'Save product' : 'Create product' }}
         </button>

@@ -35,7 +35,7 @@ function fakeRepository<Entity extends { id: string }>(record: Entity, records: 
 function setup() {
   return { suppliers: fakeRepository(supplier, [supplier]), supplierProducts: fakeRepository(product), materials: fakeRepository(material, [material]) }
 }
-function render(repositories: { suppliers: Repository<typeof supplier>; supplierProducts: Repository<typeof product>; materials: Repository<typeof material> }, provide: Record<symbol, unknown> = {}) {
+function render(repositories: { suppliers: Repository<typeof supplier>; supplierProducts: Repository<typeof product> & Partial<Pick<ReturnType<typeof createCatalogRepositories>['supplierProducts'], 'saveWithPreset'>>; materials: Repository<typeof material> }, provide: Record<symbol, unknown> = {}) {
   const wrapper = mount(SuppliersView, {
     attachTo: document.body,
     global: {
@@ -342,6 +342,71 @@ describe('SuppliersView', () => {
     }
   })
 
+  it.each(['create', 'edit'] as const)('selects a preset directly with an empty catalog during %s and saves atomically', async mode => {
+    const indexedDB = new IDBFactory()
+    const persistence = createLocalPersistence(`direct-preset-${mode}`, { indexedDB, IDBKeyRange })
+    try {
+      await persistence.suppliers.create(supplier)
+      if (mode === 'edit') {
+        await persistence.materials.create(material); await persistence.supplierProducts.create(product)
+      }
+      const repositories = createCatalogRepositories(persistence)
+      const wrapper = render(repositories)
+      await vi.waitFor(() => { expect(button(wrapper, '+ Add Product').attributes('disabled')).toBeUndefined() })
+      if (mode === 'edit') { await selectProduct(wrapper); await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click') }
+      else await openForm(wrapper, 'product')
+      expect(wrapper.get('#product-material').findAll('optgroup[label="Built-in material presets"] option')).toHaveLength(20)
+      if (mode === 'edit') expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(material.id)
+      await wrapper.get('#product-material').setValue('preset:pin')
+      expect(wrapper.find('#inline-material-fields').exists()).toBe(false)
+      expect(wrapper.get('#product-material').attributes('disabled')).toBeUndefined()
+      await wrapper.get('#product-name').setValue(product.name)
+      for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
+      await submit(wrapper, 'product')
+      await vi.waitFor(() => { expect(wrapper.text()).toContain(mode === 'edit' ? 'Product updated.' : 'Product created.') })
+      const materials = await persistence.materials.list(); const products = await persistence.supplierProducts.list()
+      if (!materials.ok || !products.ok) throw new Error('Read failed')
+      const resolved = materials.value.find(item => item.libraryPresetId === 'pin')
+      expect(resolved).toMatchObject({ name: 'Pin', category: 'Softwoods' })
+      expect(products.value[0]?.materialId).toBe(resolved?.id)
+      if (mode === 'edit') expect(products.value[0]?.id).toBe(product.id)
+      expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [] })
+      wrapper.unmount()
+    } finally { persistence.close() }
+  })
+
+  it('retains the selected preset and product draft after an atomic save failure', async () => {
+    const repositories = setup()
+    const saveWithPreset = vi.fn().mockResolvedValue(failure)
+    const wrapper = render({ ...repositories, supplierProducts: { ...repositories.supplierProducts, saveWithPreset } })
+    await flushPromises(); await fillProduct(wrapper)
+    await wrapper.get('#product-material').setValue('preset:chene'); await submit(wrapper, 'product'); await flushPromises()
+    expect(saveWithPreset).toHaveBeenCalledOnce()
+    expect(repositories.materials.create).not.toHaveBeenCalled()
+    expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe('preset:chene')
+    expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe(product.name)
+    expect(wrapper.find('#inline-material-fields').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Could not access local storage')
+  })
+
+  it('keeps same-name scratch materials distinct and does not interpret an existing opaque ID as a preset', async () => {
+    const repositories = setup()
+    const custom = materialSchema.parse({ ...material, id: 'preset:pin', name: 'Pin', category: 'Softwoods' })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [custom] })
+    repositories.materials.create.mockImplementation(record => Promise.resolve({ ok: true, value: materialSchema.parse(record) }))
+    const wrapper = render(repositories); await flushPromises(); await openForm(wrapper, 'product')
+    await wrapper.get('#product-material').setValue(custom.id)
+    expect(wrapper.text()).toContain('Existing catalog material')
+    expect(wrapper.find('option[value="preset:pin:"]').exists()).toBe(true)
+    await button(wrapper, '+ New material').trigger('click')
+    await wrapper.get('#inline-material-name').setValue(custom.name); await wrapper.get('#inline-material-category').setValue(custom.category)
+    await button(wrapper, 'Create and select material').trigger('click'); await flushPromises()
+    expect(repositories.materials.create).toHaveBeenCalledOnce()
+    const created = materialSchema.parse(repositories.materials.create.mock.calls[0]?.[0])
+    expect(created.id).not.toBe(custom.id); expect(created).not.toHaveProperty('libraryPresetId')
+    expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe(created.id)
+  })
+
   it('offers the local presets without creating records, keeps a renamed thumbnail and the product draft', async () => {
     const repositories = setup()
     repositories.materials.create.mockImplementation(record => Promise.resolve({ ok: true, value: materialSchema.parse(record) }))
@@ -372,7 +437,7 @@ describe('SuppliersView', () => {
     await button(wrapper, 'Create and select material').trigger('click'); await flushPromises()
     expect(repositories.materials.create).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Existing material selected; no duplicate created.')
-    expect(wrapper.get('#product-material').findAll('option')).toHaveLength(3)
+    expect(wrapper.get('#product-material').findAll('option')).toHaveLength(23)
   })
 
   it('keeps preset metadata and editable drafts after validation or storage failure; custom clears the image', async () => {
@@ -760,14 +825,17 @@ describe('SuppliersView', () => {
     expect(wrapper.get<HTMLSelectElement>('#product-material').element.value).toBe('')
   })
 
-  it('offers inline creation and prevents product writes until a material exists', async () => {
+  it('offers inline creation and presets in an empty catalog but requires a material selection', async () => {
     const repositories = setup()
     repositories.materials.list.mockResolvedValue({ ok: true, value: [] })
     const wrapper = render(repositories)
     await flushPromises()
     await openForm(wrapper, 'product')
     expect(button(wrapper, '+ New material').exists()).toBe(true)
-    expect(button(wrapper, 'Create product').attributes('disabled')).toBeDefined()
+    expect(button(wrapper, 'Create product').attributes('disabled')).toBeUndefined()
+    await submit(wrapper, 'product')
+    expect(wrapper.get('#product-material').attributes('aria-invalid')).toBe('true')
+    expect(repositories.supplierProducts.create).not.toHaveBeenCalled()
   })
 
   it.each(['suppliers', 'supplierProducts', 'materials'] as const)('reports %s read errors and supports retry', async (store) => {

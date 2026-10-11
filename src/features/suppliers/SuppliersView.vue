@@ -166,12 +166,14 @@ async function saveSupplier(supplier: Supplier): Promise<void> {
   if (formMode.value) supplierForm.value?.focusName()
   else addSupplierButton.value?.focus()
 }
-async function saveProduct(product: SupplierProduct): Promise<void> {
+async function saveProduct(product: SupplierProduct, presetId?: string): Promise<void> {
   if (disabled.value) return
   busy.value = true
   notice.value = ''
   operationError.value = ''
-  const result = editingProduct.value ? await repositories.supplierProducts.update(product.id, product) : await repositories.supplierProducts.create(product)
+  const result = presetId !== undefined
+    ? await repositories.supplierProducts.saveWithPreset(product, presetId, editingProduct.value?.id)
+    : editingProduct.value ? await repositories.supplierProducts.update(product.id, product) : await repositories.supplierProducts.create(product)
   if (result.ok) {
     notice.value = editingProduct.value ? 'Product updated.' : 'Product created.'
     selectedSupplierId.value = result.value.supplierId

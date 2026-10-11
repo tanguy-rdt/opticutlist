@@ -19,12 +19,12 @@ const groups = computed(() => materialPresetGroups.map(category => ({
         :checked="!selectedId"
         @change="emit('select', undefined)"
       >
-      Custom material (no image)
+      Create from scratch (no image)
     </label>
     <label
       for="material-library-search"
       class="block text-sm font-medium"
-    >Search material library</label>
+    >Create from preset · search material library</label>
     <input
       id="material-library-search"
       v-model="search"

@@ -1,23 +1,41 @@
-import type { Material } from '../../domain/model/material'
+import { materialSchema, type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
-import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
+import type { LocalPersistence, PersistenceResult, Repositories, Repository } from '../persistence/repositories'
+
+import { builtInMaterialPresets } from './material-presets'
+
+export interface CatalogProductRepository extends Repository<SupplierProduct> {
+  saveWithPreset(record: unknown, presetId: string, updatingId?: SupplierProduct['id']): Promise<PersistenceResult<SupplierProduct>>
+}
 
 function conflict(message: string): PersistenceResult<never> {
   return { ok: false, error: { kind: 'referenceConflict', message } }
 }
 
 /** Application guards reuse repository ports and the existing atomic transaction boundary. */
-export function createCatalogRepositories(persistence: LocalPersistence): Pick<Repositories, 'materials' | 'suppliers' | 'supplierProducts'> {
-  function saveProduct(record: unknown, id?: SupplierProduct['id']): Promise<PersistenceResult<SupplierProduct>> {
+export function createCatalogRepositories(persistence: LocalPersistence): Pick<Repositories, 'materials' | 'suppliers'> & { supplierProducts: CatalogProductRepository } {
+  function saveProduct(record: unknown, id?: SupplierProduct['id'], presetId?: string): Promise<PersistenceResult<SupplierProduct>> {
     const parsed = supplierProductSchema.safeParse(record)
     if (!parsed.success) return Promise.resolve({ ok: false, error: { kind: 'invalidRecord', issues: parsed.error.issues } })
+    const preset = presetId === undefined ? undefined : builtInMaterialPresets.find(item => item.id === presetId)
+    if (presetId !== undefined && !preset) return Promise.resolve(conflict('Choose a supported built-in material preset.'))
     return persistence.transaction(async (repositories) => {
       const supplier = await repositories.suppliers.get(parsed.data.supplierId)
       if (!supplier.ok) return supplier
-      const material = await repositories.materials.get(parsed.data.materialId)
-      if (!material.ok) return material
-      return id === undefined ? repositories.supplierProducts.create(parsed.data) : repositories.supplierProducts.update(id, parsed.data)
+      let product = parsed.data
+      if (preset) {
+        const materials = await repositories.materials.list()
+        if (!materials.ok) return materials
+        const existing = materials.value.find(item => item.libraryPresetId === preset.id && item.name === preset.name && item.category === preset.category)
+        const material = existing ? { ok: true as const, value: existing } : await repositories.materials.create(materialSchema.parse({ id: crypto.randomUUID(), name: preset.name, category: preset.category, libraryPresetId: preset.id }))
+        if (!material.ok) return material
+        product = { ...product, materialId: material.value.id }
+      } else {
+        const material = await repositories.materials.get(product.materialId)
+        if (!material.ok) return material
+      }
+      return id === undefined ? repositories.supplierProducts.create(product) : repositories.supplierProducts.update(id, product)
     })
   }
   return {
@@ -34,6 +52,7 @@ export function createCatalogRepositories(persistence: LocalPersistence): Pick<R
     },
     supplierProducts: {
       ...persistence.supplierProducts,
+      saveWithPreset: (record, presetId, updatingId) => saveProduct(record, updatingId, presetId),
       create: (record) => saveProduct(record),
       update: (id, record) => saveProduct(record, id),
       delete(id: SupplierProduct['id']) {
