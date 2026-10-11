@@ -19,7 +19,7 @@ function closeNavigation(): void { if (expanded.value) { expanded.value = false;
 function focusContent(): void { document.getElementById('main-content')?.focus() }
 </script>
 <template>
-  <div class="min-h-screen lg:grid lg:grid-cols-[190px_minmax(0,1fr)]">
+  <div class="min-h-screen lg:grid lg:grid-cols-[180px_minmax(0,1fr)]">
     <a
       href="#main-content"
       class="sr-only z-50 bg-surface p-3 focus:not-sr-only focus:absolute"
@@ -30,14 +30,14 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
       aria-label="Application navigation"
       @keydown.esc="closeNavigation"
     >
-      <header class="flex items-center justify-between gap-3 p-4 lg:py-6">
+      <header class="flex items-center justify-between gap-3 p-4 lg:py-4">
         <RouterLink
           to="/"
           class="flex items-center gap-3"
           aria-label="OptiCutList home"
         >
           <svg
-            class="h-8 w-8 text-accent"
+            class="h-7 w-7 text-accent"
             viewBox="0 0 40 40"
             fill="currentColor"
             aria-hidden="true"
@@ -64,7 +64,7 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
               rx="3"
             />
           </svg>
-          <span class="text-base font-bold tracking-tight">OptiCutList</span>
+          <span class="text-sm font-bold tracking-tight">OptiCutList</span>
         </RouterLink>
         <button
           ref="toggle"
@@ -79,7 +79,7 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
       </header>
       <div
         id="app-sidebar-content"
-        class="flex-col gap-6 px-3 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+        class="flex-col gap-6 px-2 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
         :class="expanded ? 'flex' : 'hidden lg:flex'"
       >
         <nav
@@ -109,6 +109,9 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
           <p class="text-xs leading-relaxed text-muted">
             Saved on this device.<br>Browser storage can be cleared.
           </p>
+          <footer class="text-xs text-muted">
+            OptiCutList · Open source · GPL-3.0
+          </footer>
         </div>
       </div>
     </aside>
@@ -116,14 +119,11 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
       <main
         id="main-content"
         tabindex="-1"
-        class="mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-7"
+        class="mx-auto w-full flex-1 px-4 pt-4 pb-5 sm:px-6 lg:px-4"
         :class="$route.name === 'suppliers' || $route.name === 'stock' ? 'max-w-none' : 'max-w-7xl'"
       >
         <RouterView :key="String($route.params.projectId ?? '')" />
       </main>
-      <footer class="px-6 py-4 text-xs text-muted">
-        OptiCutList · Open source · GPL-3.0
-      </footer>
     </div>
   </div>
 </template>

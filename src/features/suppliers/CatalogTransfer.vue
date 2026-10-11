@@ -6,6 +6,7 @@ import { useCatalogTransferService } from './catalog-transfer-service'
 import { downloadJson } from '../../shared/ui/download-json'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import FormField from '../../shared/ui/FormField.vue'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 const props = defineProps<{ disabled: boolean }>()
 const emit = defineEmits<{ imported: []; busy: [value: boolean] }>()
 const service = useCatalogTransferService()
@@ -72,21 +73,21 @@ async function importCatalog(): Promise<void> {
     <div class="flex flex-wrap justify-end gap-2">
       <button
         type="button"
-        class="button button-compact"
+        class="button catalog-action"
         :disabled="disabled || busy"
         @click="exportCatalog"
       >
-        Export Catalog
+        <AppIcon name="export" />Export Catalog
       </button>
       <button
         type="button"
-        class="button button-compact"
+        class="button catalog-action"
         :disabled="disabled || busy"
         :aria-expanded="showImport"
         aria-controls="catalog-import"
         @click="showImport = !showImport"
       >
-        Import Catalog
+        <AppIcon name="import" />Import Catalog
       </button>
     </div>
     <div

@@ -11,6 +11,7 @@ import SupplierForm from './SupplierForm.vue'
 import ProductForm from './ProductForm.vue'
 import CatalogTransfer from './CatalogTransfer.vue'
 import ProductDetails from './ProductDetails.vue'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import CatalogFormDialog from './CatalogFormDialog.vue'
 
 const repositories = useCatalogRepositories()
@@ -218,10 +219,10 @@ async function removeProduct(product: SupplierProduct): Promise<void> {
 onMounted(load)
 </script>
 <template>
-  <section class="min-w-0 space-y-4">
+  <section class="catalog-page min-w-0 space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="space-y-1">
-        <h1 class="text-2xl font-semibold tracking-tight">
+        <h1 class="text-[28px] font-semibold leading-tight tracking-tight">
           Catalog
         </h1>
         <p class="text-sm text-muted">
@@ -236,39 +237,35 @@ onMounted(load)
     </div>
     <dl
       aria-label="Catalog summary"
-      class="grid grid-cols-2 gap-3 lg:grid-cols-4"
+      class="catalog-summary grid grid-cols-2 gap-3 lg:grid-cols-4"
     >
-      <div class="panel flex items-center justify-between gap-3 px-4 py-3">
-        <dt class="text-xs text-muted">
-          Suppliers
-        </dt><dd class="text-xl font-semibold tabular-nums">
-          {{ loading || loadError ? '—' : suppliers.length }}
-        </dd>
+      <div class="catalog-summary-card">
+        <span class="catalog-icon"><AppIcon name="supplier" /></span>
+        <dt>Suppliers</dt>
+        <dd>{{ loading || loadError ? '—' : suppliers.length }}</dd>
+        <p v-if="!loading && !loadError">
+          {{ products.length }} product references
+        </p>
       </div>
-      <div class="panel flex items-center justify-between gap-3 px-4 py-3">
-        <dt class="text-xs text-muted">
-          Materials
-        </dt><dd class="text-xl font-semibold tabular-nums">
-          {{ loading || loadError ? '—' : materials.length }}
-        </dd>
+      <div class="catalog-summary-card">
+        <span class="catalog-icon"><AppIcon name="layers" /></span>
+        <dt>Materials</dt>
+        <dd>{{ loading || loadError ? '—' : materials.length }}</dd>
+        <p v-if="!loading && !loadError">
+          {{ new Set(materials.map(material => material.category)).size }} {{ new Set(materials.map(material => material.category)).size === 1 ? 'category' : 'categories' }}
+        </p>
       </div>
-      <div class="panel flex items-center justify-between gap-3 px-4 py-3">
-        <dt class="text-xs text-muted">
-          Product references
-        </dt><dd class="text-xl font-semibold tabular-nums">
-          {{ loading || loadError ? '—' : products.length }}
-        </dd>
+      <div class="catalog-summary-card">
+        <span class="catalog-icon"><AppIcon name="products" /></span>
+        <dt>Product references</dt>
+        <dd>{{ loading || loadError ? '—' : products.length }}</dd>
+        <p>Across all suppliers</p>
       </div>
-      <div class="panel flex items-center justify-between gap-3 px-4 py-3">
-        <dt class="text-xs text-muted">
-          Owned panels<span class="sr-only"> (full panels, excluding offcuts)</span>
-          <span
-            v-if="stockError || !stockRepository"
-            class="mt-1 block"
-          >Inventory unavailable</span>
-        </dt><dd class="text-xl font-semibold tabular-nums">
-          {{ loading || !stockRepository || stockError ? '—' : ownedPanelQuantity }}
-        </dd>
+      <div class="catalog-summary-card">
+        <span class="catalog-icon"><AppIcon name="stock" /></span>
+        <dt>Owned panels<span class="sr-only"> (full panels, excluding offcuts)</span></dt>
+        <dd>{{ loading || !stockRepository || stockError ? '—' : ownedPanelQuantity }}</dd>
+        <p>{{ stockError || !stockRepository ? 'Inventory unavailable' : 'Full panels in your inventory' }}</p>
       </div>
     </dl>
     <p
@@ -304,7 +301,7 @@ onMounted(load)
       </p>
       <button
         type="button"
-        class="button button-compact"
+        class="button catalog-action"
         :disabled="busy"
         @click="load"
       >
@@ -313,10 +310,10 @@ onMounted(load)
     </div>
     <div
       v-else
-      class="catalog-workspace grid min-w-0 items-start gap-4 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_300px]"
+      class="catalog-workspace grid min-w-0 items-start gap-4 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_285px]"
     >
       <aside
-        class="panel space-y-4 p-4 md:sticky md:top-5"
+        class="panel catalog-supplier-nav space-y-4 p-4 md:sticky md:top-5"
         aria-labelledby="supplier-nav-title"
       >
         <div class="flex items-center justify-between gap-2">
@@ -331,11 +328,11 @@ onMounted(load)
         <button
           ref="addSupplierButton"
           type="button"
-          class="button button-compact button-primary w-full"
+          class="button catalog-action button-primary w-full"
           :disabled="disabled"
           @click="editSupplier(null)"
         >
-          + Add Supplier
+          <AppIcon name="plus" /><span><span class="sr-only">+ </span>Add Supplier</span>
         </button>
         <label
           for="supplier-search"
@@ -350,20 +347,23 @@ onMounted(load)
         >
         <nav
           aria-label="Catalog suppliers"
-          class="flex gap-2 overflow-x-auto p-1 md:max-h-[60dvh] md:flex-col md:overflow-y-auto"
+          class="flex gap-2 overflow-x-auto md:max-h-[60dvh] md:flex-col md:overflow-y-auto"
         >
           <button
             v-for="supplier in supplierNavigation.filter(item => item.name.toLocaleLowerCase().includes(supplierSearch.toLocaleLowerCase().trim()))"
             :key="supplier.id"
             type="button"
-            class="flex min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm md:min-w-0"
-            :class="selectedSupplierId === supplier.id ? 'border-accent bg-subtle text-accent' : 'border-transparent hover:bg-subtle'"
+            class="flex min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left text-sm md:min-w-0"
+            :class="selectedSupplierId === supplier.id ? 'border-selection-line bg-subtle text-accent' : 'border-transparent hover:bg-subtle'"
             :aria-pressed="selectedSupplierId === supplier.id"
             :aria-label="`Select supplier ${supplier.name}`"
             @click="selectSupplier(supplier.id)"
           >
-            <span class="font-medium [overflow-wrap:anywhere]">{{ supplier.name }}</span>
-            <span class="shrink-0 text-xs tabular-nums">{{ supplier.count }}<span class="sr-only"> product references</span></span>
+            <span class="min-w-0">
+              <span class="block font-semibold [overflow-wrap:anywhere]">{{ supplier.name }}</span>
+              <span class="mt-1 block text-xs text-muted">{{ supplier.count }} product references</span>
+            </span>
+            <AppIcon name="chevron" />
           </button>
         </nav>
         <p
@@ -383,52 +383,55 @@ onMounted(load)
         class="min-w-0 space-y-4"
         aria-labelledby="supplier-content-title"
       >
-        <div class="panel space-y-3 p-4">
+        <div class="panel catalog-supplier-header space-y-3 p-4">
           <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2
-                id="supplier-content-title"
-                class="text-lg font-semibold"
-              >
-                {{ selectedSupplier?.name ?? (selectedSupplierId ? 'Missing supplier' : 'Select a supplier') }}
-              </h2>
-              <a
-                v-if="selectedSupplier?.websiteUrl"
-                :href="selectedSupplier.websiteUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-sm text-accent underline [overflow-wrap:anywhere]"
-              >{{ selectedSupplier.websiteUrl }}<span class="sr-only"> (opens in new tab)</span></a>
+            <div class="flex min-w-0 items-start gap-4">
+              <span class="catalog-supplier-symbol hidden xl:flex"><AppIcon name="supplier" /></span>
+              <div class="min-w-0 pt-2">
+                <h2
+                  id="supplier-content-title"
+                  class="text-xl font-semibold"
+                >
+                  {{ selectedSupplier?.name ?? (selectedSupplierId ? 'Missing supplier' : 'Select a supplier') }}
+                </h2>
+                <a
+                  v-if="selectedSupplier?.websiteUrl"
+                  :href="selectedSupplier.websiteUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="mt-2 inline-flex max-w-full items-center gap-2 text-sm text-muted hover:text-accent [overflow-wrap:anywhere]"
+                ><span>{{ selectedSupplier.websiteUrl }}</span><AppIcon name="external" /><span class="sr-only"> (opens in new tab)</span></a>
+              </div>
             </div>
-            <div class="flex flex-wrap gap-2">
+            <div class="catalog-supplier-actions flex flex-wrap justify-end gap-x-2 gap-y-5">
               <button
                 v-if="selectedSupplier"
                 type="button"
-                class="button button-compact"
+                class="button catalog-action"
                 :disabled="disabled"
                 :aria-label="`Edit supplier ${selectedSupplier.name}`"
                 @click="editSupplier(selectedSupplier)"
               >
-                Edit supplier
+                <AppIcon name="edit" />Edit supplier
               </button>
               <button
                 v-if="selectedSupplier"
                 type="button"
-                class="button button-compact button-danger"
+                class="button catalog-action button-danger"
                 :disabled="disabled"
                 :aria-label="`Delete supplier ${selectedSupplier.name}`"
                 @click="removeSupplier(selectedSupplier)"
               >
-                Delete supplier
+                <AppIcon name="delete" />Delete supplier
               </button>
               <button
                 type="button"
-                class="button button-compact button-primary"
+                class="button catalog-action button-primary"
                 :disabled="disabled || !selectedSupplier"
                 :aria-label="`Add product for ${selectedSupplier?.name ?? 'supplier'}`"
                 @click="editProduct(null, selectedSupplierId)"
               >
-                + Add Product
+                <AppIcon name="plus" /><span><span class="sr-only">+ </span>Add Product</span>
               </button>
               <button
                 type="button"
@@ -440,23 +443,31 @@ onMounted(load)
               </button>
             </div>
           </div>
-          <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+          <div class="catalog-filters grid grid-cols-2 gap-2 xl:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
             <div>
               <label
                 for="catalog-search"
-                class="mb-1 block text-xs font-medium text-muted"
-              >Search products</label><input
-                id="catalog-search"
-                v-model="search"
-                type="search"
-                class="field"
-                placeholder="Name or material…"
-              >
+                class="sr-only"
+              >Search products</label>
+              <div class="relative">
+                <AppIcon
+                  name="search"
+                  class="pointer-events-none absolute top-2.5 left-3 text-muted"
+                />
+                <input
+                  id="catalog-search"
+                  v-model="search"
+                  type="search"
+                  class="field"
+                  placeholder="Search products…"
+                  style="padding-left: 2.25rem"
+                >
+              </div>
             </div>
             <div>
               <label
                 for="catalog-category"
-                class="mb-1 block text-xs font-medium text-muted"
+                class="sr-only"
               >Category</label><select
                 id="catalog-category"
                 v-model="categoryFilter"
@@ -476,7 +487,7 @@ onMounted(load)
             <div>
               <label
                 for="catalog-material"
-                class="mb-1 block text-xs font-medium text-muted"
+                class="sr-only"
               >Material</label><select
                 id="catalog-material"
                 v-model="materialFilter"
@@ -496,7 +507,7 @@ onMounted(load)
             <div>
               <label
                 for="catalog-availability"
-                class="mb-1 block text-xs font-medium text-muted"
+                class="sr-only"
               >Availability</label><select
                 id="catalog-availability"
                 v-model="availabilityFilter"
@@ -533,32 +544,40 @@ onMounted(load)
           class="panel min-w-0 overflow-hidden"
           :aria-label="section.material?.name ?? 'Missing material'"
         >
-          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-subtle/50 px-4 py-3">
-            <div>
-              <h3 class="text-sm font-semibold">
-                {{ section.material?.name ?? 'Missing material' }}
-              </h3>
-              <p class="mt-0.5 text-xs text-muted">
-                {{ section.material?.category ?? 'Missing material' }}
-              </p>
+          <div class="catalog-material-header flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4">
+            <div class="flex items-center gap-4">
+              <span class="catalog-material-symbol"><AppIcon name="layers" /></span>
+              <div>
+                <h3 class="text-base font-semibold">
+                  {{ section.material?.name ?? 'Missing material' }}
+                </h3>
+                <p class="mt-0.5 text-xs text-muted">
+                  {{ section.items.length }} references · {{ section.material?.category ?? 'Missing material' }}
+                </p>
+              </div>
             </div>
-            <div class="text-right text-xs text-muted">
-              <p>{{ section.items.length }} references</p><p v-if="stockRepository && !stockError">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <p class="catalog-badge">
+                {{ section.items.length }} references
+              </p><p
+                v-if="stockRepository && !stockError"
+                class="catalog-badge bg-subtle text-accent"
+              >
                 {{ stock.filter(item => item.materialId === section.id).reduce((quantity, item) => quantity + item.quantity, 0) }} owned units for this material
               </p>
             </div>
           </div>
           <div
-            class="overflow-x-auto"
+            class="relative overflow-x-auto"
             tabindex="0"
             role="region"
             :aria-label="`${section.material?.name ?? 'Missing material'} products; scroll horizontally for all columns`"
           >
-            <table class="w-full text-left text-sm">
+            <table class="catalog-product-table w-full text-left text-sm">
               <caption class="sr-only">
                 {{ section.material?.name ?? 'Missing material' }} panel products in millimeters
               </caption>
-              <thead class="bg-subtle text-xs text-muted">
+              <thead class="bg-quiet-surface text-xs text-muted">
                 <tr>
                   <th
                     scope="col"
@@ -569,7 +588,7 @@ onMounted(load)
                     scope="col"
                     class="px-3 py-2"
                   >
-                    Length × width (mm)
+                    Dimensions (mm)<span class="sr-only"> (length × width)</span>
                   </th><th
                     scope="col"
                     class="px-3 py-2"
@@ -584,12 +603,12 @@ onMounted(load)
                     scope="col"
                     class="px-3 py-2"
                   >
-                    Supplier availability
+                    Availability
                   </th><th
                     scope="col"
                     class="px-3 py-2"
                   >
-                    Owned quantity
+                    Owned stock
                   </th><th
                     scope="col"
                     class="px-3 py-2"
@@ -608,16 +627,25 @@ onMounted(load)
                 >
                   <th
                     scope="row"
-                    class="min-w-40 px-3 py-2.5 font-medium"
+                    class="min-w-28 px-3 py-2.5 font-medium"
                   >
                     <button
                       type="button"
-                      class="rounded text-left text-accent underline-offset-4 hover:underline"
+                      class="inline-flex items-center gap-4 rounded text-left underline-offset-4 hover:underline"
                       :aria-label="`View product ${product.name}`"
                       :aria-pressed="selectedProductId === product.id"
                       aria-controls="product-details"
                       @click.stop="inspectProduct(product.id)"
                     >
+                      <span
+                        class="catalog-selection-mark"
+                        :class="selectedProductId === product.id ? 'border-accent bg-accent text-on-accent' : 'border-control-line bg-surface'"
+                      >
+                        <AppIcon
+                          v-if="selectedProductId === product.id"
+                          name="check"
+                        />
+                      </span>
                       {{ product.name }}
                     </button>
                   </th>
@@ -631,7 +659,7 @@ onMounted(load)
                   <td class="px-3 py-2.5">
                     <span
                       class="inline-flex rounded-md px-2 py-1 text-xs font-medium"
-                      :class="product.availability === 'available' ? 'bg-success-surface text-success' : 'bg-subtle text-muted'"
+                      :class="product.availability === 'available' ? 'bg-success-surface text-success' : 'bg-quiet-surface text-muted'"
                     >{{ availability(product) }}</span>
                   </td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-xs text-muted">
@@ -640,12 +668,12 @@ onMounted(load)
                   <td class="px-3 py-2.5">
                     <button
                       type="button"
-                      class="rounded-md p-2 text-xs font-medium text-accent hover:bg-subtle"
+                      class="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-muted hover:bg-subtle"
                       :disabled="disabled"
                       :aria-label="`Edit panel ${product.name}`"
                       @click.stop="editProduct(product)"
                     >
-                      Edit
+                      <AppIcon name="edit" /><span class="sr-only">Edit</span>
                     </button>
                   </td>
                 </tr>

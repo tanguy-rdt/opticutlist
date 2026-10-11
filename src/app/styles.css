@@ -4,6 +4,9 @@
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-subtle: var(--subtle);
+  --color-quiet-surface: color-mix(in srgb, var(--surface) 96%, var(--ink));
+  --color-icon-surface: var(--success-surface);
+  --color-selection-line: color-mix(in srgb, var(--surface) 70%, var(--accent));
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-line: var(--line);
@@ -109,4 +112,43 @@
   .home-card:not([aria-disabled='true']):is(:hover, :focus-visible) {
     transform: translateY(-3px);
   }
+}
+
+@layer components {
+  .app-icon { @apply h-4 w-4; }
+  .catalog-page .panel { @apply rounded-[9px]; }
+  .catalog-action { @apply min-h-10 gap-2 px-3 py-2 text-xs font-medium; }
+  .catalog-summary-card { @apply grid min-h-[92px] grid-cols-[54px_minmax(0,1fr)] grid-rows-[auto_auto_auto] items-center gap-x-5 rounded-[9px] border border-line bg-surface px-4 py-3; }
+  .catalog-summary-card .catalog-icon { @apply row-span-3; }
+  .catalog-summary-card dt { @apply col-start-2 row-start-2 text-xs font-medium; }
+  .catalog-summary-card dd { @apply col-start-2 row-start-1 text-2xl leading-tight font-semibold tabular-nums; }
+  .catalog-summary-card p { @apply col-start-2 row-start-3 text-xs text-muted; }
+  .catalog-icon { @apply flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-lg bg-icon-surface text-accent; }
+  .catalog-icon svg { @apply h-8 w-8; }
+  .catalog-supplier-symbol { @apply h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-line bg-quiet-surface text-accent; }
+  .catalog-supplier-symbol svg { @apply h-9 w-9; }
+  .catalog-supplier-actions { @apply sm:max-w-[285px]; }
+  .catalog-supplier-actions > .button-primary { @apply order-3 sm:ml-auto; }
+  .catalog-supplier-actions > button:last-child { @apply order-2; }
+  .catalog-material-symbol { @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-quiet-surface text-muted; }
+  .catalog-material-symbol svg { @apply h-6 w-6; }
+  .catalog-badge { @apply inline-flex rounded-md bg-quiet-surface px-2.5 py-1.5 text-xs font-medium; }
+  .catalog-selection-mark { @apply flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border; }
+  .catalog-selection-mark svg { @apply h-3.5 w-3.5; }
+  .catalog-product-table { @apply text-xs; }
+  .catalog-product-table thead { @apply h-10; }
+  .catalog-product-table tbody tr { @apply h-12; }
+  .catalog-specifications > div { @apply flex items-start justify-between gap-3 border-b border-line py-1.5; }
+  .catalog-specifications > div:last-child { @apply border-b-0; }
+  .catalog-specifications dt { @apply shrink-0 text-muted; }
+  .catalog-specifications dd { @apply min-w-0 text-right; }
+}
+
+@media (min-width: 1280px) {
+  .catalog-supplier-nav { min-height: calc(100dvh - 230px); }
+}
+@media (max-width: 639px) {
+  .catalog-summary-card { column-gap: 0.75rem; grid-template-columns: 36px minmax(0, 1fr); padding-inline: 0.75rem; }
+  .catalog-summary-card .catalog-icon { height: 36px; width: 36px; }
+  .catalog-summary-card .catalog-icon svg { height: 24px; width: 24px; }
 }
