@@ -6,7 +6,7 @@ const emit = defineEmits<{ create: [] }>()
 <template>
   <component
     :is="interactive ? 'button' : RouterLink"
-    :to="interactive ? undefined : '/projects'"
+    :to="interactive ? undefined : { name: 'home', query: { create: '1' } }"
     :type="interactive ? 'button' : undefined"
     class="home-card relative flex flex-col items-start gap-4 overflow-hidden p-6 text-left md:p-8"
     aria-labelledby="new-project-title"
@@ -49,7 +49,7 @@ const emit = defineEmits<{ create: [] }>()
   </component>
 
   <RouterLink
-    to="/import"
+    :to="interactive ? '/import?from=projects' : '/import'"
     class="home-card flex flex-col items-start gap-4 p-6 md:p-8"
     :class="{ 'md:col-start-1 md:row-start-2': !interactive }"
     aria-labelledby="import-project-title"

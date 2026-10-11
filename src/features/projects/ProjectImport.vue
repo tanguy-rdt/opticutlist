@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, shallowRef, toRaw } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import type { ImportPreview } from '../../application/projects/project-transfer-service'
 import type { CuttingProject } from '../../domain/model/cutting-project'
 import { useProjectTransferService } from './project-transfer-service'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import FormField from '../../shared/ui/FormField.vue'
 const service = useProjectTransferService()
+const route = useRoute()
 const preview = shallowRef<ImportPreview | null>(null)
 const imported = shallowRef<CuttingProject | null>(null)
 const busy = ref(false)
@@ -47,10 +48,10 @@ async function importProject(): Promise<void> {
 <template>
   <section class="space-y-6">
     <RouterLink
-      to="/"
+      :to="route.query.from === 'projects' ? '/projects' : '/'"
       class="button"
     >
-      ← Back to Home
+      ← {{ route.query.from === 'projects' ? 'Back to Projects' : 'Back to Home' }}
     </RouterLink>
     <h1 class="text-3xl font-semibold">
       Import Project

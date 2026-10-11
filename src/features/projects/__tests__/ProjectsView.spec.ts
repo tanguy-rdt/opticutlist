@@ -53,6 +53,19 @@ describe('Project creation', () => {
     expect(cuttingProjectSchema.parse(input)).toMatchObject({ name: 'Cabinet', partIds: [], materialIds: [], supplierProductIds: [] })
     expect(router.currentRoute.value.path).toBe('/projects/new-project/parts')
   })
+  it('ignores a late successful creation after its dialog has unmounted', async () => {
+    const { wrapper, projects, router } = setup()
+    let finish: ((result: Awaited<ReturnType<ProjectService['projects']['create']>>) => void) | undefined
+    projects.create.mockReturnValue(new Promise(resolve => { finish = resolve }))
+    await flushPromises()
+    await wrapper.get('button[aria-labelledby="new-project-title"]').trigger('click')
+    await wrapper.get('#project-name').setValue('Cabinet')
+    await wrapper.get('form').trigger('submit')
+    wrapper.unmount()
+    await router.push('/catalog')
+    finish?.({ ok: true, value: project }); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/catalog')
+  })
   it('retains a failed name draft and displays storage failures', async () => {
     const { wrapper, projects } = setup()
     projects.create.mockResolvedValue({ ok: false, error: { kind: 'storageFailure', message: 'Disk full' } })
@@ -95,7 +108,7 @@ describe('Project manager', () => {
     await wrapper.get('button[aria-label="Close form"]').trigger('click')
     expect(wrapper.find('form').exists()).toBe(false)
     await wrapper.get('a[aria-labelledby="import-project-title"]').trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/import')
+    expect(router.currentRoute.value.fullPath).toBe('/import?from=projects')
   })
   it('selects duplicate names by stable ID, shows real counts and opens the selected project', async () => {
     const second = cuttingProjectSchema.parse({ ...project, id: 'second-project', partIds: ['part-one', 'part-two'], materialIds: ['mat-one'], supplierProductIds: ['product-one'] })

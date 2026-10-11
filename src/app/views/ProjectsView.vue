@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { cuttingProjectSchema, type CuttingProject } from '../../domain/model/cutting-project'
 import FormField from '../../shared/ui/FormField.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
+import ProjectCreationDialog from '../../features/projects/ProjectCreationDialog.vue'
 import ProjectList from '../../features/projects/ProjectList.vue'
 import ProjectStartTiles from '../../features/projects/ProjectStartTiles.vue'
 import ProjectExport from '../../features/projects/ProjectExport.vue'
@@ -12,7 +13,6 @@ import CatalogFormDialog from '../../features/suppliers/CatalogFormDialog.vue'
 import { useProjectService } from '../../features/projects/project-service'
 
 const service = useProjectService()
-const router = useRouter()
 const projects = shallowRef<readonly CuttingProject[]>([])
 const loading = ref(true)
 const search = ref('')
@@ -50,20 +50,19 @@ function closeForm(): void { if (!busy.value) { formMode.value = null; editing.v
 async function save(): Promise<void> {
   if (busy.value) return
   nameError.value = ''; formError.value = ''
-  const parsed = cuttingProjectSchema.safeParse({ ...(editing.value ?? { id: crypto.randomUUID(), partIds: [], materialIds: [], supplierProductIds: [] }), name: name.value })
+  if (!editing.value) return
+  const parsed = cuttingProjectSchema.safeParse({ ...editing.value, name: name.value })
   if (!parsed.success) { nameError.value = parsed.error.issues.find(issue => issue.path[0] === 'name')?.message ?? 'Invalid project name'; nameInput.value?.focus(); return }
   busy.value = true
   const current = generation
   // Read again so renaming never replaces the cached ownership/catalog selections.
-  const latest = editing.value ? await service.projects.get(editing.value.id) : null
-  const result = latest ? latest.ok ? await service.projects.update(latest.value.id, { ...latest.value, name: parsed.data.name }) : latest : await service.projects.create(parsed.data)
+  const latest = await service.projects.get(editing.value.id)
+  const result = latest.ok ? await service.projects.update(latest.value.id, { ...latest.value, name: parsed.data.name }) : latest
   if (current !== generation) return
   busy.value = false
   if (!result.ok) { formError.value = persistenceErrorMessage(result.error, 'Project'); return }
-  const created = !editing.value
   closeForm(); selectedId.value = result.value.id
-  if (created) await router.push({ name: 'project-parts', params: { projectId: result.value.id } })
-  else { notice.value = 'Project renamed.'; await load() }
+  notice.value = 'Project renamed.'; await load()
 }
 async function remove(project: CuttingProject): Promise<void> {
   if (busy.value || !window.confirm(`Delete project “${project.name}”? Shared catalog and physical stock will not be deleted. Projects with parts or cutting results cannot be deleted.`)) return
@@ -153,7 +152,7 @@ onMounted(load)
         </div>
         <div class="flex flex-wrap gap-2">
           <RouterLink
-            to="/import"
+            to="/import?from=projects"
             class="button button-compact"
           >
             <AppIcon name="import" />Import Project
@@ -284,9 +283,13 @@ onMounted(load)
         </div>
       </article>
     </div>
+    <ProjectCreationDialog
+      v-if="formMode === 'create'"
+      @close="closeForm"
+    />
     <CatalogFormDialog
-      v-if="formMode"
-      :title="formMode === 'create' ? 'New Project' : 'Rename project'"
+      v-if="formMode === 'rename'"
+      title="Rename project"
       :busy="busy"
       @close="closeForm"
     >
@@ -326,7 +329,7 @@ onMounted(load)
             class="button button-primary"
             :disabled="busy"
           >
-            {{ busy ? 'Saving…' : (formMode === 'create' ? 'Create project' : 'Save name') }}
+            {{ busy ? 'Saving…' : 'Save name' }}
           </button>
         </div>
       </form>

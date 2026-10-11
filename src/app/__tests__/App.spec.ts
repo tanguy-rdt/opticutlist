@@ -23,6 +23,7 @@ import App from '../App.vue'
 import { createAppPinia } from '../pinia'
 import { createAppRouter } from '../router'
 import { materialRepositoryKey } from '../../features/materials/material-repository'
+import ProjectCreationDialog from '../../features/projects/ProjectCreationDialog.vue'
 import { projectServiceKey } from '../../features/projects/project-service'
 import { createProjectService } from '../../application/projects/project-service'
 import { cuttingProjectSchema } from '../../domain/model/cutting-project'
@@ -177,7 +178,7 @@ describe('Home and application navigation', () => {
   it('removes nested actions, catalogue badges and independent saved-library links', async () => {
     const { wrapper } = await mountAt('/')
     expect(wrapper.find('.home-card button').exists()).toBe(false)
-    expect(wrapper.findAll('.home-card').filter(tile => tile.element.tagName === 'A').map(link => link.attributes('href'))).toEqual(['/projects', '/import', '/catalog'])
+    expect(wrapper.findAll('.home-card').filter(tile => tile.element.tagName === 'A').map(link => link.attributes('href'))).toEqual(['/?create=1', '/import', '/catalog'])
     expect(wrapper.text()).not.toContain('Access saved parts and materials')
     const catalogue = wrapper.get('[aria-labelledby="catalog-title"]')
     expect(catalogue.findAll('span')).toHaveLength(0)
@@ -208,14 +209,91 @@ describe('Home and application navigation', () => {
     expect(router.currentRoute.value.path).toBe('/projects')
   })
 
+  it.each(['/', '/projects'])('opens the same creation dialog from %s and cancels without writing or changing context', async path => {
+    const { wrapper, router, persistence } = await mountAt(path)
+    const tile = path === '/' ? 'a[aria-labelledby="new-project-title"]' : 'button[aria-labelledby="new-project-title"]'
+    await vi.waitFor(() => { expect(wrapper.find(tile).exists()).toBe(true) })
+    await wrapper.get(tile).trigger('click')
+    await vi.waitFor(() => { expect(wrapper.findComponent(ProjectCreationDialog).exists()).toBe(true) })
+    expect(wrapper.findAllComponents(ProjectCreationDialog)).toHaveLength(1)
+    expect(document.activeElement).toBe(wrapper.get('#project-name').element)
+    await wrapper.get('#project-name').setValue('Draft only')
+    await wrapper.get('button[aria-label="Close form"]').trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find('dialog').exists()).toBe(false) })
+    expect(router.currentRoute.value.fullPath).toBe(path)
+    expect(await persistence.projects.list()).toEqual({ ok: true, value: [] })
+    await wrapper.get(tile).trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find('#project-name').exists()).toBe(true) })
+    expect(wrapper.get<HTMLInputElement>('#project-name').element.value).toBe('')
+    await wrapper.get('dialog').trigger('cancel')
+    await vi.waitFor(() => { expect(wrapper.find('dialog').exists()).toBe(false) })
+    expect(await persistence.projects.list()).toEqual({ ok: true, value: [] })
+  })
+
+  it('opens the workspace automatically when creation starts in Projects', async () => {
+    const { wrapper, router, persistence } = await mountAt('/projects')
+    await vi.waitFor(() => { expect(wrapper.find('button[aria-labelledby="new-project-title"]').exists()).toBe(true) })
+    await wrapper.get('button[aria-labelledby="new-project-title"]').trigger('click')
+    await wrapper.get('#project-name').setValue('Desk')
+    await wrapper.get('form').trigger('submit')
+    await vi.waitFor(() => { expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(true) })
+    const records = await persistence.projects.list()
+    if (!records.ok || !records.value[0]) throw new Error('Missing created project')
+    expect(router.currentRoute.value.path).toBe(`/projects/${records.value[0].id}/parts`)
+    expect(records.value[0].name).toBe('Desk')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+  })
+
+  it('restores direct creation URLs safely and removes only the creation flag on close', async () => {
+    const indexedDB = new IDBFactory()
+    const first = await mountAt('/?create=1&keep=context#anchor', indexedDB)
+    expect(first.wrapper.findComponent(ProjectCreationDialog).exists()).toBe(true)
+    await first.wrapper.get('#project-name').setValue('Unsaved')
+    first.wrapper.unmount(); first.persistence.close()
+    const reopened = await mountAt('/?create=1&keep=context#anchor', indexedDB)
+    expect(reopened.wrapper.get<HTMLInputElement>('#project-name').element.value).toBe('')
+    expect(await reopened.persistence.projects.list()).toEqual({ ok: true, value: [] })
+    await reopened.wrapper.get('button[aria-label="Close form"]').trigger('click')
+    await vi.waitFor(() => { expect(reopened.wrapper.find('dialog').exists()).toBe(false) })
+    expect(reopened.router.currentRoute.value.fullPath).toBe('/?keep=context#anchor')
+    await reopened.router.push('/?create=unsupported')
+    expect(reopened.wrapper.find('dialog').exists()).toBe(false)
+  })
+
+  it('clears creation on navigation and keeps sidebar Projects free of automatic modals', async () => {
+    const { wrapper, router } = await mountAt('/?create=1')
+    await wrapper.get('#project-name').setValue('Old draft')
+    await router.push('/projects')
+    await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe('Projects') })
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    await router.push('/')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    await wrapper.get('nav[aria-label="Main navigation"] a[href="/projects"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/projects')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+  })
+
+  it.each(['/', '/projects'])('starts the same import workflow from %s and returns to its origin', async path => {
+    const { wrapper, router } = await mountAt(path)
+    await vi.waitFor(() => { expect(wrapper.find('a[aria-labelledby="import-project-title"]').exists()).toBe(true) })
+    await wrapper.get('a[aria-labelledby="import-project-title"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/import')
+    expect(wrapper.get('#project-import-file').attributes('accept')).toBe('.pocl,.json,application/json')
+    const back = wrapper.get(`main a[href="${path}"]`)
+    await back.trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(path)
+    expect(wrapper.find('dialog').exists()).toBe(false)
+  })
+
   it('creates, opens and refreshes an isolated project workspace from Home', async () => {
     const indexedDB = new IDBFactory()
     const { wrapper, router, persistence } = await mountAt('/', indexedDB)
     await wrapper.get('a[aria-labelledby="new-project-title"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('h1').text()).toBe('Projects')
-    await vi.waitFor(() => { expect(wrapper.find('button[aria-labelledby="new-project-title"]').exists()).toBe(true) })
-    await wrapper.get('button[aria-labelledby="new-project-title"]').trigger('click')
+    expect(wrapper.get('h1').text()).toBe('Your next build starts here.')
+    await vi.waitFor(() => { expect(wrapper.find('#project-name').exists()).toBe(true) })
     await wrapper.get('#project-name').setValue('Workshop cabinet')
     await wrapper.get('form').trigger('submit')
     await vi.waitFor(() => { expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(true) })

@@ -1,6 +1,16 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import ProjectCreationDialog from '../../features/projects/ProjectCreationDialog.vue'
 import ProjectStartTiles from '../../features/projects/ProjectStartTiles.vue'
+const route = useRoute()
+const router = useRouter()
+const creating = computed(() => route.query.create === '1')
+async function closeCreation(): Promise<void> {
+  const query = { ...route.query }
+  delete query.create
+  await router.replace({ name: 'home', query, hash: route.hash })
+}
 </script>
 
 <template>
@@ -106,6 +116,11 @@ import ProjectStartTiles from '../../features/projects/ProjectStartTiles.vue'
         </div>
       </RouterLink>
     </div>
+
+    <ProjectCreationDialog
+      v-if="creating"
+      @close="closeCreation"
+    />
 
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-sm text-muted">
       <p>Made for the workshop. Stored on your device.</p>
