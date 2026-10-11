@@ -121,17 +121,25 @@ async function setup() {
   return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB, plans, current, router }
 }
 describe('Automatic project optimization', () => {
-  it('synchronizes sidebar and inspector copy selection without changing the plan', async () => {
+  it('synchronizes sidebar and inline copy selection without changing the plan', async () => {
     const { wrapper, start, current } = await setup()
     const worker = await start(); worker.complete(); await flushPromises()
     await vi.waitFor(() => { expect(wrapper.get('[data-export-action]').attributes('disabled')).toBeUndefined() })
     const before = await current.load()
     await wrapper.get('[data-copy-key]').trigger('click')
-    expect(wrapper.get('[aria-label="Part inspection"] dl').text()).toContain('Side panel / 1')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Side panel / 1')
     expect(wrapper.get('[data-copy-key]').attributes('aria-pressed')).toBe('true')
     const second = wrapper.get('#cutting-viewer-part option:nth-child(3)').attributes('value')
     await wrapper.get('#cutting-viewer-part').setValue(second)
     expect(wrapper.findAll('[data-copy-key]')[1]?.attributes('aria-pressed')).toBe('true')
+    const toggle = wrapper.findAll('button').find(control => control.text() === 'Hide placed parts')
+    if (!toggle) throw new Error('Missing panel disclosure')
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.get('[data-copy-key]').isVisible()).toBe(false)
+    await toggle.trigger('click')
+    expect(wrapper.get('[data-copy-key]').isVisible()).toBe(true)
+    expect(wrapper.find('[aria-label="Part inspection"]').exists()).toBe(false)
     expect(await current.load()).toEqual(before)
   })
   it('does not expose the previous result while a replacement is pending or fails', async () => {
@@ -229,7 +237,6 @@ describe('Automatic project optimization', () => {
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]).toMatchObject({ edited: false, materialName: validMaterialInput.name })
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(0)
     await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
-    await click('Enter Edit Mode')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click('Swap selected copies')
     expect(wrapper.text()).toContain('Swap accepted and independently validated')
@@ -287,7 +294,7 @@ describe('Automatic project optimization', () => {
     const zoom = wrapper.findAll('button').find(button => button.text() === 'Zoom in')
     if (zoom === undefined) throw new Error('Missing zoom control')
     await zoom.trigger('click')
-    expect(wrapper.get('aside dl').text()).toContain('Side panel / 1')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Side panel / 1')
     expect(worker.request.input).toEqual(inputSnapshot)
     expect(await persistence.stockItems.list()).toEqual(stock)
     expect(await service.projects.get(project.id)).toEqual(savedProject)
@@ -307,7 +314,7 @@ describe('Automatic project optimization', () => {
     expect(wrapper.text()).toContain('No matching material and exact thickness')
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(2)
     expect(wrapper.findAll('[data-panel-index]')).toHaveLength(1)
-    expect(wrapper.get('[aria-label="Panels used"]').text()).toContain(product.name)
+    expect(wrapper.get('[data-panel-index] [title]').attributes('title')).toBe(product.name)
   })
   it('includes incompatible project parts as unplaced instead of silently filtering them', async () => {
     const { wrapper, service, project, part, start } = await setup()
@@ -597,7 +604,6 @@ describe('automatic workflow and per-panel integration', () => {
       await button.trigger('click')
     }
     await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
-    await click('Enter Edit Mode')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click('Swap selected copies')
     expect(activeCopy(wrapper)).toContain('Side panel / 2')
@@ -609,8 +615,8 @@ describe('automatic workflow and per-panel integration', () => {
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.unplaced).toMatchObject([{ firstCopyIndex: 2, count: 2, reason: { kind: 'allocatedElsewhere' } }])
     await wrapper.get('[data-panel-index="1"]').trigger('click')
     expect(activeCopy(wrapper)).toContain('Side panel / 3')
-    expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
-    expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
+    expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(true)
+    expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(true)
     expect(wrapper.findAll('[aria-label="Cutting plan canvas"]')).toHaveLength(1)
     await click('Continue to Export');
     await click('Export PDF'); await flushPromises()
@@ -655,7 +661,6 @@ describe('automatic current result in the optimization workspace', () => {
   }
   async function editSwap(wrapper: VueWrapper): Promise<void> {
     await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
-    await click(wrapper, 'Enter Edit Mode')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click(wrapper, 'Swap selected copies')
   }
@@ -693,7 +698,6 @@ describe('automatic current result in the optimization workspace', () => {
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(1)
     await wrapper.get('[data-panel-index="1"]').trigger('click')
     expect(activeCopy(wrapper)).toContain('Side panel / 4')
-    await click(wrapper, 'Enter Edit Mode')
     expect(wrapper.findAll('button').some(button => button.text() === 'Reset to Saved Plan')).toBe(true)
     expect(await persistence.stockItems.list()).toEqual(stock)
     const list = await persistence.savedPlanSummaries.listForProject(project.id)

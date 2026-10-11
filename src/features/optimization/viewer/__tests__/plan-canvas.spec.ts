@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCuttingPlanScene } from '../../../../application/optimization/cutting-plan-scene'
 import { viewerPanel, viewerPart, viewerPlan, viewerSettings } from '../../../../domain/cutting-tree/__tests__/viewer-fixtures'
 import { createPlanCanvas, type PlanPalette } from '../plan-canvas'
@@ -18,6 +18,7 @@ const fake = vi.hoisted(() => {
     fill(value: string): void { this.attrs.fill = value }
     stroke(value: string): void { this.attrs.stroke = value }
     strokeWidth(value: number): void { this.attrs.strokeWidth = value }
+    opacity(value: number): void { this.attrs.opacity = value }
     pointerLength(value: number): void { this.attrs.pointerLength = value }
     pointerWidth(value: number): void { this.attrs.pointerWidth = value }
     position(value: { x: number; y: number }): void { this.setAttrs(value) }
@@ -40,13 +41,14 @@ const fake = vi.hoisted(() => {
 })
 vi.mock('konva', () => ({ default: { Stage: fake.Stage, Layer: fake.Layer, Rect: fake.Rect, Text: fake.Text, Arrow: fake.Arrow } }))
 beforeEach(() => { fake.nodes.length = 0 })
+afterEach(() => { vi.unstubAllGlobals() })
 const palette: PlanPalette = { surface: 'surface', margin: 'margin', ink: 'ink', muted: 'muted', part: 'part', partBorder: 'part-border', selected: 'selected', kerf: 'kerf' }
-function setup() {
+function setup(textureUrl?: string) {
   const result = createCuttingPlanScene(viewerPlan, { panel: viewerPanel, parts: [viewerPart], settings: viewerSettings })
   if (result.status !== 'valid') throw new Error('Invalid fixture')
   const selected = vi.fn<(key: string) => void>()
   const panned = vi.fn()
-  const canvas = createPlanCanvas(document.createElement('div'), result.scene, { width: 640, height: 400 }, palette, selected, panned)
+  const canvas = createPlanCanvas(document.createElement('div'), result.scene, { width: 640, height: 400 }, palette, selected, panned, textureUrl)
   const part = fake.nodes.find(node => node.kind === 'Rect' && node.attrs.draggable === false)
   const stage = fake.nodes.find(node => node.kind === 'Stage')
   const layer = fake.nodes.find(node => node.kind === 'Layer')
@@ -54,6 +56,33 @@ function setup() {
   return { canvas, scene: result.scene, selected, panned, part, stage, layer }
 }
 describe('Konva read-only canvas adapter', () => {
+  it('loads only the provided local texture without changing geometry and cleans up late callbacks', () => {
+    const image = { naturalWidth: 768, naturalHeight: 512, src: '', onload: null as (() => void) | null, onerror: null as (() => void) | null }
+    vi.stubGlobal('Image', function ImageStub() { return image })
+    const { canvas, part, scene, layer } = setup('/opticutlist/materials/previews/chene.webp')
+    expect(image.src).toBe('/opticutlist/materials/previews/chene.webp')
+    const before = structuredClone(scene)
+    image.onload?.()
+    expect(part.attrs).toMatchObject({ fillPatternImage: image, fillPriority: 'pattern', x: 5, y: 5, width: 30, height: 50, draggable: false })
+    expect(part.attrs.fillPatternScale).toEqual({ x: 100 / 768, y: 100 / 768 })
+    const lateLoad = image.onload
+    canvas.destroy()
+    expect(image.onload).toBeNull()
+    expect(image.onerror).toBeNull()
+    const draws = layer.draws
+    lateLoad?.()
+    expect(layer.draws).toBe(draws)
+    expect(scene).toEqual(before)
+  })
+  it('retains semantic fills when a texture fails', () => {
+    const image = { src: '', onload: null as (() => void) | null, onerror: null as (() => void) | null }
+    vi.stubGlobal('Image', function ImageStub() { return image })
+    const { canvas, part } = setup('/opticutlist/materials/previews/chene.webp')
+    image.onerror?.()
+    expect(part.attrs.fill).toBe('part')
+    expect(part.attrs.fillPatternImage).toBeUndefined()
+    canvas.destroy()
+  })
   it('draws correct panel, usable area, waste, kerf and rotated part rectangles', () => {
     const { canvas, part, stage } = setup()
     expect(stage.attrs.draggable).toBe(true)

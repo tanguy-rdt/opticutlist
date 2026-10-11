@@ -626,7 +626,6 @@ describe('saved plan refresh and navigation', () => {
       return button
     }
     await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
-    await control('Enter Edit Mode').trigger('click')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await control('Swap selected copies').trigger('click')
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -749,7 +748,6 @@ it('navigates the current edited result to Export and blocks stale documents aft
   workers[0]?.onmessage?.(new MessageEvent('message', { data: handleOptimizationRequest(request) }))
   await vi.waitFor(() => { expect(wrapper.get('[data-export-action]').attributes('disabled')).toBeUndefined() })
   await wrapper.get('[data-copy-key]').trigger('click')
-  await wrapper.findAll('button').find(button => button.text() === 'Enter Edit Mode')?.trigger('click')
   await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
   await wrapper.findAll('button').find(button => button.text() === 'Swap selected copies')?.trigger('click')
   await vi.waitFor(() => { expect(wrapper.get('[data-export-action]').attributes('disabled')).toBeUndefined() })

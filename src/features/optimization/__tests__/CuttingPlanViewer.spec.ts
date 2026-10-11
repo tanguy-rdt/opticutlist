@@ -23,7 +23,7 @@ function button(wrapper: VueWrapper, label: string) {
   if (control === undefined) throw new Error(`Missing ${label}`)
   return control
 }
-describe('Read-only cutting plan viewer', () => {
+describe('Cutting layout workspace', () => {
   it('synchronizes external sidebar selection with the canvas and reports canvas selection', async () => {
     const wrapper = setup()
     const call = vi.mocked(createPlanCanvas).mock.calls[0]
@@ -31,11 +31,20 @@ describe('Read-only cutting plan viewer', () => {
     if (!call || !part) throw new Error('Missing rendered part')
     await wrapper.setProps({ selectedCopyKey: part.key })
     expect(canvas.setSelection).toHaveBeenLastCalledWith(part.key)
-    expect(wrapper.get('aside dl').text()).toContain('Shelf / 1')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Shelf / 1')
     call[4]('')
     await flushPromises()
     expect(wrapper.emitted('select-copy')?.at(-1)).toEqual([''])
-    expect(wrapper.find('aside dl').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Selected part information"] dl').exists()).toBe(false)
+  })
+  it('uses the associated local preview and keeps all tools above a full-width canvas', async () => {
+    const wrapper = setup()
+    await wrapper.setProps({ presetId: 'chene' })
+    expect(vi.mocked(createPlanCanvas).mock.calls.at(-1)?.[6]).toBe(`${import.meta.env.BASE_URL}materials/previews/chene.webp`)
+    expect(wrapper.find('aside').exists()).toBe(false)
+    expect(wrapper.find('.graph-paper').exists()).toBe(true)
+    expect(wrapper.findAll('button').some(control => control.text().includes('Edit Mode'))).toBe(false)
+    expect(wrapper.get('.canvas-toolbar').element.compareDocumentPosition(wrapper.get('figure').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
   it('creates a validated scene and a readable summary alongside the canvas', async () => {
     const wrapper = setup()
@@ -54,11 +63,11 @@ describe('Read-only cutting plan viewer', () => {
     if (selected === undefined) throw new Error('Missing part')
     call[4](selected.key)
     await flushPromises()
-    expect(wrapper.get('aside dl').text()).toContain('Shelf / 1')
-    expect(wrapper.get('aside dl').text()).toContain('50 × 30 × 18 mm')
-    expect(wrapper.get('aside dl').text()).toContain('30 × 50 × 18 mm')
-    expect(wrapper.get('aside dl').text()).toContain('Rotated 90°')
-    expect(wrapper.get('aside dl').text()).toContain('Grain in panel axes width')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Shelf / 1')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('50 × 30 × 18 mm')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('30 × 50 × 18 mm')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Rotated 90°')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('width')
     expect(canvas.setSelection).toHaveBeenCalledWith(selected.key)
   })
   it('provides keyboard selection, zoom, pan, fit and reset without changing plans', async () => {
@@ -68,7 +77,7 @@ describe('Read-only cutting plan viewer', () => {
     const wrapper = setup(plan)
     const key = wrapper.get('select option:nth-child(2)').attributes('value')
     await wrapper.get('select').setValue(key)
-    expect(wrapper.find('aside dl').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Selected part information"] dl').exists()).toBe(true)
     await button(wrapper, 'Zoom in').trigger('click')
     expect(wrapper.get('output').text()).toBe('125% of fit')
     await button(wrapper, 'Zoom out').trigger('click')
@@ -78,9 +87,9 @@ describe('Read-only cutting plan viewer', () => {
     expect(wrapper.get('output').text()).toBe('125% of fit')
     await button(wrapper, 'Fit to view').trigger('click')
     expect(wrapper.get('output').text()).toBe('100% of fit')
-    expect(wrapper.find('aside dl').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Selected part information"] dl').exists()).toBe(true)
     await button(wrapper, 'Reset view').trigger('click')
-    expect(wrapper.find('aside dl').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Selected part information"] dl').exists()).toBe(false)
     expect(plan).toEqual(original)
   })
   it('tracks drag panning and permits keyboard reset without re-creating a stage', async () => {
@@ -122,7 +131,6 @@ describe('Read-only cutting plan viewer', () => {
     expect(canvas.destroy).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('The graphical viewer is unavailable')
     expect(wrapper.get('[aria-label="Cutting layout view controls"]').findAll('button').every(item => item.attributes('disabled') !== undefined)).toBe(true)
-    expect(wrapper.findAll('button').find(item => item.text() === 'Enter Edit Mode')?.attributes('disabled')).toBeUndefined()
   })
   it('updates theme colors without rebuilding and disconnects observers and media listeners on unmount', async () => {
     const disconnect = vi.fn()
