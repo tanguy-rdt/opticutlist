@@ -119,6 +119,9 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
         const project = await repositories.projects.get(id)
         if (!project.ok) return project
         if (project.value.partIds.length > 0) return conflict('Remove the project’s parts before deleting it.')
+        const plans = await repositories.savedPlanSummaries.listForProject(id)
+        if (!plans.ok) return plans
+        if (plans.value.length > 0) return conflict('Delete the project’s saved plans before deleting it.')
         return repositories.projects.delete(id)
       }),
     },

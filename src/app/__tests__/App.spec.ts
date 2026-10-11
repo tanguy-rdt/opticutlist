@@ -1,3 +1,9 @@
+import { optimizeProject } from '../../domain/optimizer/optimize-project'
+import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
+import { partSchema } from '../../domain/model/part'
+import { supplierProductSchema } from '../../domain/model/supplier-product'
+import { createSavedPlanService } from '../../application/plans/saved-plan-service'
+import { savedPlanServiceKey } from '../../features/optimization/saved-plan-service'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { createMemoryHistory } from 'vue-router'
@@ -18,11 +24,14 @@ import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../featu
 import { createCatalogRepositories } from '../../application/catalog/catalog-repositories'
 import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput } from '../../domain/model/__tests__/fixtures'
 
+vi.mock('../../features/optimization/viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
+
 const wrappers: VueWrapper[] = []
 const connections: ReturnType<typeof createLocalPersistence>[] = []
 afterEach(() => {
   for (const wrapper of wrappers) wrapper.unmount()
   for (const persistence of connections) persistence.close()
+  vi.restoreAllMocks()
   wrappers.length = 0
   connections.length = 0
   document.documentElement.removeAttribute('data-theme')
@@ -49,6 +58,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
       plugins: [createAppPinia(), router],
       provide: {
         [optimizationServiceFactoryKey]: () => createOptimizationService(createWorker),
+        [savedPlanServiceKey]: createSavedPlanService(persistence),
         [materialRepositoryKey]: catalog.materials,
         [projectServiceKey]: service,
         [supplierRepositoryKey]: catalog.suppliers,
@@ -296,5 +306,48 @@ describe('Home and application navigation', () => {
   it('renders the not-found view for unknown routes', async () => {
     const { wrapper } = await mountAt('/does-not-exist')
     expect(wrapper.get('h1').text()).toBe('Page not found')
+  })
+})
+
+describe('saved plan refresh and navigation', () => {
+  it('reopens a historical plan after application remount and guards unsaved edits when leaving its project', async () => {
+    const indexedDB = new IDBFactory()
+    const initial = await mountAt('/', indexedDB)
+    const project = cuttingProjectSchema.parse({ id: 'saved-workspace', name: 'Saved workspace', partIds: [], materialIds: [], supplierProductIds: [] })
+    await initial.service.projects.create(project)
+    const part = partSchema.parse(validPartInput)
+    const product = supplierProductSchema.parse(validSupplierProductInput)
+    const settings = { kerfMm: 3, edgeMarginMm: 0 }
+    const optimized = optimizeProject({ parts: [part], panels: [{ product, quantity: 1 }], settings })
+    if (!optimized.ok) throw new Error('Fixture')
+    const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = product
+    const saved = await createSavedPlanService(initial.persistence).forProject(project.id).save({ id: 'historical-plan', projectId: project.id, name: 'Historical cuts', createdAt: '2026-10-11T12:00:00.000Z' }, { plan: optimized.plan, parts: [part], settings, sources: [{ product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: 1, materialName: validMaterialInput.name, supplierName: validSupplierInput.name }], editedPanelIndices: [] })
+    expect(saved.ok).toBe(true)
+    initial.wrapper.unmount(); initial.persistence.close()
+    const { wrapper, router, persistence } = await mountAt('/projects/saved-workspace/optimization', indexedDB)
+    await vi.waitFor(() => { expect(wrapper.find('[aria-label="Open plan Historical cuts"]').exists()).toBe(true); expect(wrapper.get('[aria-label="Open plan Historical cuts"]').attributes('disabled')).toBeUndefined() })
+    expect(wrapper.text()).toContain('No parts in this project')
+    await wrapper.get('[aria-label="Open plan Historical cuts"]').trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
+    expect(wrapper.text()).toContain('Saved plan: Historical cuts')
+    expect(wrapper.get('tbody').text()).toContain('Side panel')
+    const control = (text: string) => {
+      const button = wrapper.findAll('button').find(button => button.text() === text)
+      if (!button) throw new Error(`Missing ${text}`)
+      return button
+    }
+    await wrapper.get('#cutting-viewer-part').setValue(wrapper.get('#cutting-viewer-part option:nth-child(2)').attributes('value'))
+    await control('Enter Edit Mode').trigger('click')
+    await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
+    await control('Swap selected copies').trigger('click')
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await router.push('/')
+    expect(router.currentRoute.value.fullPath).toBe('/projects/saved-workspace/optimization')
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Discard unsaved manual'))
+    confirm.mockReturnValue(true)
+    await router.push('/')
+    expect(router.currentRoute.value.fullPath).toBe('/')
+    const stored = await createSavedPlanService(persistence).forProject(project.id).list()
+    expect(stored.ok && stored.value.length).toBe(1)
   })
 })

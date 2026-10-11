@@ -5,13 +5,13 @@ import type { CuttingTreeEdit } from '../../domain/cutting-tree/edit-cutting-tre
 import { createCuttingPlanScene } from '../../application/optimization/cutting-plan-scene'
 import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
-import type { SupplierProduct } from '../../domain/model/supplier-product'
+import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import FormField from '../../shared/ui/FormField.vue'
 import { createPlanCanvas, type PlanCanvas, type PlanPalette } from './viewer/plan-canvas'
 import { fitViewport, panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
 
-const props = defineProps<{ plan: PanelCuttingPlan | null; panel: SupplierProduct; parts: readonly Part[]; settings: CuttingSettings }>()
+const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; confirmReset?: (() => boolean) | undefined }>()
 const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean] }>()
 const session = shallowRef<PlanEditingSession | null>(null)
 const editMode = ref(false)
@@ -59,7 +59,9 @@ function applyEdit(edit: CuttingTreeEdit | null): void {
 }
 function undo(): void { if (editMode.value && session.value !== null) announceSession(undoPlanEdit(session.value), 'Edit undone.') }
 function redo(): void { if (editMode.value && session.value !== null) announceSession(redoPlanEdit(session.value), 'Edit restored.') }
-function resetOptimized(): void { if (editMode.value && session.value !== null) announceSession(resetPlanEdits(session.value), 'Optimized plan restored. Edit history cleared.') }
+function resetOptimized(): void {
+  if (session.value !== null && session.value.cursor > 0 && props.confirmReset?.() === false) return
+  if (editMode.value && session.value !== null) announceSession(resetPlanEdits(session.value), props.savedBaseline ? 'Saved plan restored. Edit history cleared.' : 'Optimized plan restored. Edit history cleared.') }
 const canvasError = ref('')
 const canvasReady = ref(false)
 const view = ref<Viewport>({ x: 0, y: 0, scale: 1 })
@@ -423,7 +425,7 @@ onBeforeUnmount(() => {
                 :disabled="!session || session.history.length === 1"
                 @click="resetOptimized"
               >
-                Reset to Optimized Plan
+                {{ savedBaseline ? 'Reset to Saved Plan' : 'Reset to Optimized Plan' }}
               </button>
             </div>
             <p

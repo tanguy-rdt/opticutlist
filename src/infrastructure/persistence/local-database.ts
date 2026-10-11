@@ -1,3 +1,5 @@
+import { savedPlanContentsSchema, savedPlanSummarySchema } from '../../domain/model/saved-cutting-plan'
+import { cuttingProjectIdSchema } from '../../domain/model/ids'
 import Dexie, { type DexieOptions, type Table } from 'dexie'
 import type { z } from 'zod'
 
@@ -10,7 +12,7 @@ import { supplierSchema } from '../../domain/model/supplier'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 
 export const DATABASE_NAME = 'opticutlist'
-export const DATABASE_VERSION = 2
+export const DATABASE_VERSION = 3
 export const DATABASE_V1_STORES = {
   materials: 'id',
   parts: 'id',
@@ -18,7 +20,8 @@ export const DATABASE_V1_STORES = {
   supplierProducts: 'id',
   stockItems: 'id',
 } as const
-export const DATABASE_STORES = { ...DATABASE_V1_STORES, projects: 'id' } as const
+export const DATABASE_V2_STORES = { ...DATABASE_V1_STORES, projects: 'id' } as const
+export const DATABASE_STORES = { ...DATABASE_V2_STORES, savedPlanSummaries: 'id, projectId', savedPlanContents: 'id' } as const
 
 class PersistenceFailure extends Error {
   constructor(readonly detail: PersistenceError) {
@@ -106,6 +109,8 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
   db.version(1).stores(DATABASE_V1_STORES)
   // Additive upgrade: existing records are untouched. Legacy parts remain unassigned
   // until the user explicitly adopts them through the project application service.
+  db.version(2).stores(DATABASE_V2_STORES)
+  // Add plan summaries and payloads without rewriting any existing records.
   db.version(DATABASE_VERSION).stores(DATABASE_STORES)
   db.on('ready', () => {
     // Dexie versions are multiplied by ten in the native IndexedDB version.
@@ -123,7 +128,19 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
   }
 
   function repositories(tableFor: (name: string) => Table<unknown, string>, run: Execute): Repositories {
+    const summaries = tableFor('savedPlanSummaries')
     return {
+      savedPlanSummaries: {
+        ...createRepository(summaries, savedPlanSummarySchema, savedPlanSummarySchema.shape.id, run),
+        listForProject(projectId) {
+          return run('r', summaries, async () => {
+            parse(cuttingProjectIdSchema, projectId)
+            const records = await summaries.where('projectId').equals(projectId).toArray()
+            return records.map(record => parse(savedPlanSummarySchema, record)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+          })
+        },
+      },
+      savedPlanContents: createRepository(tableFor('savedPlanContents'), savedPlanContentsSchema, savedPlanContentsSchema.shape.id, run),
       projects: createRepository(tableFor('projects'), cuttingProjectSchema, cuttingProjectSchema.shape.id, run),
       materials: createRepository(tableFor('materials'), materialSchema, materialSchema.shape.id, run),
       parts: createRepository(tableFor('parts'), partSchema, partSchema.shape.id, run),

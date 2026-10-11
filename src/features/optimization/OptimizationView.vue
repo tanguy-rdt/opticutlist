@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { isCompatible } from '../../domain/compatibility'
 import { panelQuantitySchema } from '../../domain/model/cutting-project'
 import { cuttingSettingsSchema, type CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
-import type { SupplierProduct } from '../../domain/model/supplier-product'
+import type { PanelSnapshot, SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
+import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
+import { savedCuttingPlanIdSchema } from '../../domain/model/ids'
+import type { SavePlanInput } from '../../application/plans/saved-plan-service'
+import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
+import SavedPlans from './SavedPlans.vue'
+import { useSavedPlanService } from './saved-plan-service'
 import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import FormField from '../../shared/ui/FormField.vue'
 import PanelPlanView from './PanelPlanView.vue'
@@ -20,14 +26,26 @@ const projects = useProjectService()
 const catalogs = useCatalogRepositories()
 const materials = useMaterialRepository()
 const optimizer = useOptimizationService()
+const savedPlans = useSavedPlanService()?.forProject(projectId)
+const savedList = ref<InstanceType<typeof SavedPlans> | null>(null)
+const planName = ref('Cutting plan')
+const planBusy = ref(false)
+const planError = ref('')
+const planNotice = ref('')
+const savedSummary = shallowRef<SavedPlanSummary | null>(null)
+const savedFingerprint = ref<string | null>(null)
+const editedPlans = shallowRef<ReadonlyMap<number, PanelCuttingPlan>>(new Map())
 type State = 'loading' | 'ready' | 'running' | 'success' | 'failure' | 'cancelled'
-interface PanelChoice { product: SupplierProduct; materialName: string; label: string; problem: string; broken: boolean }
+interface PanelChoice { product: PanelSnapshot; materialName: string; label: string; problem: string; broken: boolean; supplierName: string; availability: 'available' | 'unavailable' | 'unknown' }
 interface RunResult {
   requestId: number
   selection: Extract<OptimizeProjectResult, { ok: true }>
   choices: readonly PanelChoice[]
   parts: readonly Part[]
   settings: CuttingSettings
+  sources: SavePlanInput['sources']
+  savedEdited: readonly number[]
+  savedBaseline: boolean
 }
 const state = ref<State>('loading')
 const parts = shallowRef<readonly Part[]>([])
@@ -45,13 +63,26 @@ const panelIndex = ref(0)
 const activePanel = computed(() => result.value?.selection.plan.panels[panelIndex.value])
 const activeChoice = computed(() => result.value?.choices.find(choice => choice.product.id === activePanel.value?.supplierProductId))
 let generation = 0
-const busy = computed(() => state.value === 'running' || state.value === 'loading')
+const busy = computed(() => planBusy.value || state.value === 'running' || state.value === 'loading')
+const fingerprint = computed(() => result.value === null ? '' : JSON.stringify(result.value.selection.plan.panels.map((panel, index) => (editedPlans.value.get(index) ?? panel.plan).tree)))
+const unsavedManualChanges = computed(() => result.value !== null && (savedFingerprint.value === null ? editedPlans.value.size > 0 : fingerprint.value !== savedFingerprint.value))
+function canDiscard(): boolean { return !unsavedManualChanges.value || window.confirm('Discard unsaved manual cutting-plan changes? Save the plan first to keep them.') }
+function planChanged(index: number, plan: PanelCuttingPlan, modified: boolean): void {
+  const next = new Map(editedPlans.value)
+  if (modified) next.set(index, plan)
+  else next.delete(index)
+  editedPlans.value = next
+}
 const totalCopies = computed(() => parts.value.reduce((sum, part) => sum + part.quantity, 0))
 
 function invalidate(): void {
   generation += 1
   optimizer.cancel()
   result.value = null
+  editedPlans.value = new Map()
+  savedSummary.value = null
+  savedFingerprint.value = null
+  planError.value = ''; planNotice.value = ''
   error.value = ''
 }
 function inputChanged(): void {
@@ -61,8 +92,19 @@ function inputChanged(): void {
   quantityErrors.value = {}
   state.value = 'ready'
 }
-watch([kerf, margin], inputChanged, { flush: 'sync' })
-watch(quantities, inputChanged, { deep: true, flush: 'sync' })
+let restoringDraft = false
+let previousQuantities: Record<string, number | string> = {}
+watch([kerf, margin], (_next, previous) => {
+  if (restoringDraft) return
+  if (!canDiscard()) { restoringDraft = true; [kerf.value, margin.value] = previous; restoringDraft = false; return }
+  inputChanged()
+}, { flush: 'sync' })
+watch(quantities, () => {
+  if (restoringDraft) return
+  if (!canDiscard()) { restoringDraft = true; quantities.value = { ...previousQuantities }; restoringDraft = false; return }
+  previousQuantities = { ...quantities.value }
+  inputChanged()
+}, { deep: true, flush: 'sync' })
 
 async function readInputs() {
   const [project, scopedParts, products, supplierRecords, materialRecords] = await Promise.all([
@@ -82,7 +124,7 @@ async function readInputs() {
     const problem = broken ? 'Missing catalog reference'
       : product.availability === 'unavailable' ? 'Unavailable'
         : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : ''
-    return { product, materialName: material?.name ?? product.materialId, label: `${supplier?.name ?? 'Missing supplier'} / ${material?.name ?? 'Missing material'} / ${product.name}`, problem, broken }
+    return { product, materialName: material?.name ?? product.materialId, label: `${supplier?.name ?? 'Missing supplier'} / ${material?.name ?? 'Missing material'} / ${product.name}`, problem, broken, supplierName: supplier?.name ?? 'Missing supplier', availability: product.availability }
   })
   return {
     project: project.value, parts: scopedParts.value, panels: choices,
@@ -95,6 +137,7 @@ function applyInputs(inputs: Awaited<ReturnType<typeof readInputs>>): void {
   missingIds.value = inputs.missingIds
 }
 async function load(): Promise<void> {
+  if (!canDiscard()) return
   invalidate()
   const current = generation
   state.value = 'loading'
@@ -113,7 +156,7 @@ async function load(): Promise<void> {
   }
 }
 async function start(): Promise<void> {
-  if (busy.value || inputError.value) return
+  if (busy.value || inputError.value || !canDiscard()) return
   invalidate()
   const current = generation
   const settings = cuttingSettingsSchema.safeParse({ kerfMm: kerf.value, edgeMarginMm: margin.value })
@@ -160,7 +203,11 @@ async function start(): Promise<void> {
       state.value = 'failure'
     } else {
       panelIndex.value = 0
-      result.value = { requestId: outcome.requestId, selection: outcome.selection, choices: inputs.panels, parts: inputs.parts, settings: settings.data }
+      result.value = { requestId: outcome.requestId, selection: outcome.selection, choices: inputs.panels, parts: inputs.parts, settings: settings.data, sources: available.filter(source => outcome.selection.ok && outcome.selection.plan.panels.some(panel => panel.supplierProductId === source.product.id)).map(source => {
+        const choice = inputs.panels.find(choice => choice.product.id === source.product.id)
+        const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = source.product
+        return { product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: source.quantity, materialName: choice?.materialName ?? materialId, supplierName: choice?.supplierName ?? 'Missing supplier' }
+      }), savedEdited: [], savedBaseline: false }
       state.value = 'success'
     }
   } catch (cause) {
@@ -172,8 +219,57 @@ async function start(): Promise<void> {
 function cancel(): void { invalidate(); state.value = 'cancelled' }
 function partName(id: string): string { return result.value?.parts.find(part => part.id === id)?.name ?? id }
 const reasons = { noCompatiblePanel: 'No selected panel matches the material and exact thickness', constraintsPreventPlacement: 'Dimensions, grain, rotation, kerf or margins prevent placement', panelLimitReached: 'Available panel quantity or remaining usable space is insufficient' }
-onMounted(load)
-onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
+async function savePlan(): Promise<void> {
+  const currentResult = result.value
+  if (savedPlans === undefined || currentResult === null || planBusy.value) return
+  const current = generation
+  const currentFingerprint = fingerprint.value
+  const id = savedCuttingPlanIdSchema.parse(crypto.randomUUID())
+  const plan = { ...currentResult.selection.plan, panels: currentResult.selection.plan.panels.map((panel, index) => ({ ...panel, plan: editedPlans.value.get(index) ?? panel.plan })) }
+  planBusy.value = true; planError.value = ''; planNotice.value = ''
+  try {
+    const saved = await savedPlans.save({ id, projectId, name: planName.value, createdAt: new Date().toISOString() }, { plan, parts: [...currentResult.parts], settings: currentResult.settings, sources: currentResult.sources, editedPanelIndices: currentResult.selection.plan.panels.flatMap((_, index) => editedPlans.value.has(index) || currentResult.savedEdited.includes(index) ? [index] : []) })
+    if (current !== generation) return
+    if (!saved.ok) { planError.value = persistenceErrorMessage(saved.error, 'Saved plan'); return }
+    savedSummary.value = saved.value.summary
+    savedFingerprint.value = currentFingerprint
+    planNotice.value = 'Plan saved. All panel layouts were validated and saved together.'
+    await savedList.value?.refresh()
+  } catch (cause) { if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not save the plan.' }
+  finally { planBusy.value = false }
+}
+async function openPlan(summary: SavedPlanSummary): Promise<void> {
+  if (savedPlans === undefined || planBusy.value || !canDiscard()) return
+  // Keep the current result until a requested historical plan has passed validation.
+  const current = ++generation
+  const initialFingerprint = fingerprint.value
+  optimizer.cancel()
+  planBusy.value = true; planError.value = ''; planNotice.value = ''
+  try {
+    const opened = await savedPlans.get(summary.id)
+    if (current !== generation) return
+    if (!opened.ok) { planError.value = persistenceErrorMessage(opened.error, 'Saved plan'); return }
+    const { contents, plan } = opened.value
+    if (fingerprint.value !== initialFingerprint && !canDiscard()) return
+    editedPlans.value = new Map()
+    panelIndex.value = 0
+    result.value = { requestId: -current, selection: { ok: true, plan }, sources: contents.sources, parts: contents.parts, settings: contents.settings, savedBaseline: true, savedEdited: contents.panels.flatMap((panel, index) => panel.edited ? [index] : []), choices: contents.sources.map(source => ({ product: source.product, materialName: source.materialName, supplierName: source.supplierName, label: `${source.supplierName} / ${source.materialName} / ${source.product.name}`, problem: '', broken: false, availability: 'unknown' })) }
+    savedSummary.value = opened.value.summary
+    savedFingerprint.value = fingerprint.value
+    planName.value = `${opened.value.summary.name} copy`
+    state.value = 'success'
+  } catch (cause) { if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not open the plan.' }
+  finally { planBusy.value = false }
+}
+function renamed(summary: SavedPlanSummary): void { if (savedSummary.value?.id === summary.id) savedSummary.value = summary }
+function deleted(summary: SavedPlanSummary): void { if (savedSummary.value?.id === summary.id) { savedSummary.value = null; savedFingerprint.value = null } }
+function beforeUnload(event: BeforeUnloadEvent): void { if (unsavedManualChanges.value) event.preventDefault() }
+if (inject(matchedRouteKey, undefined) !== undefined) {
+  onBeforeRouteLeave(canDiscard)
+  onBeforeRouteUpdate(canDiscard)
+}
+onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
+onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload); generation += 1; optimizer.dispose() })
 </script>
 
 <template>
@@ -199,6 +295,36 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
         Refresh inputs
       </button>
     </div>
+    <SavedPlans
+      v-if="savedPlans"
+      ref="savedList"
+      :plans="savedPlans"
+      :disabled="busy"
+      @open="openPlan"
+      @renamed="renamed"
+      @deleted="deleted"
+    />
+    <p
+      v-if="planBusy"
+      role="status"
+      class="text-muted"
+    >
+      Saving or opening cutting plan…
+    </p>
+    <p
+      v-if="planError"
+      role="alert"
+      class="text-danger"
+    >
+      {{ planError }}
+    </p>
+    <p
+      v-if="planNotice"
+      role="status"
+      class="text-success"
+    >
+      {{ planNotice }}
+    </p>
     <p
       v-if="state === 'loading'"
       role="status"
@@ -279,7 +405,7 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
                 {{ choice.label }}
               </p>
               <p class="text-sm text-muted">
-                {{ choice.product.lengthMm }} × {{ choice.product.widthMm }} × {{ choice.product.thicknessMm }} mm · Grain: {{ choice.product.grainDirection }} · {{ choice.product.availability }}
+                {{ choice.product.lengthMm }} × {{ choice.product.widthMm }} × {{ choice.product.thicknessMm }} mm · Grain: {{ choice.product.grainDirection }} · {{ choice.availability }}
               </p>
               <p
                 v-if="choice.problem"
@@ -302,7 +428,7 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
                     min="0"
                     step="1"
                     class="field"
-                    :disabled="busy || choice.broken || choice.product.availability === 'unavailable'"
+                    :disabled="busy || choice.broken || choice.availability === 'unavailable'"
                   >
                 </template>
               </FormField>
@@ -386,100 +512,140 @@ onBeforeUnmount(() => { generation += 1; optimizer.dispose() })
       >
         {{ error }}
       </p>
-      <section
-        v-if="result"
-        class="panel space-y-4 p-6"
-        aria-labelledby="project-result-title"
+    </template>
+    <section
+      v-if="result"
+      class="panel space-y-4 p-6"
+      aria-labelledby="project-result-title"
+    >
+      <h2
+        id="project-result-title"
+        class="text-xl font-semibold"
       >
-        <h2
-          id="project-result-title"
-          class="text-xl font-semibold"
-        >
-          Validated project cutting plan
-        </h2>
-        <p role="status">
-          {{ result.selection.plan.metrics.placedCount }} copies placed · {{ result.selection.plan.metrics.unplacedCount }} copies unplaced{{ result.selection.plan.metrics.unplacedCount ? '. Additional panels or different inputs are needed.' : '.' }}
-        </p>
-        <dl class="grid gap-4 sm:grid-cols-3">
-          <div>
-            <dt class="text-sm text-muted">
-              Panels used
-            </dt><dd class="font-semibold">
-              {{ result.selection.plan.panels.length }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              Overall utilization
-            </dt><dd class="font-semibold">
-              {{ result.selection.plan.metrics.utilizationPercent.toFixed(2) }}%
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              Total waste area (including kerf and margins)
-            </dt><dd class="font-semibold">
-              {{ result.selection.plan.metrics.wasteAreaMm2.toLocaleString() }} mm²
-            </dd>
-          </div>
-        </dl>
-        <div
-          v-if="result.selection.plan.unplaced.length"
-          class="space-y-2"
-        >
-          <h3 class="font-semibold">
-            Unplaced parts
-          </h3>
-          <ul class="space-y-2">
-            <li
-              v-for="item in result.selection.plan.unplaced"
-              :key="`${item.partId}-${item.firstCopyIndex}`"
-            >
-              {{ partName(item.partId) }} · {{ item.count }} copies · {{ reasons[item.reason] }}
-            </li>
-          </ul>
-        </div>
+        Validated project cutting plan
+      </h2>
+      <p class="font-semibold">
+        {{ savedSummary && fingerprint === savedFingerprint ? `Saved plan: ${savedSummary.name}` : 'Unsaved result' }}
+      </p>
+      <p
+        v-if="savedSummary"
+        class="text-sm text-muted"
+      >
+        Historical panel and Part snapshots preserve this plan independently of current project and Catalogue changes. Saving changes creates a new plan; existing plans are never overwritten.
+      </p>
+      <div
+        v-if="savedPlans"
+        class="flex flex-wrap items-end gap-3"
+      >
         <FormField
-          v-if="result.selection.plan.panels.length"
-          id="optimization-layout"
-          label="Panel layout"
+          id="save-plan-name"
+          label="Plan name"
+          required
         >
           <template #default="{ controlAttrs }">
-            <select
+            <input
               v-bind="controlAttrs"
-              v-model.number="panelIndex"
+              v-model="planName"
               class="field"
+              :disabled="busy"
             >
-              <option
-                v-for="(allocation, index) in result.selection.plan.panels"
-                :key="index"
-                :value="index"
-              >
-                Panel {{ index + 1 }} · {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.label }} · Reference copy {{ allocation.panelCopyIndex + 1 }}
-              </option>
-            </select>
           </template>
         </FormField>
-        <p
-          v-else
-          class="text-muted"
+        <button
+          type="button"
+          class="button button-primary"
+          :disabled="busy"
+          @click="savePlan"
         >
-          No panels allocated: none can place a requested copy within the available quantities and constraints.
-        </p>
-      </section>
-      <KeepAlive
-        v-if="result && activePanel && activeChoice"
-        :key="result.requestId"
+          Save Plan
+        </button>
+      </div>
+      <p role="status">
+        {{ result.selection.plan.metrics.placedCount }} copies placed · {{ result.selection.plan.metrics.unplacedCount }} copies unplaced{{ result.selection.plan.metrics.unplacedCount ? '. Additional panels or different inputs are needed.' : '.' }}
+      </p>
+      <dl class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <dt class="text-sm text-muted">
+            Panels used
+          </dt><dd class="font-semibold">
+            {{ result.selection.plan.panels.length }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm text-muted">
+            Overall utilization
+          </dt><dd class="font-semibold">
+            {{ result.selection.plan.metrics.utilizationPercent.toFixed(2) }}%
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm text-muted">
+            Total waste area (including kerf and margins)
+          </dt><dd class="font-semibold">
+            {{ result.selection.plan.metrics.wasteAreaMm2.toLocaleString() }} mm²
+          </dd>
+        </div>
+      </dl>
+      <div
+        v-if="result.selection.plan.unplaced.length"
+        class="space-y-2"
       >
-        <PanelPlanView
-          :key="panelIndex"
-          :allocation="activePanel"
-          :panel="activeChoice.product"
-          :parts="result.parts"
-          :settings="result.settings"
-          :material-name="activeChoice.materialName"
-        />
-      </KeepAlive>
-    </template>
+        <h3 class="font-semibold">
+          Unplaced parts
+        </h3>
+        <ul class="space-y-2">
+          <li
+            v-for="item in result.selection.plan.unplaced"
+            :key="`${item.partId}-${item.firstCopyIndex}`"
+          >
+            {{ partName(item.partId) }} · {{ item.count }} copies · {{ reasons[item.reason] }}
+          </li>
+        </ul>
+      </div>
+      <FormField
+        v-if="result.selection.plan.panels.length"
+        id="optimization-layout"
+        label="Panel layout"
+      >
+        <template #default="{ controlAttrs }">
+          <select
+            v-bind="controlAttrs"
+            v-model.number="panelIndex"
+            class="field"
+          >
+            <option
+              v-for="(allocation, index) in result.selection.plan.panels"
+              :key="index"
+              :value="index"
+            >
+              Panel {{ index + 1 }} · {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.label }} · Reference copy {{ allocation.panelCopyIndex + 1 }}
+            </option>
+          </select>
+        </template>
+      </FormField>
+      <p
+        v-else
+        class="text-muted"
+      >
+        No panels allocated: none can place a requested copy within the available quantities and constraints.
+      </p>
+    </section>
+    <KeepAlive
+      v-if="result && activePanel && activeChoice"
+      :key="result.requestId"
+    >
+      <PanelPlanView
+        :key="panelIndex"
+        :allocation="activePanel"
+        :panel="activeChoice.product"
+        :parts="result.parts"
+        :settings="result.settings"
+        :material-name="activeChoice.materialName"
+        :saved-edited="result.savedEdited.includes(panelIndex)"
+        :saved-baseline="result.savedBaseline"
+        :confirm-reset="canDiscard"
+        @plan-change="(plan, modified) => planChanged(panelIndex, plan, modified)"
+      />
+    </KeepAlive>
   </section>
 </template>

@@ -2,6 +2,8 @@ import { validateCuttingTree } from '../cutting-tree/validate-cutting-tree'
 import type { CuttingTreeNode } from '../cutting-tree/cutting-tree'
 import { getOrientedDimensions } from '../geometry/part-orientation'
 import { tryToMicrometres } from '../geometry/units'
+import type { PanelSpec } from '../geometry/part-fit'
+import type { SupplierProduct } from '../model/supplier-product'
 import type { PartId } from '../model/ids'
 import { PLACEMENT_STRATEGIES, areaUm2, computeAreaMetrics, type PlacedPart } from './plan-with-strategy'
 import type { OptimizeProjectInput, ProjectCuttingPlan, ProjectPlanIssue } from './project-plan'
@@ -21,8 +23,10 @@ function samePlacement(a: PlacedPart, b: PlacedPart | undefined): boolean {
     (['lengthMm', 'widthMm'] as const).every(key => tryToMicrometres(a.dimensions[key], 1) === tryToMicrometres(b.dimensions[key], 1))
 }
 
+export type ProjectPlanContext = Omit<OptimizeProjectInput, 'panels'> & { readonly panels: readonly { readonly product: PanelSpec & Pick<SupplierProduct, 'id' | 'availability'>; readonly quantity: number }[] }
+
 /** Independent cross-panel accounting. Trees are the source of placements, never worker summaries. */
-export function validateProjectPlan(plan: ProjectCuttingPlan, input: OptimizeProjectInput): { valid: true } | { valid: false; issues: readonly ProjectPlanIssue[] } {
+export function validateProjectPlan(plan: ProjectCuttingPlan, input: ProjectPlanContext): { valid: true } | { valid: false; issues: readonly ProjectPlanIssue[] } {
   const issues: ProjectPlanIssue[] = []
   if (new Set(input.parts.map(part => part.id)).size !== input.parts.length || new Set(input.panels.map(source => source.product.id)).size !== input.panels.length) issues.push({ kind: 'invalidAccounting', message: 'Optimization input references must be unique' })
   const ranges = new Map<PartId, Range[]>(input.parts.map(part => [part.id, []]))

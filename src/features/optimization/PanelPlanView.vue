@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import type { Part } from '../../domain/model/part'
-import type { SupplierProduct } from '../../domain/model/supplier-product'
+import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
 import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { AllocatedPanel } from '../../domain/optimizer/project-plan'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import CuttingPlanViewer from './CuttingPlanViewer.vue'
 import PdfExportControls from './PdfExportControls.vue'
 
-const props = defineProps<{ allocation: AllocatedPanel; panel: SupplierProduct; parts: readonly Part[]; settings: CuttingSettings; materialName: string }>()
+const props = defineProps<{ allocation: AllocatedPanel; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; materialName: string; savedEdited?: boolean; savedBaseline?: boolean; confirmReset?: () => boolean }>()
+const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean] }>()
 const editedPlan = shallowRef<PanelCuttingPlan | null>(null)
 const displayedPlan = computed(() => editedPlan.value ?? props.allocation.plan)
-function planChanged(plan: PanelCuttingPlan, modified: boolean): void { editedPlan.value = modified ? plan : null }
+function planChanged(plan: PanelCuttingPlan, modified: boolean): void { editedPlan.value = modified ? plan : null; emit('plan-change', plan, modified) }
 function partName(id: string): string { return props.parts.find(part => part.id === id)?.name ?? id }
 </script>
 <template>
@@ -24,12 +25,14 @@ function partName(id: string): string { return props.parts.find(part => part.id 
       id="panel-result-title"
       class="text-xl font-semibold"
     >
-      {{ editedPlan ? 'Validated edited panel plan' : 'Validated panel plan' }}
+      {{ editedPlan || savedEdited ? 'Validated edited panel plan' : 'Validated panel plan' }}
     </h2>
     <p role="status">
       {{ displayedPlan.placements.length }} copies on this panel. Other copies are accounted for in the project summary.
     </p>
     <CuttingPlanViewer
+      :confirm-reset="confirmReset"
+      :saved-baseline="savedBaseline"
       :plan="allocation.plan"
       :panel="panel"
       :parts="parts"
@@ -42,7 +45,7 @@ function partName(id: string): string { return props.parts.find(part => part.id 
       :parts="parts"
       :settings="settings"
       :material-name="materialName"
-      :edited="editedPlan !== null"
+      :edited="editedPlan !== null || Boolean(savedEdited)"
     />
     <dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>

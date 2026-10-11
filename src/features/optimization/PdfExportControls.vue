@@ -3,12 +3,12 @@ import { onBeforeUnmount, onDeactivated, ref, toRaw, watch } from 'vue'
 import type { PdfOrientation } from '../../application/export/cutting-plan-pdf-service'
 import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
-import type { SupplierProduct } from '../../domain/model/supplier-product'
+import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import FormField from '../../shared/ui/FormField.vue'
 import { downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-service'
 
-const props = defineProps<{ plan: PanelCuttingPlan; panel: SupplierProduct; parts: readonly Part[]; settings: CuttingSettings; materialName: string; edited: boolean }>()
+const props = defineProps<{ plan: PanelCuttingPlan; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; materialName: string; edited: boolean }>()
 const service = useCuttingPlanPdfService()
 const orientation = ref<PdfOrientation>('landscape')
 const exporting = ref(false)

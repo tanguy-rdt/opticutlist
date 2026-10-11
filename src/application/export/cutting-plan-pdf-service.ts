@@ -1,13 +1,13 @@
 import { createCuttingPlanScene, type CuttingPlanScene } from '../optimization/cutting-plan-scene'
 import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
-import type { SupplierProduct } from '../../domain/model/supplier-product'
+import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
 import { computeAreaMetrics, type AreaMetrics, type PanelCuttingPlan, type UnplacedParts } from '../../domain/optimizer/plan-with-strategy'
 
 export type PdfOrientation = 'portrait' | 'landscape'
 export interface CuttingPlanPdfRequest {
   readonly plan: PanelCuttingPlan
-  readonly panel: SupplierProduct
+  readonly panel: PanelSnapshot
   readonly parts: readonly Part[]
   readonly settings: CuttingSettings
   readonly materialName: string

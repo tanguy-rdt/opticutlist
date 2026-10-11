@@ -1,3 +1,5 @@
+import { createSavedPlanService } from './application/plans/saved-plan-service'
+import { savedPlanServiceKey } from './features/optimization/saved-plan-service'
 import { createApp } from 'vue'
 import { createOptimizationService } from './application/optimization/optimization-service'
 import { optimizationServiceFactoryKey } from './features/optimization/optimization-service'
@@ -23,6 +25,7 @@ const catalog = createCatalogRepositories(persistence)
 app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
+app.provide(savedPlanServiceKey, createSavedPlanService(persistence))
 app.provide(projectServiceKey, createProjectService(persistence))
 app.provide(optimizationServiceFactoryKey, () => createOptimizationService(createOptimizationWorker))
 app.provide(cuttingPlanPdfServiceKey, createCuttingPlanPdfService({ generate: async document => {

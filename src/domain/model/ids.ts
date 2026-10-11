@@ -25,3 +25,6 @@ export type StockItemId = z.infer<typeof stockItemIdSchema>
 
 export const cuttingProjectIdSchema = stableIdSchema.brand<'CuttingProjectId'>()
 export type CuttingProjectId = z.infer<typeof cuttingProjectIdSchema>
+
+export const savedCuttingPlanIdSchema = stableIdSchema.brand<'SavedCuttingPlanId'>()
+export type SavedCuttingPlanId = z.infer<typeof savedCuttingPlanIdSchema>

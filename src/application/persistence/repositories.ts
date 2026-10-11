@@ -1,3 +1,5 @@
+import type { SavedPlanContents, SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
+import type { CuttingProjectId } from '../../domain/model/ids'
 import type { CuttingProject } from '../../domain/model/cutting-project'
 import type { Material } from '../../domain/model/material'
 import type { Part } from '../../domain/model/part'
@@ -25,7 +27,13 @@ export interface Repository<Entity extends { id: string }> {
   list(): Promise<PersistenceResult<readonly Entity[]>>
 }
 
+export interface SavedPlanSummaryRepository extends Repository<SavedPlanSummary> {
+  listForProject(projectId: CuttingProjectId): Promise<PersistenceResult<readonly SavedPlanSummary[]>>
+}
+
 export interface Repositories {
+  readonly savedPlanSummaries: SavedPlanSummaryRepository
+  readonly savedPlanContents: Repository<SavedPlanContents>
   readonly projects: Repository<CuttingProject>
   readonly materials: Repository<Material>
   readonly parts: Repository<Part>
