@@ -37,20 +37,41 @@ describe('Cutting layout workspace', () => {
     expect(wrapper.emitted('select-copy')?.at(-1)).toEqual([''])
     expect(wrapper.find('[aria-label="Selected part information"] dl').exists()).toBe(false)
   })
-  it('uses the associated local preview and keeps all tools above a full-width canvas', async () => {
+  it('keeps compact tools above a full-width solid-color canvas without material images', async () => {
     const wrapper = setup()
-    await wrapper.setProps({ presetId: 'chene' })
-    expect(vi.mocked(createPlanCanvas).mock.calls.at(-1)?.[6]).toBe(`${import.meta.env.BASE_URL}materials/previews/chene.webp`)
+    await flushPromises()
+    expect(vi.mocked(createPlanCanvas).mock.calls.at(-1)).toHaveLength(6)
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.get('.canvas-toolbar').find('[aria-label="Constrained plan editing"]').exists()).toBe(true)
     expect(wrapper.find('aside').exists()).toBe(false)
     expect(wrapper.find('.graph-paper').exists()).toBe(true)
     expect(wrapper.findAll('button').some(control => control.text().includes('Edit Mode'))).toBe(false)
     expect(wrapper.get('.canvas-toolbar').element.compareDocumentPosition(wrapper.get('figure').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
+  it('uses solid cutting tokens and updates them on theme changes without recreating the stage', async () => {
+    const style = document.createElement('div').style
+    const tokens = ['cutting-panel', 'cutting-part', 'cutting-waste', 'cutting-ink', 'cutting-line', 'cutting-kerf', 'cutting-selection']
+    for (const token of tokens) style.setProperty(`--${token}`, `light-${token}`)
+    const computedStyle = vi.spyOn(window, 'getComputedStyle').mockReturnValue(style)
+    try {
+      const wrapper = setup()
+      expect(vi.mocked(createPlanCanvas).mock.calls[0]?.[3]).toEqual({ surface: 'light-cutting-panel', part: 'light-cutting-part', margin: 'light-cutting-waste', ink: 'light-cutting-ink', muted: 'light-cutting-line', partBorder: 'light-cutting-line', selected: 'light-cutting-selection', kerf: 'light-cutting-kerf' })
+      for (const token of tokens) style.setProperty(`--${token}`, `dark-${token}`)
+      document.documentElement.dataset.theme = 'dark'
+      await flushPromises()
+      expect(canvas.setPalette).toHaveBeenCalledWith(expect.objectContaining({ surface: 'dark-cutting-panel', part: 'dark-cutting-part', ink: 'dark-cutting-ink', kerf: 'dark-cutting-kerf' }))
+      expect(createPlanCanvas).toHaveBeenCalledOnce()
+      wrapper.unmount()
+    } finally {
+      computedStyle.mockRestore()
+      document.documentElement.removeAttribute('data-theme')
+    }
+  })
   it('creates a validated scene and a readable summary alongside the canvas', async () => {
     const wrapper = setup()
     await flushPromises()
     expect(createPlanCanvas).toHaveBeenCalledOnce()
-    expect(wrapper.get('[aria-label="Layout legend"]').text()).toContain('Red: saw kerf')
+    expect(wrapper.get('[aria-label="Layout legend"]').text()).toContain('Shaded strips: saw kerf')
     expect(wrapper.get('[aria-label="Layout legend"]').text()).toContain('Arrows: grain')
     expect(wrapper.get('[role="region"]').attributes('tabindex')).toBe('0')
     expect(wrapper.get('output').text()).toBe('100% of fit')

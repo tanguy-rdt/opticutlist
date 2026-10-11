@@ -18,8 +18,6 @@ import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
 import { useCuttingWorkspaceState } from '../projects/cutting-workspace-state'
 import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import FormField from '../../shared/ui/FormField.vue'
-import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
-import type { Material } from '../../domain/model/material'
 import PanelPlanView from './PanelPlanView.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useMaterialRepository } from '../materials/material-repository'
@@ -32,8 +30,6 @@ const router = useRouter()
 const cuttingState = useCuttingWorkspaceState()
 const inventoryWorking = ref(false)
 const expandedPanels = ref<Record<number, boolean>>({})
-const materialImages = shallowRef<readonly Material[]>([])
-function panelPreset(id: string | undefined): string | undefined { return materialImages.value.find(material => material.id === id)?.libraryPresetId }
 const selectedCopies = ref<Record<number, string>>({})
 const projectId = useProjectId()
 const projects = useProjectService()
@@ -160,7 +156,6 @@ async function readInputs() {
   if (!products.ok) throw new Error(persistenceErrorMessage(products.error, 'Product'))
   if (!supplierRecords.ok) throw new Error(persistenceErrorMessage(supplierRecords.error, 'Supplier'))
   if (!materialRecords.ok) throw new Error(persistenceErrorMessage(materialRecords.error, 'Material'))
-  materialImages.value = materialRecords.value
   if (!stockRecords.ok) throw new Error(persistenceErrorMessage(stockRecords.error, 'Stock item'))
   const selected = new Set(project.value.supplierProductIds)
   const choices: PanelChoice[] = products.value.filter(product => selected.has(product.id)).map(product => {
@@ -623,17 +618,15 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           >
             <button
               type="button"
-              class="flex w-full items-center gap-3 rounded-lg p-2 text-left text-sm"
+              class="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm"
               :class="panelIndex === index ? 'bg-subtle text-accent' : 'hover:bg-subtle'"
               :data-panel-index="index"
               :aria-pressed="panelIndex === index"
               @click="panelIndex = index"
             >
-              <MaterialThumbnail :preset-id="panelPreset(result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.materialId)" />
               <span class="min-w-0 flex-1"><span
                 class="block font-semibold"
-                :title="result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.name"
-              >Panel {{ index + 1 }}</span><span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.lengthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.widthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.thicknessMm }} mm</span><span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.materialName }} · {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.stockItemId ? 'Stock' : 'Catalog' }}</span></span>
+              >Panel {{ index + 1 }}</span><span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.lengthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.widthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.thicknessMm }} mm</span></span>
               <span class="rounded bg-success-surface px-1.5 py-1 text-xs text-accent">{{ allocation.plan.metrics.utilizationPercent.toFixed(1) }}%</span>
             </button>
             <button
@@ -657,14 +650,14 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
               >
                 <button
                   type="button"
-                  class="my-1 w-full rounded-md p-2 text-left text-xs hover:bg-subtle"
+                  class="my-0.5 flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-subtle"
                   :class="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex]) ? 'bg-success-surface text-accent' : ''"
                   :data-copy-key="JSON.stringify([placed.partId, placed.copyIndex])"
                   :aria-pressed="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex])"
                   @click="selectCopy(index, JSON.stringify([placed.partId, placed.copyIndex]))"
                 >
                   <span class="block font-medium">{{ partName(placed.partId) }} / {{ placed.copyIndex + 1 }}</span>
-                  <span class="block text-muted">{{ placed.dimensions.lengthMm }} × {{ placed.dimensions.widthMm }} × {{ placed.dimensions.thicknessMm }} mm · Qty 1</span>
+                  <span class="text-muted">× 1</span>
                 </button>
               </li>
             </ul>
@@ -674,7 +667,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           v-else
           class="text-xs text-muted"
         >
-          No panels allocated{{ result ? ': none can place a requested copy within the available quantities and constraints.' : ' yet.' }}
+          No panels allocated yet.
         </p>
       </aside>
       <div class="min-w-0">
@@ -684,9 +677,8 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           aria-label="Selected panel"
         >
           <h2 class="font-semibold">
-            {{ activeChoice.materialName }} · {{ activeChoice.product.lengthMm }} × {{ activeChoice.product.widthMm }} × {{ activeChoice.product.thicknessMm }} mm
+            Panel {{ panelIndex + 1 }} · {{ activeChoice.product.lengthMm }} × {{ activeChoice.product.widthMm }} × {{ activeChoice.product.thicknessMm }} mm
           </h2>
-          <span class="text-xs text-muted">{{ activeChoice.product.stockItemId ? 'Stock' : 'Catalog' }} · {{ activeChoice.supplierName }}</span>
         </div>
         <KeepAlive
           v-if="result"
@@ -700,7 +692,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             :parts="result.parts"
             :settings="result.settings"
             :material-name="activeChoice.materialName"
-            :preset-id="panelPreset(activeChoice.product.materialId)"
             :saved-edited="result.savedEdited.includes(panelIndex)"
             :saved-baseline="result.savedBaseline"
             :confirm-reset="canDiscard"
@@ -773,6 +764,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
 .optimization-workspace :deep(.field) { min-height: 2.25rem; padding-block: 0.375rem; font-size: 0.875rem; }
 .cutting-workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1024px) {
-  .cutting-workspace-grid { grid-template-columns: minmax(240px, 26%) minmax(0, 1fr); }
+  .cutting-workspace-grid { grid-template-columns: 200px minmax(0, 1fr); }
 }
 </style>

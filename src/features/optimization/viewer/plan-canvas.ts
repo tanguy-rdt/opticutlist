@@ -21,7 +21,7 @@ export interface PlanCanvas {
 }
 
 /** Read-only Konva adapter. Only the stage is draggable, which pans the viewport. */
-export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanScene, size: CanvasSize, palette: PlanPalette, onSelect: (key: string) => void, onPan: (view: Viewport) => void, textureUrl?: string): PlanCanvas {
+export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanScene, size: CanvasSize, palette: PlanPalette, onSelect: (key: string) => void, onPan: (view: Viewport) => void): PlanCanvas {
   const stage = new Konva.Stage({ container, ...size, draggable: true })
   try {
     const layer = new Konva.Layer()
@@ -43,7 +43,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
       shape.on('click tap', () => { onSelect(item.key) })
       shapes.set(item.key, shape)
       layer.add(shape)
-      const text = new Konva.Text({ text: `${item.part.name} / ${String(item.copyIndex + 1)}\n${String(item.dimensions.lengthMm)} × ${String(item.dimensions.widthMm)} × ${String(item.dimensions.thicknessMm)} mm`, listening: false, wrap: 'none', ellipsis: true, fillAfterStrokeEnabled: true })
+      const text = new Konva.Text({ text: `${item.part.name} / ${String(item.copyIndex + 1)}\n${String(item.dimensions.lengthMm)} × ${String(item.dimensions.widthMm)} × ${String(item.dimensions.thicknessMm)} mm`, listening: false, wrap: 'none', ellipsis: true })
       labels.push({ text, rect })
       layer.add(text)
       const points = grainPoints(rect, item.grain)
@@ -56,22 +56,6 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
     layer.add(usableOutline)
     const panelArrow = scene.panelGrain === 'none' ? null : new Konva.Arrow({ name: 'panel-grain', points: [...panelGrainPoints(rectToCanvas(scene.panel, base), scene.panelGrain, 1)], listening: false, strokeWidth: 1, strokeScaleEnabled: false })
     if (panelArrow !== null) layer.add(panelArrow)
-    let texture: HTMLImageElement | null = null
-    let destroyed = false
-    if (textureUrl) {
-      texture = new Image()
-      texture.onload = () => {
-        if (destroyed || texture === null) return
-        // A repeatable local texture is presentation only; every physical region stays unchanged.
-        for (const shape of [panel, usable, ...waste, ...shapes.values()]) {
-          shape.setAttrs({ fillPatternImage: texture, fillPatternScale: { x: rectToCanvas(scene.panel, base).width / texture.naturalWidth, y: rectToCanvas(scene.panel, base).width / texture.naturalWidth }, fillPriority: 'pattern', fillPatternRotation: scene.panelGrain === 'width' ? 90 : 0 })
-        }
-        for (const shape of waste) shape.opacity(0.6)
-        layer.batchDraw()
-      }
-      texture.onerror = () => { if (texture) { texture.onload = null; texture.onerror = null } }
-      texture.src = textureUrl
-    }
     let selected = ''
     let colors = palette
     function applyPalette(): void {
@@ -80,7 +64,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
       for (const rect of waste) { rect.fill(colors.margin); rect.stroke(colors.muted) }
       for (const rect of kerfs) { rect.fill(colors.kerf); rect.stroke(colors.kerf) }
       for (const [key, shape] of shapes) { shape.fill(colors.part); shape.stroke(key === selected ? colors.selected : colors.partBorder) }
-      for (const { text } of labels) { text.fill(colors.ink); text.stroke(colors.surface) }
+      for (const { text } of labels) text.fill(colors.ink)
       for (const arrow of arrows) { arrow.stroke(colors.partBorder); arrow.fill(colors.partBorder) }
       panelArrow?.stroke(colors.ink); panelArrow?.fill(colors.ink)
       layer.batchDraw()
@@ -90,7 +74,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
     return {
       setViewport(view) {
         stage.position({ x: view.x, y: view.y }); stage.scale({ x: view.scale, y: view.scale })
-        for (const { text, rect } of labels) text.setAttrs({ ...labelLayout(rect, view.scale), strokeWidth: 2 / view.scale })
+        for (const { text, rect } of labels) text.setAttrs(labelLayout(rect, view.scale))
         for (const arrow of arrows) { arrow.pointerLength(5 / view.scale); arrow.pointerWidth(5 / view.scale) }
         panelArrow?.setAttrs({ points: [...panelGrainPoints(rectToCanvas(scene.panel, base), scene.panelGrain, view.scale)], pointerLength: 5 / view.scale, pointerWidth: 5 / view.scale })
         layer.batchDraw()
@@ -106,7 +90,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
       },
       setPalette(next) { colors = next; applyPalette() },
       resize(next) { stage.size(next); layer.batchDraw() },
-      destroy() { destroyed = true; if (texture) { texture.onload = null; texture.onerror = null }; stage.off(); stage.destroy() },
+      destroy() { stage.off(); stage.destroy() },
     }
   } catch (cause) {
     stage.destroy()

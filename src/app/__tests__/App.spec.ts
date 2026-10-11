@@ -362,11 +362,13 @@ describe('Home and application navigation', () => {
     const path = router.currentRoute.value.path
     expect(path).toMatch(/^\/projects\/[^/]+\/materials$/)
     expect(wrapper.text()).toContain('Workshop cabinet')
+    expect(wrapper.find('main a[href="/"]').exists()).toBe(false)
+    expect(wrapper.findAll('button, a').some(control => control.text().includes('Back to Home'))).toBe(false)
     expect(wrapper.get('h1').text()).toBe('Materials')
     await wrapper.get('nav[aria-label="Project"] a').trigger('click')
     await router.push(path)
     await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe('Materials') })
-    await wrapper.get('main a[href="/"]').trigger('click')
+    await wrapper.get('nav[aria-label="Main navigation"] a[href="/"]').trigger('click')
     await vi.waitFor(() => { expect(wrapper.find('nav[aria-label="Project"]').exists()).toBe(false) })
     expect(wrapper.text()).not.toContain('Your projects')
     await router.push('/projects')
@@ -497,7 +499,7 @@ describe('Home and application navigation', () => {
     const reopened = await mountAt('/projects/cutting-first/optimization', indexedDB)
     await vi.waitFor(() => { expect(reopened.wrapper.find('[data-panel-id]').exists()).toBe(true) })
     expect(reopened.wrapper.text()).toContain('First cutting project')
-    await reopened.wrapper.get('main a[href="/"]').trigger('click')
+    await reopened.wrapper.get('nav[aria-label="Main navigation"] a[href="/"]').trigger('click')
     await vi.waitFor(() => { expect(reopened.wrapper.find('nav[aria-label="Project"]').exists()).toBe(false) })
   })
 

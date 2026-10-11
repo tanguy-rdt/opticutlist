@@ -43,12 +43,6 @@ onMounted(load)
 </script>
 <template>
   <section class="space-y-6">
-    <RouterLink
-      to="/"
-      class="button"
-    >
-      <span aria-hidden="true">←</span> Back to Home
-    </RouterLink>
     <p
       v-if="loading"
       role="status"

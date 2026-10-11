@@ -43,12 +43,12 @@ vi.mock('konva', () => ({ default: { Stage: fake.Stage, Layer: fake.Layer, Rect:
 beforeEach(() => { fake.nodes.length = 0 })
 afterEach(() => { vi.unstubAllGlobals() })
 const palette: PlanPalette = { surface: 'surface', margin: 'margin', ink: 'ink', muted: 'muted', part: 'part', partBorder: 'part-border', selected: 'selected', kerf: 'kerf' }
-function setup(textureUrl?: string) {
+function setup() {
   const result = createCuttingPlanScene(viewerPlan, { panel: viewerPanel, parts: [viewerPart], settings: viewerSettings })
   if (result.status !== 'valid') throw new Error('Invalid fixture')
   const selected = vi.fn<(key: string) => void>()
   const panned = vi.fn()
-  const canvas = createPlanCanvas(document.createElement('div'), result.scene, { width: 640, height: 400 }, palette, selected, panned, textureUrl)
+  const canvas = createPlanCanvas(document.createElement('div'), result.scene, { width: 640, height: 400 }, palette, selected, panned)
   const part = fake.nodes.find(node => node.kind === 'Rect' && node.attrs.draggable === false)
   const stage = fake.nodes.find(node => node.kind === 'Stage')
   const layer = fake.nodes.find(node => node.kind === 'Layer')
@@ -56,31 +56,17 @@ function setup(textureUrl?: string) {
   return { canvas, scene: result.scene, selected, panned, part, stage, layer }
 }
 describe('Konva read-only canvas adapter', () => {
-  it('loads only the provided local texture without changing geometry and cleans up late callbacks', () => {
-    const image = { naturalWidth: 768, naturalHeight: 512, src: '', onload: null as (() => void) | null, onerror: null as (() => void) | null }
-    vi.stubGlobal('Image', function ImageStub() { return image })
-    const { canvas, part, scene, layer } = setup('/opticutlist/materials/previews/chene.webp')
-    expect(image.src).toBe('/opticutlist/materials/previews/chene.webp')
-    const before = structuredClone(scene)
-    image.onload?.()
-    expect(part.attrs).toMatchObject({ fillPatternImage: image, fillPriority: 'pattern', x: 5, y: 5, width: 30, height: 50, draggable: false })
-    expect(part.attrs.fillPatternScale).toEqual({ x: 100 / 768, y: 100 / 768 })
-    const lateLoad = image.onload
-    canvas.destroy()
-    expect(image.onload).toBeNull()
-    expect(image.onerror).toBeNull()
-    const draws = layer.draws
-    lateLoad?.()
-    expect(layer.draws).toBe(draws)
-    expect(scene).toEqual(before)
-  })
-  it('retains semantic fills when a texture fails', () => {
-    const image = { src: '', onload: null as (() => void) | null, onerror: null as (() => void) | null }
-    vi.stubGlobal('Image', function ImageStub() { return image })
-    const { canvas, part } = setup('/opticutlist/materials/previews/chene.webp')
-    image.onerror?.()
+  it('renders solid regions without creating images or changing the validated scene', () => {
+    const createImage = vi.fn()
+    vi.stubGlobal('Image', createImage)
+    const { canvas, scene, part } = setup()
+    const original = structuredClone(scene)
+    expect(createImage).not.toHaveBeenCalled()
+    expect(fake.nodes.every(node => node.attrs.fillPatternImage === undefined)).toBe(true)
     expect(part.attrs.fill).toBe('part')
-    expect(part.attrs.fillPatternImage).toBeUndefined()
+    canvas.setPalette({ ...palette, part: 'warm-part', margin: 'warm-waste', kerf: 'subtle-kerf' })
+    expect(part.attrs.fill).toBe('warm-part')
+    expect(scene).toEqual(original)
     canvas.destroy()
   })
   it('draws correct panel, usable area, waste, kerf and rotated part rectangles', () => {
