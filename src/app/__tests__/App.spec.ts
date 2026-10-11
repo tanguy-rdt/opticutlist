@@ -1,3 +1,5 @@
+import { createCurrentResultService } from '../../application/plans/current-result-service'
+import { currentResultServiceKey } from '../../features/optimization/current-result-service'
 import { createProjectTransferService } from '../../application/projects/project-transfer-service'
 import { projectJson } from '../../infrastructure/projects/project-json'
 import { projectTransferServiceKey } from '../../features/projects/project-transfer-service'
@@ -6,7 +8,6 @@ import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
 import { partSchema } from '../../domain/model/part'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 import { createSavedPlanService } from '../../application/plans/saved-plan-service'
-import { savedPlanServiceKey } from '../../features/optimization/saved-plan-service'
 import { createCuttingConfirmationService } from '../../application/inventory/cutting-confirmation-service'
 import { cuttingConfirmationServiceKey } from '../../features/inventory/cutting-confirmation-service'
 import { stockItemSchema } from '../../domain/model/stock-item'
@@ -64,7 +65,7 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
       plugins: [createAppPinia(), router],
       provide: {
         [optimizationServiceFactoryKey]: () => createOptimizationService(createWorker),
-        [savedPlanServiceKey]: createSavedPlanService(persistence),
+        [currentResultServiceKey]: createCurrentResultService(persistence),
         [projectTransferServiceKey]: createProjectTransferService(persistence, projectJson),
         [cuttingConfirmationServiceKey]: createCuttingConfirmationService(persistence),
         [materialRepositoryKey]: catalog.materials,
@@ -329,11 +330,9 @@ describe('saved plan refresh and navigation', () => {
     expect(saved.ok).toBe(true)
     initial.wrapper.unmount(); initial.persistence.close()
     const { wrapper, router, persistence } = await mountAt('/projects/saved-workspace/optimization', indexedDB)
-    await vi.waitFor(() => { expect(wrapper.find('[aria-label="Open plan Historical cuts"]').exists()).toBe(true); expect(wrapper.get('[aria-label="Open plan Historical cuts"]').attributes('disabled')).toBeUndefined() })
-    expect(wrapper.text()).toContain('No parts in this project')
-    await wrapper.get('[aria-label="Open plan Historical cuts"]').trigger('click')
     await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
-    expect(wrapper.text()).toContain('Saved plan: Historical cuts')
+    expect(wrapper.text()).toContain('No parts in this project')
+    expect(wrapper.text()).not.toContain('Saved plans')
     expect(wrapper.get('tbody').text()).toContain('Side panel')
     const control = (text: string) => {
       const button = wrapper.findAll('button').find(button => button.text() === text)
@@ -433,9 +432,7 @@ it('imports an exported project from Home with collision preview and opens its r
   const optimizeLink = wrapper.findAll('nav a').find(link => link.text() === 'Optimization')
   if (!optimizeLink) throw new Error('Optimization')
   await optimizeLink.trigger('click')
-  await vi.waitFor(() => { expect(wrapper.find('[aria-label="Open plan Portable cuts"]').exists()).toBe(true); expect(wrapper.get('[aria-label="Open plan Portable cuts"]').attributes('disabled')).toBeUndefined() })
-  await wrapper.get('[aria-label="Open plan Portable cuts"]').trigger('click')
-  await vi.waitFor(() => { expect(wrapper.text()).toContain('Saved plan: Portable cuts') })
+  await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
   expect(wrapper.text()).toContain(part.name)
   expect(await persistence.stockItems.list()).toEqual(stock)
 })

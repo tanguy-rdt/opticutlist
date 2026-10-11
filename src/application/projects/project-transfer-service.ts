@@ -39,7 +39,8 @@ export function createProjectTransferService(persistence: LocalPersistence, json
         const summaries = await repositories.savedPlanSummaries.listForProject(projectId); if (!summaries.ok) return summaries
         const savedPlans: ProjectTransfer['savedPlans'] = []
         for (const summary of summaries.value) { const saved = await readSavedPlan(repositories, projectId, summary.id); if (!saved.ok) return saved; savedPlans.push({ summary: saved.value.summary, contents: saved.value.contents }) }
-        const validated = validateProjectTransfer({ format: 'opticutlist-project', schemaVersion: 1, project: project.value, parts, catalog: { materials, suppliers, products }, savedPlans })
+        const current = await repositories.currentCuttingResults.find(projectId); if (!current.ok) return current
+        const validated = validateProjectTransfer({ format: 'opticutlist-project', schemaVersion: 1, project: project.value, parts, catalog: { materials, suppliers, products }, savedPlans, ...(current.value === null ? {} : { currentResultId: current.value.planId }) })
         if (!validated.ok) return validated
         try { return { ok: true, value: { text: json.stringify(validated.value), name: project.value.name } } }
         catch (cause) { return invalidTransfer(cause instanceof Error ? cause.message : 'Project serialization failed.') }
@@ -72,6 +73,9 @@ export function createProjectTransferService(persistence: LocalPersistence, json
         for (const plan of mapped.value.savedPlans) {
           const summary = await repositories.savedPlanSummaries.create(plan.summary); if (!summary.ok) return summary
           const contents = await repositories.savedPlanContents.create(plan.contents); if (!contents.ok) return contents
+        }
+        if (mapped.value.currentResultId !== undefined) {
+          const current = await repositories.currentCuttingResults.create({ id: project.value.id, planId: mapped.value.currentResultId, preserveLegacy: false }); if (!current.ok) return current
         }
         return project
       })

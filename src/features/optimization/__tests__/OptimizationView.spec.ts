@@ -1,5 +1,7 @@
+import { createCurrentResultService } from '../../../application/plans/current-result-service'
+import { currentResultServiceKey } from '../../../features/optimization/current-result-service'
+import { panelSnapshotSchema } from '../../../domain/model/saved-cutting-plan'
 import { createSavedPlanService } from '../../../application/plans/saved-plan-service'
-import { savedPlanServiceKey } from '../saved-plan-service'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { createMemoryHistory } from 'vue-router'
@@ -59,6 +61,7 @@ async function setup() {
   const catalog = createCatalogRepositories(persistence)
   const service = createProjectService(persistence)
   const plans = createSavedPlanService(persistence).forProject(cuttingProjectSchema.shape.id.parse('project-one'))
+  const current = createCurrentResultService(persistence).forProject(cuttingProjectSchema.shape.id.parse('project-one'))
   const product = supplierProductSchema.parse(validSupplierProductInput)
   const part = partSchema.parse(validPartInput)
   const project = cuttingProjectSchema.parse({ id: 'project-one', name: 'Cabinet', partIds: [], materialIds: [part.materialId], supplierProductIds: [product.id] })
@@ -81,7 +84,7 @@ async function setup() {
   const wrapper = mount(OptimizationView, {
     attachTo: document.body,
     global: { plugins: [router], provide: {
-      [savedPlanServiceKey]: { forProject: () => plans }, [projectIdKey]: project.id, [projectServiceKey]: service,
+      [currentResultServiceKey]: { forProject: () => current }, [projectIdKey]: project.id, [projectServiceKey]: service,
       [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers,
       [supplierProductRepositoryKey]: catalog.supplierProducts, [optimizationServiceFactoryKey]: factory,
       [cuttingPlanPdfServiceKey]: createCuttingPlanPdfService({ generate: pdfGenerate }),
@@ -90,13 +93,14 @@ async function setup() {
   wrappers.push(wrapper)
   await vi.waitFor(() => { expect(wrapper.text()).not.toContain('Loading project inputs') })
   async function start(): Promise<FakeWorker> {
+    const requestCount = workers.reduce((sum, worker) => sum + worker.requests.length, 0)
     await wrapper.get('form').trigger('submit')
-    await vi.waitFor(() => { expect(workers.length).toBeGreaterThan(0) })
+    await vi.waitFor(() => { expect(workers.reduce((sum, worker) => sum + worker.requests.length, 0)).toBeGreaterThan(requestCount) })
     const worker = workers.at(-1)
     if (worker === undefined) throw new Error('Missing worker')
     return worker
   }
-  return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB, plans, router }
+  return { wrapper, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB, plans, current, router }
 }
 describe('Automatic project optimization', () => {
   it('edits and exports the displayed plan with undo/reset while leaving saved parts, selections and inventory unchanged', async () => {
@@ -244,6 +248,7 @@ describe('Automatic project optimization', () => {
   it('clears old results after changing settings', async () => {
     const { wrapper, start } = await setup()
     const worker = await start(); worker.complete(); await flushPromises()
+    await vi.waitFor(() => { expect(wrapper.get('#optimization-kerf').attributes('disabled')).toBeUndefined() })
     await wrapper.get('#optimization-kerf').setValue(4)
     expect(wrapper.text()).not.toContain('Validated panel plan')
   })
@@ -371,6 +376,7 @@ describe('Automatic project optimization', () => {
     expect(worker.request.input.settings).toEqual({ kerfMm: 4.5, edgeMarginMm: 10 })
     worker.complete(); await flushPromises()
     expect(wrapper.text()).toContain('Kerf 4.5 mm · Edge margin 10 mm')
+    await vi.waitFor(() => { expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeUndefined() })
     await wrapper.get('[data-panel-id]').setValue(0)
     expect(wrapper.text()).not.toContain('Validated panel plan')
   })
@@ -508,7 +514,7 @@ describe('automatic workflow and per-panel integration', () => {
   })
 })
 
-describe('saved plans in the optimization workspace', () => {
+describe('automatic current result in the optimization workspace', () => {
   async function click(wrapper: VueWrapper, text: string): Promise<void> {
     const button = wrapper.findAll('button').find(button => button.text() === text)
     if (!button) throw new Error(`Missing ${text}`)
@@ -520,28 +526,32 @@ describe('saved plans in the optimization workspace', () => {
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click(wrapper, 'Swap selected copies')
   }
-  it('saves all panel edits as one new result, opens it and reuses viewing and PDF export', async () => {
-    const { wrapper, catalog, service, project, product, part, plans, start, pdfGenerate, persistence } = await setup()
+  async function persisted(current: ReturnType<ReturnType<typeof createCurrentResultService>['forProject']>, copies?: readonly number[]) {
+    await vi.waitFor(async () => {
+      const loaded = await current.load()
+      expect(loaded.ok && loaded.value.result).toBeTruthy()
+      if (copies) expect(loaded.ok && loaded.value.result?.plan.panels.map(panel => panel.plan.placements[0]?.copyIndex)).toEqual(copies)
+    })
+  }
+  it('automatically persists edits on all panels, restores them and reuses viewing and PDF export', async () => {
+    const { wrapper, catalog, service, project, product, part, current, start, pdfGenerate, persistence } = await setup()
     await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 1443, widthMm: 560 })
     await service.parts(project.id).update(part.id, { ...part, quantity: 4 })
     const stock = await persistence.stockItems.list()
     await wrapper.get('[data-panel-id]').setValue(2)
     const worker = await start(); worker.complete(); await flushPromises()
-    expect(wrapper.text()).toContain('Unsaved result')
+    await persisted(current)
+    for (const text of ['Save Plan', 'Open Plan', 'Validate Plan', 'Saved plans', 'Unsaved result']) expect(wrapper.text()).not.toContain(text)
     await editSwap(wrapper)
     await wrapper.get('#optimization-layout').setValue(1)
     await editSwap(wrapper)
-    await wrapper.get('#save-plan-name').setValue('Workshop panels')
-    await click(wrapper, 'Save Plan')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Plan saved.') })
-    expect(wrapper.text()).toContain('Saved plan: Workshop panels')
-    const list = await plans.list()
-    if (!list.ok || !list.value[0]) throw new Error('Expected saved plan')
-    const saved = await plans.get(list.value[0].id)
-    expect(saved.ok && saved.value.contents.panels.map(panel => panel.edited)).toEqual([true, true])
-    expect(saved.ok && saved.value.plan.panels.map(panel => panel.plan.placements[0]?.copyIndex)).toEqual([1, 3])
-    await wrapper.get('[aria-label="Open plan Workshop panels"]').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.get('#save-plan-name').element).toHaveProperty('value', 'Workshop panels copy') })
+    await persisted(current, [1, 3])
+    const saved = await current.load()
+    expect(saved.ok && saved.value.result?.contents.panels.map(panel => panel.edited)).toEqual([true, true])
+    // Refresh exercises restoration without an explicit Open or Save action.
+    await vi.waitFor(() => { expect(wrapper.get('button').attributes('disabled')).toBeUndefined() })
+    await click(wrapper, 'Refresh inputs')
+    await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
     expect(wrapper.get('tbody tr:first-child').text()).toContain('Side panel / 2')
     await click(wrapper, 'Export PDF'); await flushPromises()
     expect(pdfGenerate.mock.calls[0]?.[0].edited).toBe(true)
@@ -551,11 +561,15 @@ describe('saved plans in the optimization workspace', () => {
     await click(wrapper, 'Enter Edit Mode')
     expect(wrapper.findAll('button').some(button => button.text() === 'Reset to Saved Plan')).toBe(true)
     expect(await persistence.stockItems.list()).toEqual(stock)
+    const list = await persistence.savedPlanSummaries.listForProject(project.id)
+    expect(list.ok && list.value).toHaveLength(1)
   })
-  it('warns before discarding unsaved edits and restores rejected input changes', async () => {
-    const { wrapper, start } = await setup()
-    const worker = await start(); worker.complete(); await flushPromises()
+  it('warns before discarding edits when automatic persistence fails and restores rejected inputs', async () => {
+    const { wrapper, current, start } = await setup()
+    const worker = await start(); worker.complete(); await persisted(current)
+    vi.spyOn(current, 'replace').mockResolvedValue({ ok: false, error: { kind: 'storageFailure', message: 'Disk unavailable' } })
     await editSwap(wrapper)
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Could not access local storage') })
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await wrapper.get('#optimization-kerf').setValue(7)
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Discard unsaved manual'))
@@ -563,93 +577,57 @@ describe('saved plans in the optimization workspace', () => {
     expect(wrapper.text()).toContain('Validated edited panel plan')
     await wrapper.get('[data-panel-id]').setValue(3)
     expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '1')
-    await wrapper.get('[data-panel-id]').setValue(4)
-    expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '1')
     await click(wrapper, 'Reset to Optimized Plan')
-    expect(wrapper.text()).toContain('Validated edited panel plan')
-    await wrapper.get('button').trigger('click')
-    expect(wrapper.text()).toContain('Validated edited panel plan')
-    await wrapper.get('form').trigger('submit')
     expect(wrapper.text()).toContain('Validated edited panel plan')
     const unload = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(unload)
     expect(unload.defaultPrevented).toBe(true)
-    confirm.mockReturnValue(true)
-    await wrapper.get('button').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.text()).not.toContain('Validated edited panel plan') })
   })
-  it('shows validation and storage errors without clearing edited results or failed save drafts', async () => {
-    const { wrapper, plans, start } = await setup()
-    const worker = await start(); worker.complete(); await flushPromises()
-    await editSwap(wrapper)
-    await wrapper.get('#save-plan-name').setValue('')
-    await click(wrapper, 'Save Plan')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Saved plan data is invalid') })
-    expect(wrapper.text()).toContain('Validated edited panel plan')
-    expect(await plans.list()).toEqual({ ok: true, value: [] })
-    await wrapper.get('#save-plan-name').setValue('Retry plan')
-    vi.spyOn(plans, 'save').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Disk unavailable' } })
-    await click(wrapper, 'Save Plan')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Could not access local storage') })
-    expect(wrapper.get('#save-plan-name').element).toHaveProperty('value', 'Retry plan')
-    expect(wrapper.text()).toContain('Validated edited panel plan')
-    await click(wrapper, 'Save Plan')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Plan saved.') })
-    expect(wrapper.text()).toContain('Saved plan: Retry plan')
+  it('replaces the previous result after reoptimization without keeping a run history', async () => {
+    const { wrapper, current, persistence, project, start } = await setup()
+    let worker = await start(); worker.complete(); await persisted(current)
+    const first = await current.load()
+    await vi.waitFor(() => { expect(wrapper.get('button').attributes('disabled')).toBeUndefined() })
+    worker = await start(); worker.complete(); await persisted(current)
+    await vi.waitFor(async () => { const loaded = await current.load(); expect(loaded.ok && loaded.value.result?.summary.id).not.toBe(first.ok && first.value.result?.summary.id) })
+    const second = await current.load()
+    expect(second.ok && second.value.result?.summary.id).not.toBe(first.ok && first.value.result?.summary.id)
+    expect(await persistence.currentCuttingResults.list()).toMatchObject({ ok: true, value: [{ id: project.id }] })
+    const list = await persistence.savedPlanSummaries.listForProject(project.id)
+    expect(list.ok && list.value).toHaveLength(1)
   })
-  it('confirms rename/delete and keeps opened historical plans independent of catalog changes', async () => {
-    const { wrapper, catalog, product, plans, start } = await setup()
-    const worker = await start(); worker.complete(); await flushPromises()
-    await wrapper.get('#save-plan-name').setValue('Original')
-    await click(wrapper, 'Save Plan')
-    await vi.waitFor(() => { expect(wrapper.find('[aria-label="Rename Original"]').exists()).toBe(true) })
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    await wrapper.get('[aria-label="Rename Original"]').setValue('Renamed')
-    await wrapper.get('[aria-label="Rename plan Original"]').trigger('click')
-    expect(wrapper.text()).toContain('Saved plan: Original')
-    confirm.mockReturnValue(true)
-    await wrapper.get('[aria-label="Rename plan Original"]').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Saved plan: Renamed') })
-    await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 100, thicknessMm: 22 })
-    await wrapper.get('[aria-label="Open plan Renamed"]').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.get('#save-plan-name').element).toHaveProperty('value', 'Renamed copy') })
-    expect(wrapper.get('tbody').text()).toContain('720 × 560 × 18')
-    confirm.mockReturnValue(false)
-    await wrapper.get('[aria-label="Delete plan Renamed"]').trigger('click')
-    const list = await plans.list()
-    expect(list.ok && list.value.length).toBe(1)
-    confirm.mockReturnValue(true)
-    await wrapper.get('[aria-label="Delete plan Renamed"]').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('No saved plans in this project') })
-    expect(wrapper.text()).toContain('Unsaved result')
-    expect(wrapper.text()).toContain('Validated panel plan')
+  it('reports ambiguous legacy plans without exposing a saved-plan list or choosing a result', async () => {
+    const { wrapper, plans, current, start } = await setup()
+    const worker = await start()
+    const request = worker.request
+    if (request.type !== 'optimizeProject') throw new Error('Fixture')
+    const selection = optimizeProject(request.input); if (!selection.ok) throw new Error('Fixture')
+    await click(wrapper, 'Cancel optimization')
+    const source = request.input.panels[0]; if (!source) throw new Error('Fixture')
+    const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = source.product
+    const input = { plan: selection.plan, parts: [...request.input.parts], settings: request.input.settings, sources: [{ product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: source.quantity, materialName: 'Material', supplierName: 'Supplier' }], editedPanelIndices: [] }
+    const metadata = { id: 'legacy-one', projectId: 'project-one', name: 'Legacy', createdAt: '2026-10-11T12:00:00.000Z' }
+    await plans.save(metadata, input); await plans.save({ ...metadata, id: 'legacy-two' }, input)
+    await click(wrapper, 'Refresh inputs')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('2 legacy saved plans were preserved') })
+    expect(wrapper.text()).not.toContain('Validated project cutting plan')
+    expect(wrapper.findAll('button').some(button => ['Save Plan', 'Open Plan', 'Validate Plan'].includes(button.text()))).toBe(false)
+    expect(await current.load()).toMatchObject({ ok: true, value: { result: null, ambiguousLegacyCount: 2 } })
   })
-})
-
-it('shows corrupted-plan errors without displaying an invalid layout, and reopens valid history despite input storage errors', async () => {
-  const { wrapper, plans, persistence, catalog, start } = await setup()
-  const worker = await start(); worker.complete(); await flushPromises()
-  await wrapper.get('#save-plan-name').setValue('Historical')
-  const save = wrapper.findAll('button').find(button => button.text() === 'Save Plan')
-  if (!save) throw new Error('Missing save')
-  await save.trigger('click')
-  await vi.waitFor(() => { expect(wrapper.text()).toContain('Plan saved.') })
-  const list = await plans.list()
-  if (!list.ok || !list.value[0]) throw new Error('Missing plan')
-  const body = await persistence.savedPlanContents.get(list.value[0].id)
-  if (!body.ok) throw new Error('Missing body')
-  await persistence.savedPlanContents.update(body.value.id, { ...body.value, metrics: { ...body.value.metrics, placedCount: 900 } })
-  await wrapper.get('button').trigger('click')
-  await vi.waitFor(() => { expect(wrapper.get('[aria-label="Open plan Historical"]').attributes('disabled')).toBeUndefined() })
-  expect(wrapper.text()).not.toContain('Validated project cutting plan')
-  await wrapper.get('[aria-label="Open plan Historical"]').trigger('click')
-  await vi.waitFor(() => { expect(wrapper.text()).toContain('Saved plan failed independent validation') })
-  expect(wrapper.find('#cutting-viewer-part').exists()).toBe(false)
-  await persistence.savedPlanContents.update(body.value.id, body.value)
-  vi.spyOn(catalog.supplierProducts, 'list').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Disk unavailable' } })
-  await wrapper.get('button').trigger('click')
-  await vi.waitFor(() => { expect(wrapper.text()).toContain('Could not access local storage') })
-  await wrapper.get('[aria-label="Open plan Historical"]').trigger('click')
-  await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
-  expect(wrapper.text()).toContain('Saved plan: Historical')
+  it('refuses corrupted stored geometry and restores valid historical context even if current inputs fail', async () => {
+    const { wrapper, current, persistence, catalog, start } = await setup()
+    const worker = await start(); worker.complete(); await persisted(current)
+    const saved = await current.load()
+    if (!saved.ok || !saved.value.result) throw new Error('Missing result')
+    const body = saved.value.result.contents
+    await persistence.savedPlanContents.update(body.id, { ...body, metrics: { ...body.metrics, placedCount: 900 } })
+    await click(wrapper, 'Refresh inputs')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('failed independent validation') })
+    expect(wrapper.find('#cutting-viewer-part').exists()).toBe(false)
+    await persistence.savedPlanContents.update(body.id, body)
+    vi.spyOn(catalog.supplierProducts, 'list').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Disk unavailable' } })
+    await click(wrapper, 'Refresh inputs')
+    await vi.waitFor(() => { expect(wrapper.find('#cutting-viewer-part').exists()).toBe(true) })
+    expect(wrapper.text()).toContain('Could not access local storage')
+  })
 })

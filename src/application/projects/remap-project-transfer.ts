@@ -56,6 +56,7 @@ export function remapProjectTransfer(file: ProjectTransfer, existing: ExistingId
   }
   const part = (item: ProjectTransfer['parts'][number]) => ({ ...item, id: mapped(partIds, item.id), materialId: mapped(materialIds, item.materialId) })
   return { ...file, project: { ...file.project, id: projectId, partIds: file.project.partIds.map(id => mapped(partIds, id)), materialIds: file.project.materialIds.map(id => mapped(materialIds, id)), supplierProductIds: file.project.supplierProductIds.map(id => mapped(productIds, id)), ...(file.project.panelQuantities === undefined ? {} : { panelQuantities: file.project.panelQuantities.map(item => ({ ...item, supplierProductId: mapped(productIds, item.supplierProductId) })) }) },
+    ...(file.currentResultId === undefined ? {} : { currentResultId: mapped(planIds, file.currentResultId) }),
     parts: file.parts.map(part), catalog: { materials, suppliers, products },
     savedPlans: file.savedPlans.map(plan => ({ summary: { ...plan.summary, id: mapped(planIds, plan.summary.id), projectId }, contents: { ...plan.contents, id: mapped(planIds, plan.contents.id), projectId,
       parts: plan.contents.parts.map(part), sources: plan.contents.sources.map(source => ({ ...source, product: { ...source.product, id: mapped(productIds, source.product.id), materialId: mapped(materialIds, source.product.materialId) } })),

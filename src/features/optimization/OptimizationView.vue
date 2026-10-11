@@ -7,11 +7,11 @@ import { cuttingSettingsSchema, type CuttingSettings } from '../../domain/model/
 import type { Part } from '../../domain/model/part'
 import type { PanelSnapshot, SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
 import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
-import { savedCuttingPlanIdSchema } from '../../domain/model/ids'
 import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
-import SavedPlans from './SavedPlans.vue'
-import { useSavedPlanService } from './saved-plan-service'
+import { useCurrentResultService } from './current-result-service'
+import { useCuttingConfirmationService } from '../inventory/cutting-confirmation-service'
+import CuttingConfirmation from '../inventory/CuttingConfirmation.vue'
 import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import FormField from '../../shared/ui/FormField.vue'
 import PanelPlanView from './PanelPlanView.vue'
@@ -26,9 +26,10 @@ const projects = useProjectService()
 const catalogs = useCatalogRepositories()
 const materials = useMaterialRepository()
 const optimizer = useOptimizationService()
-const savedPlans = useSavedPlanService()?.forProject(projectId)
-const savedList = ref<InstanceType<typeof SavedPlans> | null>(null)
-const planName = ref('Cutting plan')
+const currentResults = useCurrentResultService()?.forProject(projectId)
+const cutting = useCuttingConfirmationService()?.forProject(projectId)
+const confirmationOpen = ref(false)
+const confirmed = ref(false)
 const planBusy = ref(false)
 const planError = ref('')
 const planNotice = ref('')
@@ -63,20 +64,28 @@ const panelIndex = ref(0)
 const activePanel = computed(() => result.value?.selection.plan.panels[panelIndex.value])
 const activeChoice = computed(() => result.value?.choices.find(choice => choice.product.id === activePanel.value?.supplierProductId))
 let generation = 0
+let persistenceController = new AbortController()
+let persistenceQueue: Promise<void> = Promise.resolve()
 const busy = computed(() => planBusy.value || state.value === 'running' || state.value === 'loading')
 const fingerprint = computed(() => result.value === null ? '' : JSON.stringify(result.value.selection.plan.panels.map((panel, index) => (editedPlans.value.get(index) ?? panel.plan).tree)))
 const unsavedManualChanges = computed(() => result.value !== null && (savedFingerprint.value === null ? editedPlans.value.size > 0 : fingerprint.value !== savedFingerprint.value))
-function canDiscard(): boolean { return !unsavedManualChanges.value || window.confirm('Discard unsaved manual cutting-plan changes? Save the plan first to keep them.') }
+function canDiscard(): boolean { return !unsavedManualChanges.value || window.confirm('Discard unsaved manual cutting-plan changes? Automatic persistence has not completed.') }
 function planChanged(index: number, plan: PanelCuttingPlan, modified: boolean): void {
+  const previous = fingerprint.value
   const next = new Map(editedPlans.value)
   if (modified) next.set(index, plan)
   else next.delete(index)
   editedPlans.value = next
+  if (fingerprint.value !== previous) persistCurrent()
 }
 const totalCopies = computed(() => parts.value.reduce((sum, part) => sum + part.quantity, 0))
 
 function invalidate(): void {
   generation += 1
+  persistenceController.abort()
+  persistenceController = new AbortController()
+  confirmationOpen.value = false
+  confirmed.value = false
   optimizer.cancel()
   result.value = null
   editedPlans.value = new Map()
@@ -154,6 +163,7 @@ async function load(): Promise<void> {
     inputError.value = cause instanceof Error ? cause.message : 'Could not load optimization inputs.'
     state.value = 'failure'
   }
+  if (current === generation) await restoreCurrent(current)
 }
 async function start(): Promise<void> {
   if (busy.value || inputError.value || !canDiscard()) return
@@ -209,6 +219,7 @@ async function start(): Promise<void> {
         return { product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection }), quantity: source.quantity, materialName: choice?.materialName ?? materialId, supplierName: choice?.supplierName ?? 'Missing supplier' }
       }), savedEdited: [], savedBaseline: false }
       state.value = 'success'
+      persistCurrent()
     }
   } catch (cause) {
     if (current !== generation) return
@@ -219,57 +230,76 @@ async function start(): Promise<void> {
 function cancel(): void { invalidate(); state.value = 'cancelled' }
 function partName(id: string): string { return result.value?.parts.find(part => part.id === id)?.name ?? id }
 const reasons = { noCompatiblePanel: 'No selected panel matches the material and exact thickness', constraintsPreventPlacement: 'Dimensions, grain, rotation, kerf or margins prevent placement', panelLimitReached: 'Available panel quantity or remaining usable space is insufficient' }
-async function savePlan(): Promise<void> {
+function persistCurrent(): void {
   const currentResult = result.value
-  if (savedPlans === undefined || currentResult === null || planBusy.value) return
+  if (!currentResults || !currentResult) return
   const current = generation
   const currentFingerprint = fingerprint.value
-  const id = savedCuttingPlanIdSchema.parse(crypto.randomUUID())
-  const plan = { ...currentResult.selection.plan, panels: currentResult.selection.plan.panels.map((panel, index) => ({ ...panel, plan: editedPlans.value.get(index) ?? panel.plan })) }
-  planBusy.value = true; planError.value = ''; planNotice.value = ''
-  try {
-    const saved = await savedPlans.save({ id, projectId, name: planName.value, createdAt: new Date().toISOString() }, { plan, parts: [...currentResult.parts], settings: currentResult.settings, sources: currentResult.sources, editedPanelIndices: currentResult.selection.plan.panels.flatMap((_, index) => editedPlans.value.has(index) || currentResult.savedEdited.includes(index) ? [index] : []) })
-    if (current !== generation) return
-    if (!saved.ok) { planError.value = persistenceErrorMessage(saved.error, 'Saved plan'); return }
-    savedSummary.value = saved.value.summary
-    savedFingerprint.value = currentFingerprint
-    planNotice.value = 'Plan saved. All panel layouts were validated and saved together.'
-    await savedList.value?.refresh()
-  } catch (cause) { if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not save the plan.' }
-  finally { planBusy.value = false }
+  const signal = persistenceController.signal
+  const input: SavePlanInput = structuredClone({
+    plan: { ...currentResult.selection.plan, panels: currentResult.selection.plan.panels.map((panel, index) => ({ ...panel, plan: editedPlans.value.get(index) ?? panel.plan })) },
+    parts: [...currentResult.parts], settings: currentResult.settings, sources: currentResult.sources,
+    editedPanelIndices: currentResult.selection.plan.panels.flatMap((_, index) => editedPlans.value.has(index) || currentResult.savedEdited.includes(index) ? [index] : []),
+  })
+  // Serialize accepted edits, including undo/reset and edits on inactive layouts.
+  planBusy.value = true
+  confirmationOpen.value = false
+  confirmed.value = false
+  persistenceQueue = persistenceQueue.then(async () => {
+    if (signal.aborted) return
+    try {
+      const saved = await currentResults.replace(input, signal)
+      if (current !== generation) return
+      if (!saved.ok) { planError.value = persistenceErrorMessage(saved.error, 'Current cutting result'); return }
+      savedSummary.value = saved.value.summary
+      savedFingerprint.value = currentFingerprint
+      confirmed.value = false
+      planError.value = ''
+    } catch (cause) {
+      if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not persist the current cutting result.'
+    }
+  })
+  const queued = persistenceQueue
+  void queued.then(() => { if (queued === persistenceQueue) planBusy.value = false })
 }
-async function openPlan(summary: SavedPlanSummary): Promise<void> {
-  if (savedPlans === undefined || planBusy.value || !canDiscard()) return
-  // Keep the current result until a requested historical plan has passed validation.
-  const current = ++generation
-  const initialFingerprint = fingerprint.value
-  optimizer.cancel()
-  planBusy.value = true; planError.value = ''; planNotice.value = ''
+async function refreshConfirmation(): Promise<void> {
+  if (!cutting || !savedSummary.value) return
+  const current = generation
+  const receipts = await cutting.list()
+  if (current !== generation) return
+  if (!receipts.ok) { planError.value = persistenceErrorMessage(receipts.error, 'Cutting confirmation'); return }
+  confirmed.value = receipts.value.some(receipt => receipt.id === savedSummary.value?.id)
+}
+async function restoreCurrent(current: number): Promise<void> {
+  if (!currentResults) return
   try {
-    const opened = await savedPlans.get(summary.id)
+    const opened = await currentResults.load()
     if (current !== generation) return
-    if (!opened.ok) { planError.value = persistenceErrorMessage(opened.error, 'Saved plan'); return }
-    const { contents, plan } = opened.value
-    if (fingerprint.value !== initialFingerprint && !canDiscard()) return
+    if (!opened.ok) { planError.value = persistenceErrorMessage(opened.error, 'Current cutting result'); return }
+    if (opened.value.ambiguousLegacyCount) {
+      planNotice.value = `${String(opened.value.ambiguousLegacyCount)} legacy saved plans were preserved. No current result was chosen because the selection is ambiguous. A new optimization will establish the current result without deleting legacy data.`
+    }
+    if (!opened.value.result) return
+    const { contents, plan, summary } = opened.value.result
     editedPlans.value = new Map()
     panelIndex.value = 0
+    restoringDraft = true
+    kerf.value = contents.settings.kerfMm; margin.value = contents.settings.edgeMarginMm
+    restoringDraft = false
     result.value = { requestId: -current, selection: { ok: true, plan }, sources: contents.sources, parts: contents.parts, settings: contents.settings, savedBaseline: true, savedEdited: contents.panels.flatMap((panel, index) => panel.edited ? [index] : []), choices: contents.sources.map(source => ({ product: source.product, materialName: source.materialName, supplierName: source.supplierName, label: `${source.supplierName} / ${source.materialName} / ${source.product.name}`, problem: '', broken: false, availability: 'unknown' })) }
-    savedSummary.value = opened.value.summary
+    savedSummary.value = summary
     savedFingerprint.value = fingerprint.value
-    planName.value = `${opened.value.summary.name} copy`
     state.value = 'success'
-  } catch (cause) { if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not open the plan.' }
-  finally { planBusy.value = false }
+    await refreshConfirmation()
+  } catch (cause) { if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not restore the current cutting result.' }
 }
-function renamed(summary: SavedPlanSummary): void { if (savedSummary.value?.id === summary.id) savedSummary.value = summary }
-function deleted(summary: SavedPlanSummary): void { if (savedSummary.value?.id === summary.id) { savedSummary.value = null; savedFingerprint.value = null } }
 function beforeUnload(event: BeforeUnloadEvent): void { if (unsavedManualChanges.value) event.preventDefault() }
 if (inject(matchedRouteKey, undefined) !== undefined) {
   onBeforeRouteLeave(canDiscard)
   onBeforeRouteUpdate(canDiscard)
 }
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
-onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload); generation += 1; optimizer.dispose() })
+onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload); generation += 1; persistenceController.abort(); optimizer.dispose() })
 </script>
 
 <template>
@@ -295,22 +325,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         Refresh inputs
       </button>
     </div>
-    <SavedPlans
-      v-if="savedPlans"
-      ref="savedList"
-      :plans="savedPlans"
-      :disabled="busy"
-      @open="openPlan"
-      @renamed="renamed"
-      @deleted="deleted"
-    />
-    <p
-      v-if="planBusy"
-      role="status"
-      class="text-muted"
-    >
-      Saving or opening cutting plan…
-    </p>
     <p
       v-if="planError"
       role="alert"
@@ -321,7 +335,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
     <p
       v-if="planNotice"
       role="status"
-      class="text-success"
+      class="text-muted"
     >
       {{ planNotice }}
     </p>
@@ -524,42 +538,31 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       >
         Validated project cutting plan
       </h2>
-      <p class="font-semibold">
-        {{ savedSummary && fingerprint === savedFingerprint ? `Saved plan: ${savedSummary.name}` : 'Unsaved result' }}
-      </p>
       <p
-        v-if="savedSummary"
-        class="text-sm text-muted"
+        v-if="confirmed"
+        class="text-success"
+        role="status"
       >
-        Historical panel and Part snapshots preserve this plan independently of current project and Catalogue changes. Saving changes creates a new plan; existing plans are never overwritten.
+        Cutting confirmed · Inventory movements recorded
       </p>
-      <div
-        v-if="savedPlans"
-        class="flex flex-wrap items-end gap-3"
+      <button
+        v-if="cutting && savedSummary"
+        type="button"
+        class="button"
+        :disabled="busy || confirmed || !!planError || fingerprint !== savedFingerprint"
+        :aria-label="`Confirm cutting ${savedSummary.name}`"
+        @click="confirmationOpen = true"
       >
-        <FormField
-          id="save-plan-name"
-          label="Plan name"
-          required
-        >
-          <template #default="{ controlAttrs }">
-            <input
-              v-bind="controlAttrs"
-              v-model="planName"
-              class="field"
-              :disabled="busy"
-            >
-          </template>
-        </FormField>
-        <button
-          type="button"
-          class="button button-primary"
-          :disabled="busy"
-          @click="savePlan"
-        >
-          Save Plan
-        </button>
-      </div>
+        Confirm Cutting
+      </button>
+      <CuttingConfirmation
+        v-if="cutting && savedSummary && confirmationOpen"
+        :key="savedSummary.id"
+        :service="cutting"
+        :summary="savedSummary"
+        @close="confirmationOpen = false"
+        @confirmed="refreshConfirmation"
+      />
       <p role="status">
         {{ result.selection.plan.metrics.placedCount }} copies placed · {{ result.selection.plan.metrics.unplacedCount }} copies unplaced{{ result.selection.plan.metrics.unplacedCount ? '. Additional panels or different inputs are needed.' : '.' }}
       </p>

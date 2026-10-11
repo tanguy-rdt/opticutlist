@@ -1,3 +1,4 @@
+import { savedCuttingPlanIdSchema } from '../../domain/model/ids'
 import { z } from 'zod'
 import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import { partSchema } from '../../domain/model/part'
@@ -14,6 +15,7 @@ export const projectTransferSchema = z.strictObject({
   project: cuttingProjectSchema,
   parts: z.array(partSchema),
   catalog: z.strictObject({ materials: z.array(materialSchema), suppliers: z.array(supplierSchema), products: z.array(supplierProductSchema) }),
+  currentResultId: savedCuttingPlanIdSchema.optional(),
   savedPlans: z.array(z.strictObject({ summary: savedPlanSummarySchema, contents: savedPlanContentsSchema })),
 })
 export type ProjectTransfer = z.infer<typeof projectTransferSchema>
@@ -36,6 +38,7 @@ export function validateProjectTransfer(input: unknown): PersistenceResult<Proje
     const materials = [...file.project.materialIds, ...file.parts.map(part => part.materialId), ...file.catalog.products.map(product => product.materialId)]
     if (!sameIds(file.catalog.materials.map(material => material.id), materials)) return invalidTransfer('Required material references are missing or unrelated materials are included.')
     if (!sameIds(file.catalog.suppliers.map(supplier => supplier.id), file.catalog.products.map(product => product.supplierId))) return invalidTransfer('Required supplier references are missing or unrelated suppliers are included.')
+    if (file.currentResultId !== undefined && !file.savedPlans.some(plan => plan.summary.id === file.currentResultId)) return invalidTransfer('The current result reference is missing.')
     for (const plan of file.savedPlans) {
       if (plan.summary.projectId !== file.project.id || plan.contents.projectId !== file.project.id || plan.contents.id !== plan.summary.id) return invalidTransfer('A saved plan has inconsistent identity or project ownership.')
       restoreSavedPlan(plan.contents)

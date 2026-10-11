@@ -1,11 +1,8 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import CuttingConfirmation from '../CuttingConfirmation.vue'
-import SavedPlans from '../../optimization/SavedPlans.vue'
-import { cuttingConfirmationServiceKey } from '../cutting-confirmation-service'
 import type { CuttingPreview, CuttingConfirmationService } from '../../../application/inventory/cutting-confirmation-service'
 import type { PersistenceResult } from '../../../application/persistence/repositories'
-import type { SavedPlanService } from '../../../application/plans/saved-plan-service'
 import { cuttingConfirmationSchema, type CuttingConfirmation as Receipt } from '../../../domain/model/cutting-confirmation'
 import { stockItemSchema } from '../../../domain/model/stock-item'
 import { savedPlanSummarySchema, panelSnapshotSchema, savedPlanContentsSchema } from '../../../domain/model/saved-cutting-plan'
@@ -100,16 +97,14 @@ describe('cutting confirmation review', () => {
     const pending = mount(CuttingConfirmation, { props: { service, summary } }); wrappers.push(pending)
     pending.unmount(); resolve?.({ ok: true, value: fixture() }); await flushPromises(); expect(pending.emitted('confirmed')).toBeUndefined()
   })
-  it('lists confirmation status without reading cutting trees and disables repeated confirmation/deletion', async () => {
+  it('shows an existing confirmation without exposing repeated stock changes', async () => {
     const { service, receipt } = setup(); await flushPromises()
-    service.list.mockResolvedValue({ ok: true, value: [receipt] })
-    const value = fixture()
-    const get = vi.fn().mockResolvedValue({ ok: true, value: value.saved })
-    const plans: ReturnType<SavedPlanService['forProject']> = { list: vi.fn().mockResolvedValue({ ok: true, value: [summary] }), get, save: vi.fn().mockResolvedValue({ ok: true, value: value.saved }), rename: vi.fn().mockResolvedValue({ ok: true, value: summary }), delete: vi.fn().mockResolvedValue({ ok: true, value: undefined }) }
-    const wrapper = mount(SavedPlans, { props: { plans, disabled: false }, global: { provide: { [cuttingConfirmationServiceKey]: { forProject: () => service } } } }); wrappers.push(wrapper); await flushPromises()
-    expect(wrapper.text()).toContain('Cutting confirmed · Inventory movements recorded')
-    expect(wrapper.get('[aria-label="Confirm cutting Workshop cuts"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[aria-label="Delete plan Workshop cuts"]').attributes('disabled')).toBeDefined()
-    expect(get).not.toHaveBeenCalled(); expect(service.preview).toHaveBeenCalledTimes(1)
+    service.preview.mockResolvedValue({ ok: true, value: { ...fixture(), confirmation: receipt } })
+    const wrapper = mount(CuttingConfirmation, { props: { service, summary } }); wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Cutting confirmed on')
+    expect(wrapper.findAll('select')).toHaveLength(0)
+    expect(wrapper.findAll('button').some(control => control.text() === 'Confirm Cutting')).toBe(false)
+    expect(service.confirm).not.toHaveBeenCalled()
   })
 })

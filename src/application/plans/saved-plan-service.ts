@@ -13,6 +13,28 @@ export interface SavePlanInput extends Pick<SavedPlanContents, 'parts' | 'settin
 function invalid(cause: unknown): Extract<PersistenceResult<never>, { ok: false }> {
   return { ok: false, error: { kind: 'invalidRecord', issues: [{ path: ['plan'], message: cause instanceof Error ? cause.message : 'The saved plan is invalid.' }] } }
 }
+export function prepareSavedPlan(metadata: unknown, input: SavePlanInput): PersistenceResult<OpenedSavedPlan> {
+  try {
+    const summary = savedPlanSummarySchema.safeParse(metadata)
+    if (!summary.success) return { ok: false, error: { kind: 'invalidRecord', issues: summary.error.issues } }
+    const snapshot = structuredClone(input)
+    const validation = validateProjectPlan(snapshot.plan, savedPlanContext(snapshot))
+    if (!validation.valid) return invalid(new Error(validation.issues.map(issue => issue.message).join('; ')))
+    const used = new Set(snapshot.plan.panels.map(panel => panel.supplierProductId))
+    const missingIds = new Set(snapshot.plan.unplaced.map(range => range.partId))
+    const contents = savedPlanContentsSchema.safeParse({
+      id: summary.data.id, projectId: summary.data.projectId, formatVersion: 1, parts: snapshot.parts, settings: snapshot.settings,
+      sources: snapshot.sources.filter(source => used.has(source.product.id)),
+      panels: snapshot.plan.panels.map((panel, index) => ({ supplierProductId: panel.supplierProductId, panelCopyIndex: panel.panelCopyIndex, strategy: panel.strategy, edited: snapshot.editedPanelIndices.includes(index), tree: compactTree(panel.plan.tree),
+        ...(panel.plan.unplaced.some(range => missingIds.has(range.partId) && (range.reason.kind === 'cannotFitPanel' || range.reason.kind === 'remainderNarrowerThanKerf')) ? { unplacedReasons: [...new Map(panel.plan.unplaced.filter(range => missingIds.has(range.partId) && (range.reason.kind === 'cannotFitPanel' || range.reason.kind === 'remainderNarrowerThanKerf')).map(range => [range.partId, { partId: range.partId, kind: range.reason.kind }])).values()] } : {}),
+      })),
+      unplaced: snapshot.plan.unplaced, metrics: snapshot.plan.metrics,
+    })
+    if (!contents.success) return { ok: false, error: { kind: 'invalidRecord', issues: contents.error.issues } }
+    const plan = restoreSavedPlan(contents.data)
+    return { ok: true, value: { summary: summary.data, contents: contents.data, plan } }
+  } catch (cause) { return invalid(cause) }
+}
 /** Shared transaction-scoped historical read; never consults the current catalog. */
 export async function readSavedPlan(repositories: Repositories, projectId: CuttingProjectId, id: SavedCuttingPlanId): Promise<PersistenceResult<OpenedSavedPlan>> {
   const summary = await repositories.savedPlanSummaries.get(id)
@@ -45,32 +67,15 @@ export function createSavedPlanService(persistence: LocalPersistence) {
         return scope(repositories => readSavedPlan(repositories, projectId, id))
       },
       async save(metadata: unknown, input: SavePlanInput): Promise<PersistenceResult<OpenedSavedPlan>> {
-        try {
-          const summary = savedPlanSummarySchema.safeParse(metadata)
-          if (!summary.success) return { ok: false, error: { kind: 'invalidRecord', issues: summary.error.issues } }
-          if (summary.data.projectId !== projectId) return { ok: false, error: { kind: 'referenceConflict', message: 'A plan must belong to the active project.' } }
-          const snapshot = structuredClone(input)
-          const validation = validateProjectPlan(snapshot.plan, savedPlanContext(snapshot))
-          if (!validation.valid) return invalid(new Error(validation.issues.map(issue => issue.message).join('; ')))
-          const used = new Set(snapshot.plan.panels.map(panel => panel.supplierProductId))
-          const missingIds = new Set(snapshot.plan.unplaced.map(range => range.partId))
-          const contents = savedPlanContentsSchema.safeParse({
-            id: summary.data.id, projectId, formatVersion: 1, parts: snapshot.parts, settings: snapshot.settings,
-            sources: snapshot.sources.filter(source => used.has(source.product.id)),
-            panels: snapshot.plan.panels.map((panel, index) => ({ supplierProductId: panel.supplierProductId, panelCopyIndex: panel.panelCopyIndex, strategy: panel.strategy, edited: snapshot.editedPanelIndices.includes(index), tree: compactTree(panel.plan.tree),
-              ...(panel.plan.unplaced.some(range => missingIds.has(range.partId) && (range.reason.kind === 'cannotFitPanel' || range.reason.kind === 'remainderNarrowerThanKerf')) ? { unplacedReasons: [...new Map(panel.plan.unplaced.filter(range => missingIds.has(range.partId) && (range.reason.kind === 'cannotFitPanel' || range.reason.kind === 'remainderNarrowerThanKerf')).map(range => [range.partId, { partId: range.partId, kind: range.reason.kind }])).values()] } : {}),
-            })),
-            unplaced: snapshot.plan.unplaced, metrics: snapshot.plan.metrics,
-          })
-          if (!contents.success) return { ok: false, error: { kind: 'invalidRecord', issues: contents.error.issues } }
-          const plan = restoreSavedPlan(contents.data)
-          return await scope(async repositories => {
-            const created = await repositories.savedPlanSummaries.create(summary.data)
-            if (!created.ok) return created
-            const body = await repositories.savedPlanContents.create(contents.data)
-            return body.ok ? { ok: true, value: { summary: created.value, contents: body.value, plan } } : body
-          })
-        } catch (cause) { return invalid(cause) }
+        const prepared = prepareSavedPlan(metadata, input)
+        if (!prepared.ok) return prepared
+        if (prepared.value.summary.projectId !== projectId) return { ok: false, error: { kind: 'referenceConflict', message: 'A plan must belong to the active project.' } }
+        return scope(async repositories => {
+          const created = await repositories.savedPlanSummaries.create(prepared.value.summary)
+          if (!created.ok) return created
+          const body = await repositories.savedPlanContents.create(prepared.value.contents)
+          return body.ok ? prepared : body
+        })
       },
       rename(id: SavedCuttingPlanId, name: string): Promise<PersistenceResult<SavedPlanSummary>> {
         return scope(async repositories => {
@@ -85,6 +90,9 @@ export function createSavedPlanService(persistence: LocalPersistence) {
           const contents = await repositories.savedPlanContents.get(id)
           if (!contents.ok) return contents
           if (contents.value.projectId !== projectId) return invalid(new Error('The saved plan owner does not match its summary.'))
+          const current = await repositories.currentCuttingResults.find(projectId)
+          if (!current.ok) return current
+          if (current.value?.planId === id) return { ok: false, error: { kind: 'referenceConflict', message: 'The current result cannot be deleted through the legacy plan repository.' } }
           const confirmed = await repositories.cuttingConfirmations.find(id)
           if (!confirmed.ok) return confirmed
           if (confirmed.value !== null) return { ok: false, error: { kind: 'referenceConflict', message: 'Confirmed plans are retained for inventory movement history and cannot be deleted.' } }

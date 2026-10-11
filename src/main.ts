@@ -1,10 +1,10 @@
-import { createSavedPlanService } from './application/plans/saved-plan-service'
+import { createCurrentResultService } from './application/plans/current-result-service'
+import { currentResultServiceKey } from './features/optimization/current-result-service'
 import { createProjectTransferService } from './application/projects/project-transfer-service'
 import { projectJson } from './infrastructure/projects/project-json'
 import { projectTransferServiceKey } from './features/projects/project-transfer-service'
 import { createCuttingConfirmationService } from './application/inventory/cutting-confirmation-service'
 import { cuttingConfirmationServiceKey } from './features/inventory/cutting-confirmation-service'
-import { savedPlanServiceKey } from './features/optimization/saved-plan-service'
 import { createApp } from 'vue'
 import { createOptimizationService } from './application/optimization/optimization-service'
 import { optimizationServiceFactoryKey } from './features/optimization/optimization-service'
@@ -30,7 +30,7 @@ const catalog = createCatalogRepositories(persistence)
 app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)
 app.provide(supplierProductRepositoryKey, catalog.supplierProducts)
-app.provide(savedPlanServiceKey, createSavedPlanService(persistence))
+app.provide(currentResultServiceKey, createCurrentResultService(persistence))
 app.provide(projectTransferServiceKey, createProjectTransferService(persistence, projectJson))
 app.provide(cuttingConfirmationServiceKey, createCuttingConfirmationService(persistence))
 app.provide(projectServiceKey, createProjectService(persistence))

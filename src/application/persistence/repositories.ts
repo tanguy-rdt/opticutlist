@@ -1,3 +1,4 @@
+import type { CurrentCuttingResult } from '../../domain/model/current-cutting-result'
 import type { SavedPlanContents, SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
 import type { CuttingProjectId } from '../../domain/model/ids'
@@ -33,6 +34,9 @@ export interface SavedPlanSummaryRepository extends Repository<SavedPlanSummary>
 }
 
 export interface Repositories {
+  readonly currentCuttingResults: Repository<CurrentCuttingResult> & {
+    find(id: CuttingProjectId): Promise<PersistenceResult<CurrentCuttingResult | null>>
+  }
   readonly cuttingConfirmations: Repository<CuttingConfirmation> & {
     find(id: CuttingConfirmation['id']): Promise<PersistenceResult<CuttingConfirmation | null>>
     listForProject(projectId: CuttingProjectId): Promise<PersistenceResult<readonly CuttingConfirmation[]>>
