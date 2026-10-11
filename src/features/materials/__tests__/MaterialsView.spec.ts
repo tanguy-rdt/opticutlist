@@ -424,6 +424,59 @@ describe('MaterialsView', () => {
       expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [] })
     } finally { persistence.close() }
   })
+  it.each([
+    { name: 'catalog only', catalog: true, quantities: [], expected: 1 },
+    { name: 'stock offcut only', catalog: false, quantities: [1], expected: 1 },
+    { name: 'stock quantity greater than one', catalog: false, quantities: [4], expected: 4 },
+    { name: 'catalog and purchased stock', catalog: true, quantities: [3], expected: 4 },
+    { name: 'multiple stock items linked to the same catalog product', catalog: true, quantities: [2, 3], expected: 6 },
+    { name: 'zero-quantity stock alongside catalog', catalog: true, quantities: [0], expected: 1 },
+    { name: 'no stock or catalog', catalog: false, quantities: [], expected: 0 },
+    { name: 'only depleted stock', catalog: false, quantities: [0], expected: 0 },
+  ])('counts available panels consistently for $name', async ({ catalog, quantities, expected }) => {
+    const repository = fakeRepository()
+    repository.list.mockResolvedValue({ ok: true, value: [material] })
+    const item = stockItemSchema.parse(validStockItemInput)
+    // A defensive depleted-source fixture; persistence still rejects zero quantities.
+    const items = quantities.map((quantity, index) => ({ ...item, id: stockItemSchema.shape.id.parse(`stock-${String(index)}`), quantity, provenance: { source: 'purchase' as const, supplierProductId: supplierProductSchema.shape.id.parse(validSupplierProductInput.id) } }))
+    const empty = { create: vi.fn(), get: vi.fn(), update: vi.fn(), delete: vi.fn(), list: vi.fn().mockResolvedValue({ ok: true, value: [] }) }
+    const source = {
+      suppliers: { ...empty, list: vi.fn().mockResolvedValue({ ok: true, value: [validSupplierInput] }) },
+      supplierProducts: { ...empty, list: vi.fn().mockResolvedValue({ ok: true, value: catalog ? [validSupplierProductInput] : [] }) },
+      stockItems: { ...empty, list: vi.fn().mockResolvedValue({ ok: true, value: items }) },
+    }
+    const wrapper = render(repository, undefined, source)
+    await flushPromises()
+    const row = wrapper.find(`button[aria-label="Show panels for ${material.name}"]`)
+    if (expected) expect(row.text()).toContain(`${String(expected)} available panels`)
+    else expect(row.exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('available references')
+    const panels = wrapper.get('.panel-references')
+    expect(panels.findAll('input[aria-label^="Use panel "]')).toHaveLength(catalog ? 1 : 0)
+    expect(panels.findAll('input[aria-label^="Use stock "]')).toHaveLength(quantities.filter(quantity => quantity > 0).length)
+    for (const stock of items) {
+      const checkbox = panels.find(`input[aria-label="Use stock ${stock.id}"]`)
+      if (stock.quantity > 0) expect(checkbox.element.closest('label')?.textContent).toContain(`${String(stock.quantity)} available`)
+      else expect(checkbox.exists()).toBe(false)
+    }
+    expect(source.stockItems.list).toHaveBeenCalledTimes(1)
+    expect(source.stockItems.update).not.toHaveBeenCalled()
+  })
+
+  it('excludes unavailable catalog references from the available panel count without hiding their rows', async () => {
+    const repository = fakeRepository()
+    repository.list.mockResolvedValue({ ok: true, value: [material] })
+    const empty = { create: vi.fn(), get: vi.fn(), update: vi.fn(), delete: vi.fn(), list: vi.fn().mockResolvedValue({ ok: true, value: [] }) }
+    const wrapper = render(repository, undefined, {
+      suppliers: { ...empty, list: vi.fn().mockResolvedValue({ ok: true, value: [validSupplierInput] }) },
+      supplierProducts: { ...empty, list: vi.fn().mockResolvedValue({ ok: true, value: [{ ...validSupplierProductInput, availability: 'unavailable' }] }) },
+      stockItems: empty,
+    })
+    await flushPromises()
+    expect(wrapper.get(`button[aria-label="Show panels for ${material.name}"]`).text()).toContain('0 available panels')
+    expect(wrapper.get(`input[aria-label="Use panel ${validSupplierProductInput.name}"]`).attributes('disabled')).toBeDefined()
+  })
+
   it('shows catalog-only, stock-only and mixed materials and persists stock choices without consumption', async () => {
     const indexedDB = new IDBFactory()
     const persistence = createLocalPersistence('stock-source-selections', { indexedDB, IDBKeyRange })

@@ -39,10 +39,11 @@ const dirty = computed(() => selectedIds.value.length !== savedMaterialIds.value
   || selectedStockIds.value.some(id => !savedStockIds.value.includes(id))
   || selectedProductIds.value.length !== savedProductIds.value.length
   || selectedProductIds.value.some(id => !savedProductIds.value.includes(id)))
-const availableMaterials = computed(() => materials.value.filter(material => products.value.some(product => product.materialId === material.id) || stock.value.some(item => item.materialId === material.id)))
-const activeStock = computed(() => stock.value.filter(item => item.materialId === activeMaterial.value?.id))
-function materialStock(material: Material): readonly StockItem[] { return stock.value.filter(item => item.materialId === material.id) }
-function summaryStock(material: Material): readonly StockItem[] { return materialStock(material).filter(item => selectedStockIds.value.includes(item.id)) }
+const availableStock = computed(() => stock.value.filter(item => item.quantity > 0))
+const availableMaterials = computed(() => materials.value.filter(material => products.value.some(product => product.materialId === material.id) || availableStock.value.some(item => item.materialId === material.id)))
+const activeStock = computed(() => activeMaterial.value ? materialStock(activeMaterial.value) : [])
+function materialStock(material: Material): readonly StockItem[] { return availableStock.value.filter(item => item.materialId === material.id) }
+function summaryStock(material: Material): readonly StockItem[] { return stock.value.filter(item => item.materialId === material.id && selectedStockIds.value.includes(item.id)) }
 function toggleStock(item: StockItem): void { selectedStockIds.value = selectedStockIds.value.includes(item.id) ? selectedStockIds.value.filter(id => id !== item.id) : [...selectedStockIds.value, item.id] }
 const categories = computed(() => [...new Set(availableMaterials.value.map(material => material.category))])
 const visibleMaterials = computed(() => availableMaterials.value.filter(material =>
@@ -56,6 +57,7 @@ const summaryMaterials = computed(() => materials.value.filter(material => selec
   || products.value.some(product => product.materialId === material.id && selectedProductIds.value.includes(product.id))
   || stock.value.some(item => item.materialId === material.id && selectedStockIds.value.includes(item.id))))
 function materialProducts(material: Material): readonly SupplierProduct[] { return products.value.filter(product => product.materialId === material.id) }
+function availablePanelCount(material: Material): number { return materialProducts(material).filter(selectable).length + materialStock(material).reduce((total, item) => total + item.quantity, 0) }
 function summaryProducts(material: Material): readonly SupplierProduct[] { return materialProducts(material).filter(product => selectedProductIds.value.includes(product.id)) }
 function supplierName(product: SupplierProduct): string { return suppliers.value.find(supplier => supplier.id === product.supplierId)?.name ?? 'Missing supplier' }
 function removeProduct(product: SupplierProduct): void { selectedProductIds.value = selectedProductIds.value.filter(id => id !== product.id) }
@@ -316,7 +318,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
                 <MaterialThumbnail :preset-id="material.libraryPresetId" />
                 <span class="min-w-0 flex-1">
                   <span class="block text-sm font-semibold [overflow-wrap:anywhere]">{{ material.name }}</span>
-                  <span class="block text-xs text-muted">{{ materialProducts(material).filter(selectable).length }} available references</span>
+                  <span class="block text-xs text-muted">{{ availablePanelCount(material) }} available panels</span>
                   <span
                     v-if="selectedIds.includes(material.id)"
                     class="block text-xs font-medium text-success"
