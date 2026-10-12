@@ -13,8 +13,8 @@ export function purchasingSchedule(sources: readonly { panel: CuttingPlanPdfDocu
   })
   for (const [currency, total] of totals) {
     if (!Number.isFinite(total)) throw new RangeError('Purchasing subtotal exceeds the supported range.')
-    rows.push([unknown ? 'Known total (partial)' : 'Known total', '', '', '', '', '', `${total.toFixed(2)} ${currency}`])
+    rows.push([unknown ? 'Subtotal (partial):' : 'Total:', '', '', '', '', '', `${total.toFixed(2)} ${currency}`])
   }
-  if (sources.length && unknown && !totals.size) rows.push(['Known total (partial)', '', '', '', '', '', 'N/A'])
+  if (!totals.size) rows.push(['Total:', '', '', '', '', '', 'N/A'])
   return rows
 }

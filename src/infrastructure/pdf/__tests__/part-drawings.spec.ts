@@ -92,3 +92,26 @@ describe('Individual part drawing grid', () => {
     expect(() => partDrawingCells(pdfPageSize('A4', 'portrait'), Number.NaN)).toThrow(RangeError)
   })
 })
+
+it.each(['A4', 'A3'] as const)('balances one and two individual drawings across the available %s grid area', paper => {
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    const size = pdfPageSize(paper, orientation)
+    const single = partDrawingCells(size, 170, 1)
+    const pair = partDrawingCells(size, 170, 2)
+    expect(single).toHaveLength(1); expect(pair).toHaveLength(2)
+    expect(single[0]?.width).toBeCloseTo(size.width - 72)
+    expect(single[0]?.height).toBeCloseTo(size.height - 180)
+    expect(single[0]?.x).toBe(36); expect(single[0]?.y).toBe(120)
+    expect(pair[0]?.height).toBe(single[0]?.height)
+    expect(pair[0]?.y).toBe(pair[1]?.y)
+    expect((pair[0]?.width ?? 0) + (pair[1]?.width ?? 0)).toBeCloseTo(size.width - 72)
+    const rect = { xMm: 0, yMm: 0, lengthMm: 200, widthMm: 100 }
+    const cell = single[0]
+    if (!cell) throw new Error('Missing cell')
+    const layout = partDrawingGeometry(rect, cell, 34, 42)
+    expect(layout.box.width / layout.box.height).toBeCloseTo(2)
+    expect(layout.box.width).toBeCloseTo(millimetresToPoints(200) * layout.transform.scale)
+    expect(layout.transform.scale).toBeGreaterThanOrEqual(0.5)
+    expect(layout.box.x + layout.box.width / 2).toBeCloseTo(size.width / 2)
+  }
+})

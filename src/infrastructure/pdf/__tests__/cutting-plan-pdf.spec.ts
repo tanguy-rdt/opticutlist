@@ -157,7 +157,7 @@ describe('Complete multi-panel vector PDF', () => {
       expect(operators).not.toMatch(/\bDo\b/u)
     })
   })
-  it('paginates part grids and keeps tiny-part annotations on the one physical panel sheet', async () => {
+  it('paginates part grids and keeps tiny-part references inside the one physical panel sheet', async () => {
     const base = multiPanelPdfRequest()
     const product = supplierProductSchema.parse({ ...validSupplierProductInput, lengthMm: 100, widthMm: 100, grainDirection: 'none' })
     const parts = Array.from({ length: 30 }, (_, index) => partSchema.parse({ ...validPartInput, id: `tiny-${String(index)}`, name: `Tiny part ${String(index)}`, lengthMm: 1, widthMm: 1, grainDirection: 'none', quantity: 1 }))
@@ -173,7 +173,7 @@ describe('Complete multi-panel vector PDF', () => {
     expect(pages.some(page => hasText(page, 'Labels continued'))).toBe(false)
     const panelPages = pages.filter(page => hasText(page, 'Panel 1 of 1'))
     expect(panelPages).toHaveLength(1)
-    for (const number of [1, 15, 30]) expect(hasText(panelPages[0] ?? '', `P${String(number)} /`)).toBe(true)
+    for (const number of [1, 15, 30]) expect(hasText(panelPages[0] ?? '', `P${String(number)}`)).toBe(true)
     for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, 'Individual part drawings') && hasText(page, `P${String(number)}`))).toBe(true)
     for (const [index, page] of pages.entries()) expect(hasText(page, `Sheet ${String(index + 1)} / ${String(pages.length)}`)).toBe(index > 0)
   })
@@ -294,7 +294,7 @@ it('prints consistent table columns, a hierarchical inventory and exact known co
   expect(child?.x).toBe((panel?.x ?? 0) + 8)
   expect(rows.filter(row => row.y === child?.y).map(row => row.text)).toEqual(['P1', 'Workshop shelf', '', '90 × 80 × 18 mm', '2'])
   expect(rows.filter(row => row.text === '39.90 EUR')).toHaveLength(2) // one purchasing row and one total
-  expect(rows.filter(row => row.text === 'Known total')).toHaveLength(1)
+  expect(rows.filter(row => row.text === 'Total:')).toHaveLength(1)
   const priceHeader = rows.find(row => row.text === 'Unit price')
   const price = rows.find(row => row.text === '19.95 EUR')
   const font = await pdf.embedFont(StandardFonts.Helvetica)

@@ -11,25 +11,25 @@ const muted = rgb(0.35, 0.35, 0.35)
 /** One cell per Part definition, not per requested copy. Reuses physical scaling and dimension geometry. */
 export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFont, parts: readonly Part[], paper: PdfPageSize, orientation: PdfOrientation, materialName: (part: Part) => string, frame: (page: PDFPage) => void): void {
   const size = pdfPageSize(paper, orientation)
-  const cellWidth = (size.width - 72) / 2
-  const records = parts.map((part, index) => {
+  function recordFor(part: Part, index: number, cellWidth: number) {
     const name = wrapPdfText(part.name, bold, 8, cellWidth - 20)
     const material = wrapPdfText(materialName(part), font, 8, cellWidth - 20)
     const metadata = wrapPdfText(`Thickness: ${String(part.thicknessMm)} mm / Qty: ${String(part.quantity)}`, font, 8, cellWidth - 20)
     const scaleSuffix = part.grainDirection === 'none' ? '' : ` / Grain: ${part.grainDirection}`
     return { part, identifier: `P${String(index + 1)}`, name, material, metadata, scaleSuffix, headerHeight: 24 + name.length * 10, footerHeight: 12 + (material.length + metadata.length + 1) * 10 }
-  })
+  }
+  const records = parts.map((part, index) => recordFor(part, index, (size.width - 72) / 2))
   for (let offset = 0; offset < records.length;) {
     const candidates = records.slice(offset, offset + 6)
     const minimumHeight = Math.max(170, ...candidates.map(record => record.headerHeight + record.footerHeight + 92))
-    const cells = partDrawingCells(size, minimumHeight)
+    const cells = partDrawingCells(size, minimumHeight, records.length - offset)
     const page = pdf.addPage([size.width, size.height])
     frame(page)
     page.drawText('Individual part drawings', { x: 36, y: size.height - 42, font: bold, size: 13, color: ink })
     for (const [index, cell] of cells.entries()) {
       const record = records[offset + index]
       if (!record) break
-      const { part, identifier, name, material, metadata, scaleSuffix, headerHeight, footerHeight } = record
+      const { part, identifier, name, material, metadata, scaleSuffix, headerHeight, footerHeight } = recordFor(record.part, offset + index, cell.width)
       page.drawRectangle({ ...cell, borderWidth: 0.25, borderColor: rgb(0.9, 0.9, 0.9) })
       const rect = { xMm: 0, yMm: 0, lengthMm: part.lengthMm, widthMm: part.widthMm }
       const { box, transform } = partDrawingGeometry(rect, cell, headerHeight, footerHeight)

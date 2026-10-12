@@ -48,20 +48,20 @@ describe('Purchasing table data', () => {
     return prepared.document.panels[0]
   }
   it('preserves panel data and quantity, without inventing missing prices', () => {
-    expect(purchasingSchedule([{ panel: panel(), count: 2 }])).toEqual([['Workshop panel', 'Birch plywood', '210 × 110 × 18 mm', '2', 'Supplier', 'N/A', 'N/A'], ['Known total (partial)', '', '', '', '', '', 'N/A']])
+    expect(purchasingSchedule([{ panel: panel(), count: 2 }])).toEqual([['Workshop panel', 'Birch plywood', '210 × 110 × 18 mm', '2', 'Supplier', 'N/A', 'N/A'], ['Total:', '', '', '', '', '', 'N/A']])
   })
   it('keeps known totals separate per currency, including zero prices', () => {
     const source = panel()
     const rows = purchasingSchedule([{ panel: { ...source, pricing: { price: 19.95, currency: 'EUR' } }, count: 2 }, { panel: { ...source, pricing: { price: 5, currency: 'USD' } }, count: 3 }, { panel: { ...source, pricing: { price: 0, currency: 'EUR' } }, count: 1 }])
     expect(rows[0]?.slice(-2)).toEqual(['19.95 EUR', '39.90 EUR'])
-    expect(rows.slice(-2).map(row => [row[0], row[6]])).toEqual([['Known total', '39.90 EUR'], ['Known total', '15.00 USD']])
+    expect(rows.slice(-2).map(row => [row[0], row[6]])).toEqual([['Total:', '39.90 EUR'], ['Total:', '15.00 USD']])
   })
   it('labels partial totals and never infers an owned-stock price', () => {
     const source = panel()
     const rows = purchasingSchedule([{ panel: { ...source, pricing: { price: 10, currency: 'EUR' } }, count: 1 }, { panel: source, count: 2 }])
-    expect(rows.at(-1)?.[0]).toBe('Known total (partial)')
+    expect(rows.at(-1)?.[0]).toBe('Subtotal (partial):')
     expect(rows.at(-1)?.[6]).toBe('10.00 EUR')
-    expect(purchasingSchedule([])).toEqual([])
+    expect(purchasingSchedule([])).toEqual([['Total:', '', '', '', '', '', 'N/A']])
   })
 })
 
@@ -112,4 +112,15 @@ it('measures single-line headers and unbroken numeric cells while wrapping long 
 it('rejects unbreakable columns that exceed the printable width instead of clipping cells', async () => {
   const { tables } = await tableFixture('A4', 'portrait')
   expect(() => { tables.table('Parts', [{ label: 'Dimensions (mm)', weight: 1, nowrap: true }], [['1234567890 × '.repeat(15)]]) }).toThrow('columns do not fit')
+})
+
+it('formats absent, complete and partial purchasing totals without inventing costs or mixing currencies', () => {
+  const prepared = prepareProjectPdfDocument(multiPanelPdfRequest())
+  if (!prepared.ok || !prepared.document.panels[0]) throw new Error('Missing fixture')
+  const source = prepared.document.panels[0]
+  expect(purchasingSchedule([{ panel: source, count: 2 }]).at(-1)).toEqual(['Total:', '', '', '', '', '', 'N/A'])
+  expect(purchasingSchedule([{ panel: { ...source, pricing: { price: 10, currency: 'EUR' } }, count: 2 }]).at(-1)).toEqual(['Total:', '', '', '', '', '', '20.00 EUR'])
+  const mixed = purchasingSchedule([{ panel: { ...source, pricing: { price: 10, currency: 'EUR' } }, count: 2 }, { panel: { ...source, pricing: { price: 5, currency: 'USD' } }, count: 3 }, { panel: source, count: 1 }])
+  expect(mixed.slice(-2).map(row => [row[0], row[6]])).toEqual([['Subtotal (partial):', '20.00 EUR'], ['Subtotal (partial):', '15.00 USD']])
+  expect(mixed.flat().join(' ')).not.toContain('partial): N/A')
 })
