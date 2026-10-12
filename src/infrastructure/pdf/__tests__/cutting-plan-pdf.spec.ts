@@ -81,7 +81,8 @@ describe('Vector cutting plan PDF', () => {
     const original = structuredClone(rotationPlan)
     const edited = await exportPdf({ ...pdfRequest, plan: currentEditingPlan(edit.session), edited: true })
     expect(hasText(pageOperators(edited, 0), 'Manually edited panel plan')).toBe(true)
-    expect(hasText(pageOperators(edited, 1), '50 x 30 x 18 mm / Normal')).toBe(true)
+    expect(hasText(pageOperators(edited, 1), '50 x 30 x 18 mm')).toBe(true)
+    expect(hasText(pageOperators(edited, 1), 'Normal')).toBe(true)
     expect(rotationPlan).toEqual(original)
   })
   it('preserves zero-kerf cuts as vector lines', async () => {
@@ -96,10 +97,10 @@ describe('Vector cutting plan PDF', () => {
     expect(pdf.getPageCount()).toBeGreaterThan(5)
     const operators = pdf.getPages().map((_, index) => pageOperators(pdf, index)).join('\n')
     expect(hasText(operators, '100 copies unplaced')).toBe(true)
-    expect(hasText(operators, 'starting at copy 101')).toBe(true)
+    expect(hasText(operators, '101')).toBe(true)
     expect(hasText(operators, 'No space left on this panel')).toBe(true)
-    expect(hasText(operators, 'Details continued')).toBe(true)
-    for (let index = 0; index < pdf.getPageCount(); index += 1) expect(hasText(pageOperators(pdf, index), `OptiCutList / ${String(index + 1)} of ${String(pdf.getPageCount())}`)).toBe(true)
+    expect(hasText(operators, 'Unplaced parts - not produced by this panel')).toBe(true)
+    for (let index = 0; index < pdf.getPageCount(); index += 1) expect(hasText(pageOperators(pdf, index), `Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`)).toBe(true)
   })
   it('wraps long words and names by real font measurements at a readable size', async () => {
     const pdf = await PDFDocument.create()
@@ -176,7 +177,7 @@ describe('Complete multi-panel vector PDF', () => {
     expect(pages.filter(page => hasText(page, 'Individual part drawing'))).toHaveLength(30)
     expect(pages.some(page => hasText(page, 'Labels continued'))).toBe(true)
     for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, `P${String(number)} / Individual part drawing`))).toBe(true)
-    for (const [index, page] of pages.entries()) expect(hasText(page, `OptiCutList / ${String(index + 1)} of ${String(pages.length)}`)).toBe(true)
+    for (const [index, page] of pages.entries()) expect(hasText(page, `Sheet ${String(index + 1)} / ${String(pages.length)}`)).toBe(true)
   })
   it.each(['portrait', 'landscape'] as const)('renders a global summary and every %s panel with no images', async orientation => {
     const request = { ...multiPanelPdfRequest(true), orientation }
@@ -203,4 +204,48 @@ describe('Complete multi-panel vector PDF', () => {
     for (const [, object] of pdf.context.enumerateIndirectObjects()) expect(object.toString()).not.toContain('/Subtype /Image')
     expect(request).toEqual(original)
   })
+})
+
+it.each(['A4', 'A3'] as const)('frames every %s sheet with a fixed title block, complete numbering and no database IDs', async pageSize => {
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    const request = { ...multiPanelPdfRequest(true), pageSize, orientation }
+    const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    const texts = pdf.getPages().map((_, index) => pageOperators(pdf, index))
+    for (const [index, text] of texts.entries()) {
+      expect(hasText(text, `Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`)).toBe(true)
+      expect(hasText(text, 'Units: mm')).toBe(true)
+      expect(hasText(text, 'Project: Workshop project')).toBe(true)
+      // Fixed title-block top at 104pt and outer border starting at 28,36pt.
+      expect(text).toContain('104 m')
+      expect(text).toContain('1 0 0 1 28 36 cm')
+      expect(text).not.toMatch(/\bDo\b/u)
+      for (const part of request.parts) expect(hasText(text, part.id)).toBe(false)
+      for (const source of request.sources) { expect(hasText(text, source.product.id)).toBe(false); expect(hasText(text, source.product.materialId)).toBe(false) }
+    }
+    const lists = texts.find(text => hasText(text, 'Complete parts list')) ?? ''
+    expect(hasText(lists, 'Reference')).toBe(true)
+    expect(hasText(lists, 'Quantity')).toBe(true)
+    expect(hasText(lists, 'Workshop shelf')).toBe(true)
+    expect(hasText(lists, 'Materials and purchasing')).toBe(true)
+    expect(texts.some(text => hasText(text, 'Allocated part'))).toBe(true)
+  }
+})
+
+it('prints known prices from explicit validated export metadata, without changing historical sources', async () => {
+  const request = multiPanelPdfRequest()
+  const source = request.sources[0]
+  if (!source) throw new Error('Missing fixture source')
+  const before = structuredClone(request)
+  const service = createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf })
+  const result = await service.exportProject({ ...request, panelPrices: [{ id: source.product.id, price: 19.95, currency: 'EUR' }] })
+  if (!result.ok) throw new Error(result.error.message)
+  const pdf = await PDFDocument.load(result.bytes)
+  const text = pdf.getPages().map((_, index) => pageOperators(pdf, index)).join('')
+  expect(hasText(text, '39.90 EUR')).toBe(true)
+  expect(hasText(text, '19.95 EUR')).toBe(true)
+  expect(request).toEqual(before)
+  expect(await service.exportProject({ ...request, panelPrices: [{ id: source.product.id, price: -1, currency: 'EUR' }] })).toMatchObject({ ok: false, error: { kind: 'invalidPlan' } })
+  expect(await service.exportProject({ ...request, panelPrices: [{ id: source.product.id, price: 1, currency: 'EUR' }, { id: source.product.id, price: 2, currency: 'EUR' }] })).toMatchObject({ ok: false, error: { kind: 'invalidPlan' } })
 })

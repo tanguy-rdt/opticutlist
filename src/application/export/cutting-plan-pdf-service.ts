@@ -1,3 +1,4 @@
+import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
 import type { SavePlanInput } from '../plans/saved-plan-service'
 import { savedPlanContext } from '../plans/saved-plan-codec'
 import { validateProjectPlan } from '../../domain/optimizer/validate-project-plan'
@@ -20,6 +21,7 @@ export interface CuttingPlanPdfRequest {
   readonly materialName: string
   readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
+  readonly pricing?: Pick<SupplierProduct, 'price' | 'currency'>
   readonly edited: boolean
 }
 export interface CuttingPlanPdfDocument extends Omit<CuttingPlanPdfRequest, 'plan'> {
@@ -28,6 +30,8 @@ export interface CuttingPlanPdfDocument extends Omit<CuttingPlanPdfRequest, 'pla
   readonly unplaced: readonly UnplacedParts[]
 }
 export interface ProjectCuttingPdfRequest extends SavePlanInput {
+  /** Optional known export-time prices, never inferred from panel names or written to historical plans. */
+  readonly panelPrices?: readonly (Pick<SupplierProduct, 'id' | 'price' | 'currency'>)[]
   readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
   readonly title: string
@@ -51,6 +55,7 @@ export type CuttingPlanPdfResult =
 
 /** Reuse the same scene, validation and metric projection for both internal panel and whole-result exports. */
 function panelDocument(snapshot: CuttingPlanPdfRequest): CuttingPlanPdfDocument {
+  if (snapshot.pricing) supplierProductSchema.pick({ price: true, currency: true }).parse(snapshot.pricing)
   const projection = createCuttingPlanScene(snapshot.plan, snapshot)
   if (projection.status !== 'valid') throw new Error(projection.status === 'invalid' ? projection.message : 'No cutting plan to export.')
   const { plan, ...metadata } = snapshot
@@ -62,10 +67,17 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
     const snapshot = structuredClone(request)
     const validation = validateProjectPlan(snapshot.plan, savedPlanContext(snapshot))
     if (!validation.valid) throw new Error(validation.issues.map(issue => issue.message).join('; '))
+    const prices = new Map(snapshot.panelPrices?.map(price => {
+      const valid = supplierProductSchema.pick({ id: true, price: true, currency: true }).parse(price)
+      if (!snapshot.sources.some(source => source.product.id === valid.id && !source.product.stockItemId)) throw new Error('Unknown catalog pricing reference.')
+      return [valid.id, valid] as const
+    }))
+    if (prices.size !== (snapshot.panelPrices?.length ?? 0)) throw new Error('Duplicate pricing reference.')
     const panels = snapshot.plan.panels.map((allocation, index) => {
       const source = snapshot.sources.find(source => source.product.id === allocation.supplierProductId)
       if (!source) throw new Error('Missing historical panel reference.')
-      return panelDocument({ plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, projectName: snapshot.title, supplierName: source.supplierName, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
+      const pricing = prices.get(source.product.id)
+      return panelDocument({ ...(pricing ? { pricing: { price: pricing.price, currency: pricing.currency } } : {}), plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, projectName: snapshot.title, supplierName: source.supplierName, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
     })
     return { ok: true, document: { title: snapshot.title, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, metrics: snapshot.plan.metrics, unplaced: snapshot.plan.unplaced, parts: snapshot.parts, panels } }
   } catch (cause) { return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting result.' } } }
