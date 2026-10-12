@@ -61,7 +61,7 @@ describe('Vector cutting plan PDF', () => {
     expect(operators).not.toMatch(/\bDo\b/u)
     for (const [, object] of pdf.context.enumerateIndirectObjects()) expect(object.toString()).not.toContain('/Subtype /Image')
     expect(hasText(operators, 'Birch plywood')).toBe(true)
-    expect(hasText(operators, '100 × 80 × 18 mm')).toBe(true)
+    expect(hasText(operators, '100 × 80 × 18')).toBe(true)
     expect(operators).toMatch(/\bW\b/u)
     expect(hasText(operators, '30 × 50 mm / 90')).toBe(true)
     expect(hasText(operators, 'Kerf:')).toBe(true)
@@ -171,7 +171,7 @@ describe('Complete multi-panel vector PDF', () => {
     const pages = pdf.getPages().map((_, index) => pageOperators(pdf, index))
     expect(pages.filter(page => hasText(page, 'Individual part drawing'))).toHaveLength(8)
     expect(pages.some(page => hasText(page, 'Labels continued'))).toBe(false)
-    const panelPages = pages.filter(page => hasText(page, 'Panel 1 /'))
+    const panelPages = pages.filter(page => hasText(page, 'Kerf:'))
     expect(panelPages).toHaveLength(1)
     for (const number of [1, 15, 30]) expect(hasText(panelPages[0] ?? '', `P${String(number)}`)).toBe(true)
     for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, 'Individual part drawings') && hasText(page, `P${String(number)}`))).toBe(true)
@@ -199,7 +199,7 @@ describe('Complete multi-panel vector PDF', () => {
       expect(layout).toMatch(/\bm\b/u)
       expect(layout).toMatch(/\bl\b/u)
       expect(layout).toMatch(/\bf\b/u)
-      expect(hasText(layout ?? '', '210 × 110 × 18 mm')).toBe(true)
+      expect(hasText(layout ?? '', '210 × 110 × 18')).toBe(true)
       expect(hasText(layout ?? '', 'Kerf: 2 mm')).toBe(true)
       expect(hasText(layout ?? '', 'Edge margin: 5 mm')).toBe(true)
     }
@@ -322,5 +322,64 @@ it('wraps long project names on the cover without adding content or clipping', a
     expect(text.x).toBeGreaterThanOrEqual(36)
     expect(text.x + font.widthOfTextAtSize(text.text, 28)).toBeLessThanOrEqual(page.getWidth() - 36)
     expect(text.y).toBeGreaterThan(36); expect(text.y).toBeLessThan(page.getHeight() - 36)
+  }
+})
+
+
+it.each(['A4', 'A3'] as const)('matches every physical panel table instance to its own drawn copy references on %s', async pageSize => {
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    const request = { ...multiPanelPdfRequest(), pageSize, orientation }
+    const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    const pages = pdf.getPages().map((_, index) => ({ text: pageOperators(pdf, index), rows: printedText(pdf, index) })).filter(page => hasText(page.text, 'Kerf:'))
+    expect(pages).toHaveLength(request.plan.panels.length)
+    const references: string[] = []
+    for (const [index, page] of pages.entries()) {
+      const panel = request.plan.panels[index]
+      if (!panel) throw new Error('Missing allocated panel')
+      expect(page.rows.filter(row => row.text === `Panel ${String(index + 1)} / Workshop panel`)).toHaveLength(1)
+      const entries = page.rows.filter(row => row.y < 200 && /^P[0-9]+[.][0-9]+ \/ /u.test(row.text))
+      expect(entries.map(row => row.text)).toEqual(panel.plan.placements.map(placed => `P1.${String(placed.copyIndex + 1)} / Workshop shelf`))
+      for (const entry of entries) {
+        const row = page.rows.filter(text => text.y === entry.y)
+        expect(row.map(text => text.text)).toEqual([entry.text, '90 × 80 × 18', '1'])
+        const ref = entry.text.split(' / ')[0]
+        if (!ref) throw new Error('Missing copy reference')
+        expect(page.rows.some(text => text.y >= 200 && text.text === ref)).toBe(true)
+        references.push(ref)
+      }
+    }
+    expect(references.sort()).toEqual(['P1.1', 'P1.2', 'P1.3', 'P1.4'])
+  }
+})
+
+it.each(['A4', 'A3'] as const)('continues a long copy table on %s without duplicating the diagram or losing rows', async pageSize => {
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    const part = partSchema.parse({ ...validPartInput, name: 'Tiny panel insert with a long descriptive fabrication name', quantity: 80, lengthMm: 1, widthMm: 1, grainDirection: 'none' })
+    const panel = { ...pdfRequest.panel, grainDirection: 'none' as const }
+    const settings = { kerfMm: 0, edgeMarginMm: 5 }
+    const optimized = optimizePanel({ panel, parts: [part], settings })
+    if (!optimized.ok) throw new Error(optimized.error.kind)
+    const pdf = await exportPdf({ ...pdfRequest, pageSize, orientation, panel, parts: [part], settings, plan: optimized.plan })
+    expect(pdf.getPageCount()).toBeGreaterThan(1)
+    const pages = pdf.getPages().map((_, index) => ({ operators: pageOperators(pdf, index), rows: printedText(pdf, index) }))
+    expect(pages.filter(page => hasText(page.operators, 'Kerf:'))).toHaveLength(1)
+    const entries = pages.flatMap((page, index) => page.rows.filter(row => (index > 0 || row.y < 200) && /^P1[.][0-9]+ \/ /u.test(row.text)))
+    expect(entries).toHaveLength(80)
+    expect(entries.map(row => row.text.split(' / ')[0])).toEqual(Array.from({ length: 80 }, (_, index) => `P1.${String(index + 1)}`))
+    for (const [index, page] of pages.entries()) {
+      expect(hasText(page.operators, 'Panel / Part')).toBe(true)
+      expect(hasText(page.operators, 'Dimensions (mm)')).toBe(true)
+      expect(hasText(page.operators, `Sheet ${String(index + 1)} / ${String(pages.length)}`)).toBe(true)
+      if (index > 0) {
+        expect(hasText(page.operators, 'Parts continued')).toBe(true)
+        expect(hasText(page.operators, '100 mm')).toBe(false)
+      }
+      for (const entry of page.rows.filter(row => /^P1[.][0-9]+ \/ /u.test(row.text) && (index > 0 || row.y < 200))) {
+        expect(page.rows.filter(row => row.y === entry.y).map(row => row.text)).toContain('1')
+        expect(entry.y).toBeGreaterThan(index > 0 ? 120 : 36)
+      }
+    }
   }
 })

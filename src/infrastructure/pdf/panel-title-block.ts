@@ -1,87 +1,84 @@
 import { rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import type { CuttingPlanPdfDocument } from '../../application/export/cutting-plan-pdf-service'
+import type { ScenePart } from '../../application/optimization/cutting-plan-scene'
 import { pdfPageSize } from './pdf-layout'
 import { wrapPdfText } from './pdf-text'
 
 const textSize = 8
-const lineHeight = 11
+const lineHeight = 10
 const ink = rgb(0.14, 0.14, 0.14)
-const rule = rgb(0.4, 0.4, 0.4)
+const rule = rgb(0.6, 0.6, 0.6)
 
-/** Group placed definitions by stable identity and orientation, never by their display name. */
+/** Shared by drawing labels and the instance table; copy indices survive accepted edits. */
+export function panelPartReference(document: CuttingPlanPdfDocument, placed: ScenePart): string {
+  return `P${String(document.parts.findIndex(part => part.id === placed.part.id) + 1)}${placed.part.quantity > 1 ? `.${String(placed.copyIndex + 1)}` : ''}`
+}
+function dimensions(item: { lengthMm: number; widthMm: number; thicknessMm: number }): string {
+  return `${String(item.lengthMm)} × ${String(item.widthMm)} × ${String(item.thicknessMm)}`
+}
 export function panelContainedParts(document: CuttingPlanPdfDocument) {
-  const grouped = new Map<string, { ref: string; name: string; dimensions: string; quantity: number }>()
-  for (const placed of document.scene.parts) {
-    const ref = `P${String(document.parts.findIndex(part => part.id === placed.part.id) + 1)}`
-    const key = `${ref}/${placed.orientation}`
-    const previous = grouped.get(key)
-    grouped.set(key, {
-      ref, name: placed.part.name,
-      dimensions: `${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.thicknessMm)}`,
-      quantity: (previous?.quantity ?? 0) + 1,
-    })
-  }
-  return [...grouped.values()]
+  return document.scene.parts.map(placed => ({ ref: panelPartReference(document, placed), name: placed.part.name, dimensions: dimensions(placed.dimensions), quantity: 1 }))
 }
 
-/** Font-measured, content-sized block. No truncated names or unreadably reduced type. */
+/** The table and metadata share one horizontal block; long lists continue without repeating geometry. */
 export function layoutPanelTitleBlock(document: CuttingPlanPdfDocument, font: PDFFont, bold: PDFFont, reference: string) {
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const x = 28
   const width = size.width - 56
-  const rightWidth = 100
-  const metadataWidth = width - rightWidth
-  const identityWidth = metadataWidth * 0.6
-  const identity = [
-    ...wrapPdfText(`${reference} / ${document.panel.name}`, bold, textSize, identityWidth - 16),
-    ...wrapPdfText(document.materialName, font, textSize, identityWidth - 16),
-    ...wrapPdfText(`${String(document.panel.lengthMm)} × ${String(document.panel.widthMm)} × ${String(document.panel.thicknessMm)} mm`, font, textSize, identityWidth - 16),
-  ]
-  const parameters = [`Kerf: ${String(document.settings.kerfMm)} mm`, `Edge margin: ${String(document.settings.edgeMarginMm)} mm`, ...(document.panel.grainDirection === 'none' ? [] : [`Grain: ${document.panel.grainDirection}`])]
-    .flatMap(text => wrapPdfText(text, font, textSize, metadataWidth - identityWidth - 16))
-  const metadataHeight = Math.max(identity.length, parameters.length, 3) * lineHeight + 16
+  const metadataWidth = 145
+  const tableWidth = width - metadataWidth
   const parts = panelContainedParts(document)
-  // Multiple compact table columns reduce height while retaining measured, complete names.
-  const candidates = Array.from({ length: Math.min(3, Math.max(1, Math.floor(width / 165))) }, (_, index) => {
-    const count = index + 1
-    const columnWidth = width / count
-    const columns: { lines: string[]; height: number }[][] = Array.from({ length: count }, () => [])
-    const heights = Array.from({ length: count }, () => 0)
-    for (const part of parts) {
-      const lines = [...wrapPdfText(`${part.ref}  ${part.name}`, font, textSize, columnWidth - 16), ...wrapPdfText(`${part.dimensions}   Qty ${String(part.quantity)}`, font, textSize, columnWidth - 16)]
-      const height = lines.length * lineHeight + 5
-      const column = heights.indexOf(Math.min(...heights))
-      columns[column]?.push({ lines, height })
-      heights[column] = (heights[column] ?? 0) + height
-    }
-    return { columns, columnWidth, height: Math.max(...heights) + 23 }
+  const records = [
+    { ref: reference, name: document.panel.name, dimensions: dimensions(document.panel), quantity: 1 },
+    ...parts,
+  ]
+  const dimensionWidth = Math.max(bold.widthOfTextAtSize('Dimensions (mm)', textSize), ...records.map(row => font.widthOfTextAtSize(row.dimensions, textSize))) + 12
+  const quantityWidth = 28
+  const nameWidth = tableWidth - dimensionWidth - quantityWidth
+  if (nameWidth < 60) throw new Error('The panel table does not fit this paper width. Choose a larger paper size or landscape orientation.')
+  const rows = records.map((record, index) => {
+    const lines = wrapPdfText(`${record.ref} / ${record.name}`, index === 0 ? bold : font, textSize, nameWidth - (index === 0 ? 12 : 20))
+    return { ...record, lines, parent: index === 0, height: lines.length * lineHeight + 4 }
   })
-  const table = candidates.reduce((best, candidate) => candidate.height < best.height ? candidate : best)
-  const top = 36 + metadataHeight + table.height
-  // Physical paper cannot contain an unlimited list: fail explicitly rather than omit entries.
-  if (size.height - top < 160) throw new Error('The panel parts list does not fit this sheet at readable size. Choose a larger paper size or another orientation.')
-  return { x, width, top, metadataHeight, identityWidth, rightWidth, identity, parameters, table, parts, sheetPosition: { x: x + width - rightWidth + 8, y: top - 44 } }
+  const metadata = [document.materialName, `Kerf: ${String(document.settings.kerfMm)} mm`, `Edge margin: ${String(document.settings.edgeMarginMm)} mm`, ...(document.panel.grainDirection === 'none' ? [] : [`Grain: ${document.panel.grainDirection}`])]
+    .flatMap(value => wrapPdfText(value, font, textSize, metadataWidth - 12))
+  const metadataHeight = (metadata.length + 2) * lineHeight + 12
+  const headerHeight = 17
+  const maxHeight = Math.max(metadataHeight, Math.min(150, size.height * 0.22))
+  const visible: typeof rows = []
+  let tableHeight = headerHeight
+  for (const row of rows) {
+    // Keep the parent and first instance together, even when a long name needs additional height.
+    if (visible.length >= 2 && tableHeight + row.height > maxHeight) break
+    visible.push(row)
+    tableHeight += row.height
+  }
+  const height = Math.max(tableHeight, metadataHeight)
+  if (height + 160 > size.height) throw new Error('A panel or material name is too tall for this paper size. Choose a larger sheet.')
+  return { x, width, tableWidth, metadataWidth, nameWidth, dimensionWidth, quantityWidth, top: 36 + height, metadata, rows: visible, parts, continued: rows.slice(visible.length), sheetPosition: { x: x + tableWidth + 6, y: 42 } }
 }
 
 export function drawPanelTitleBlock(page: PDFPage, font: PDFFont, bold: PDFFont, block: ReturnType<typeof layoutPanelTitleBlock>, scale: string): void {
-  const line = (x1: number, y1: number, x2: number, y2: number) => { page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.4, color: rule }) }
+  const line = (x1: number, y1: number, x2: number, y2: number) => { page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.3, color: rule }) }
   const text = (value: string, x: number, y: number, selected = font) => { page.drawText(value, { x, y, size: textSize, font: selected, color: ink }) }
-  const metadataBottom = block.top - block.metadataHeight
   page.drawRectangle({ x: 28, y: 36, width: page.getWidth() - 56, height: page.getHeight() - 52, borderColor: rule, borderWidth: 0.5 })
   line(block.x, block.top, block.x + block.width, block.top)
-  line(block.x, metadataBottom, block.x + block.width, metadataBottom)
-  for (const x of [block.x + block.identityWidth, block.x + block.width - block.rightWidth]) line(x, metadataBottom, x, block.top)
-  block.identity.forEach((value, index) => { text(value, block.x + 8, block.top - 14 - index * lineHeight, index === 0 ? bold : font) })
-  block.parameters.forEach((value, index) => { text(value, block.x + block.identityWidth + 8, block.top - 14 - index * lineHeight) })
-  text(`Scale ${scale}`, block.sheetPosition.x, block.top - 18, bold)
-  for (const [index, column] of block.table.columns.entries()) {
-    const x = block.x + index * block.table.columnWidth
-    if (index > 0) line(x, 36, x, metadataBottom)
-    text('Contained parts (mm)', x + 8, metadataBottom - 13, bold)
-    let y = metadataBottom - 27
-    for (const row of column) {
-      row.lines.forEach((value, lineIndex) => { text(value, x + 8, y - lineIndex * lineHeight) })
-      y -= row.height
-    }
+  const nameEnd = block.x + block.nameWidth
+  const dimensionsEnd = nameEnd + block.dimensionWidth
+  const tableEnd = block.x + block.tableWidth
+  for (const x of [nameEnd, dimensionsEnd, tableEnd]) line(x, 36, x, block.top)
+  text('Panel / Part', block.x + 6, block.top - 12, bold)
+  text('Dimensions (mm)', nameEnd + 6, block.top - 12, bold)
+  text('Qty', dimensionsEnd + 6, block.top - 12, bold)
+  let y = block.top - 17
+  line(block.x, y, tableEnd, y)
+  for (const row of block.rows) {
+    row.lines.forEach((value, index) => { text(value, block.x + (row.parent ? 6 : 14), y - 10 - index * lineHeight, row.parent ? bold : font) })
+    text(row.dimensions, nameEnd + 6, y - 10)
+    text('1', tableEnd - 6 - font.widthOfTextAtSize('1', textSize), y - 10)
+    y -= row.height
+    line(block.x, y, tableEnd, y)
   }
+  block.metadata.forEach((value, index) => { text(value, tableEnd + 6, block.top - 12 - index * lineHeight) })
+  text(`Scale ${scale}`, tableEnd + 6, 52, bold)
 }

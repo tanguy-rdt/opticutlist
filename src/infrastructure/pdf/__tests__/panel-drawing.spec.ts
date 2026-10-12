@@ -103,7 +103,7 @@ it('keeps every tiny-part reference inside its exact rectangle without a small-p
   const text = vi.spyOn(page, 'drawText')
   const line = vi.spyOn(page, 'drawLine')
   const drawing = drawPanelSheet(page, font, bold, document, 'Panel 1')
-  const labels = text.mock.calls.filter(([label]) => label.startsWith('P1.'))
+  const labels = text.mock.calls.filter(([label, options]) => label.startsWith('P1.') && (options?.y ?? 0) > drawing.titleBlock.top)
   expect(labels).toHaveLength(30)
   for (const [index, [text, options]] of labels.entries()) {
     const part = document.scene.parts[index]
@@ -135,7 +135,7 @@ it('uses an accurately stated reduction for large panels without annotation-depe
   expect(layout.panelBox.height).toBeCloseTo(millimetresToPoints(1250) * layout.transform.scale)
   expect(scaleLabel(layout.transform)).not.toBe('1:1')
   const before = structuredClone(document)
-  expect(layoutPanelDrawing({ ...document, scene: { ...document.scene, parts: [] } }, font, bold).titleBlock.top).toBeLessThan(layout.titleBlock.top)
+  expect(layoutPanelDrawing({ ...document, scene: { ...document.scene, parts: [] } }, font, bold).titleBlock.top).toBeLessThanOrEqual(layout.titleBlock.top)
   expect(document).toEqual(before)
 })
 
@@ -179,7 +179,7 @@ it.each(['A4', 'A3'] as const)('selects the largest fitting scale for the same 2
     expect(layout.panelBox.height).toBeCloseTo(layout.panelBox.width)
     if (expected < 1) expect(millimetresToPoints(200) > layout.available.width || millimetresToPoints(200) > layout.available.height).toBe(true)
     const boxes = document.scene.parts.map(placed => pdfRect(placed.region, layout.transform))
-    const labels = text.mock.calls.filter(([label]) => label.startsWith('P1.') || label === 'Side' || label === '50 × 50 mm')
+    const labels = text.mock.calls.filter(([label, options]) => (label.startsWith('P1.') || label === 'Side' || label === '50 × 50 mm') && (options?.y ?? 0) > layout.titleBlock.top)
     expect(labels).toHaveLength(12)
     for (const [label, options] of labels) {
       if (options?.x === undefined || options.y === undefined || !options.size) throw new Error('Missing label position')
@@ -205,27 +205,30 @@ it('reserves an outside grain marker only when present, allowing an ungrained 20
 })
 
 
-it.each(['A4', 'A3'] as const)('fits complete multi-column lists and a dimensioned diagram on %s without top metadata', async pageSize => {
+it.each(['A4', 'A3'] as const)('keeps a compact hierarchical instance table and continues long lists on %s', async pageSize => {
   const base = pdfRequest.parts[0]
   if (!base) throw new Error('Missing fixture part')
   const parts = Array.from({ length: 30 }, (_, index) => partSchema.parse({ ...base, id: `long-part-${String(index)}`, name: `Distinct cabinet component ${String(index)} with a long name`, lengthMm: 2, widthMm: 2, quantity: 1, grainDirection: 'none' }))
   const panel = { ...pdfRequest.panel, grainDirection: 'none' as const }
-  const result = optimizePanel({ panel, parts, settings: { kerfMm: 0, edgeMarginMm: 5 } })
+  const settings = { kerfMm: 0, edgeMarginMm: 5 }
+  const result = optimizePanel({ panel, parts, settings })
   if (!result.ok) throw new Error(result.error.kind)
   for (const orientation of ['portrait', 'landscape'] as const) {
-    const { document, page, font, bold } = await fixture({ ...pdfRequest, pageSize, orientation, panel, parts, settings: { kerfMm: 0, edgeMarginMm: 5 }, plan: result.plan })
+    const { document, page, font, bold } = await fixture({ ...pdfRequest, pageSize, orientation, panel, parts, settings, plan: result.plan })
     const texts = vi.spyOn(page, 'drawText')
     const layout = drawPanelSheet(page, font, bold, document, 'Panel 1')
     const block = layout.titleBlock
+    expect(block.top - 36).toBeLessThanOrEqual(150)
     expect(block.parts).toHaveLength(30)
-    expect(block.table.columns.length).toBeGreaterThan(1)
-    expect(block.table.columns.flat()).toHaveLength(30)
-    expect(block.table.columns.flat().map(row => row.lines.join(' '))).toEqual(expect.arrayContaining(parts.map((part, index) => `P${String(index + 1)} ${part.name} 2 × 2 × 18 Qty 1`)))
+    expect(block.continued.length).toBeGreaterThan(0)
+    const all = [...block.rows, ...block.continued]
+    expect(all).toHaveLength(31)
+    expect(all[0]).toMatchObject({ ref: 'Panel 1', name: panel.name, quantity: 1, parent: true })
+    expect(all.slice(1).map(row => ({ ref: row.ref, name: row.name, dimensions: row.dimensions, quantity: row.quantity }))).toEqual(parts.map((part, index) => ({ ref: `P${String(index + 1)}`, name: part.name, dimensions: '2 × 2 × 18', quantity: 1 })))
     expect(layout.panelBox.y - 33).toBeGreaterThan(block.top)
-    expect(layout.panelBox.y + layout.panelBox.height).toBeLessThan(layout.size.height - 16)
     for (const [label, options] of texts.mock.calls) {
       if (!options || options.x === undefined || options.y === undefined || !options.size) throw new Error('Missing text bounds')
-      if (options.y >= block.top) continue // Dimension labels belong to the main diagram.
+      if (options.y >= block.top) continue
       expect(options.size).toBe(8)
       const selectedFont = options.font ?? font
       expect(options.x).toBeGreaterThanOrEqual(28)
@@ -233,28 +236,21 @@ it.each(['A4', 'A3'] as const)('fits complete multi-column lists and a dimension
       expect(options.y).toBeGreaterThan(36)
     }
     const labels = texts.mock.calls.map(([label]) => label)
-    expect(labels).not.toContain('Cutting parameters')
+    expect(labels).toContain('Panel / Part')
+    expect(labels).toContain('Dimensions (mm)')
+    expect(labels).toContain('Qty')
     expect(labels.some(label => /Project:|Generated:|Units:|Print:/u.test(label))).toBe(false)
-    expect(labels.filter(label => label.startsWith('Panel 1 /'))).toHaveLength(1)
   }
 })
 
-it('groups copies by stable definition and orientation without merging duplicate names', async () => {
+it('lists repeated definitions as distinct drawing references with quantity one and oriented dimensions', async () => {
   const { document } = await fixture({ ...pdfRequest, ...swapInput, plan: swapPlan })
   const placed = document.scene.parts[0]
   if (!placed) throw new Error('Missing fixture placement')
-  const grouped = panelContainedParts({ ...document, scene: { ...document.scene, parts: [...document.scene.parts, { ...placed, copyIndex: 9 }, { ...placed, copyIndex: 10, orientation: 'rotated', dimensions: { ...placed.dimensions, lengthMm: placed.dimensions.widthMm, widthMm: placed.dimensions.lengthMm } }] } })
-  expect(grouped.reduce((sum, part) => sum + part.quantity, 0)).toBe(document.scene.parts.length + 2)
-  expect(grouped.find(part => part.ref === 'P1' && part.quantity === 2)).toBeDefined()
-  expect(grouped.filter(part => part.ref === 'P1')).toHaveLength(2)
-  expect(new Set(grouped.map(part => part.ref)).size).toBe(document.parts.length)
-})
-
-it('reports impossible list capacity instead of clipping, omitting parts or shrinking title-block type', async () => {
-  const { document, font, bold } = await fixture()
-  const placed = document.scene.parts[0]
-  if (!placed) throw new Error('Missing fixture placement')
-  const parts = Array.from({ length: 300 }, (_, index) => partSchema.parse({ ...placed.part, id: `overflow-${String(index)}`, name: 'An unusually long distinct cabinet component name '.repeat(3) }))
-  const scene = { ...document.scene, parts: parts.map(part => ({ ...placed, part })) }
-  expect(() => layoutPanelDrawing({ ...document, parts, scene }, font, bold)).toThrow('does not fit this sheet at readable size')
+  const repeated = { ...placed.part, quantity: 12 }
+  const input = { ...document, parts: document.parts.map(part => part.id === repeated.id ? repeated : part), scene: { ...document.scene, parts: [{ ...placed, part: repeated, copyIndex: 9 }, { ...placed, part: repeated, copyIndex: 10, orientation: 'rotated' as const, dimensions: { ...placed.dimensions, lengthMm: placed.dimensions.widthMm, widthMm: placed.dimensions.lengthMm } }] } }
+  expect(panelContainedParts(input)).toEqual([
+    { ref: 'P1.10', name: placed.part.name, dimensions: `${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.thicknessMm)}`, quantity: 1 },
+    { ref: 'P1.11', name: placed.part.name, dimensions: `${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.thicknessMm)}`, quantity: 1 },
+  ])
 })

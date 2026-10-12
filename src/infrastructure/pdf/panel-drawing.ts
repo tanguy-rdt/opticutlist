@@ -3,7 +3,7 @@ import type { CuttingPlanPdfDocument } from '../../application/export/cutting-pl
 import type { ScenePart } from '../../application/optimization/cutting-plan-scene'
 import type { GrainDirection } from '../../domain/model/orientation'
 import { pdfPageSize, pdfRect, type PdfBox } from './pdf-layout'
-import { drawPanelTitleBlock, layoutPanelTitleBlock } from './panel-title-block'
+import { drawPanelTitleBlock, layoutPanelTitleBlock, panelPartReference } from './panel-title-block'
 import { DIMENSION_CLEARANCE, drawDimensions, drawGrain, drawWaste, scaleLabel, technicalTransform } from './technical-drawing'
 
 const ink = rgb(0.14, 0.14, 0.14)
@@ -15,14 +15,11 @@ function bounded(text: string, font: PDFFont, size: number, width: number): stri
   while (result.length && font.widthOfTextAtSize(`${result}...`, size) > width) result = result.slice(0, -1)
   return `${result}...`
 }
-function identifier(document: CuttingPlanPdfDocument, part: ScenePart): string {
-  return `P${String(document.parts.findIndex(record => record.id === part.part.id) + 1)}${part.part.quantity > 1 ? `.${String(part.copyIndex + 1)}` : ''}`
-}
 function orientedSize(part: ScenePart): string { return `${String(part.dimensions.lengthMm)} × ${String(part.dimensions.widthMm)} mm${part.orientation === 'rotated' ? ' / 90°' : ''}` }
 function fitsLabel(document: CuttingPlanPdfDocument, part: ScenePart, font: PDFFont, bold: PDFFont, transform: ReturnType<typeof technicalTransform>): boolean {
   const box = pdfRect(part.region, transform)
   const size = box.height >= 52 ? 8 : 7
-  return box.height >= 28 && box.width >= Math.max((box.height >= 52 ? font : bold).widthOfTextAtSize(`${identifier(document, part)}${box.height >= 52 ? '' : ' /...'}`, size), font.widthOfTextAtSize(orientedSize(part), size), 32) + 12
+  return box.height >= 28 && box.width >= Math.max((box.height >= 52 ? font : bold).widthOfTextAtSize(`${panelPartReference(document, part)}${box.height >= 52 ? '' : ' /...'}`, size), font.widthOfTextAtSize(orientedSize(part), size), 32) + 12
 }
 /** A short corner marker for low-height labels, entirely inside the physical part outline. */
 function compactGrain(page: PDFPage, box: PdfBox, direction: GrainDirection): void {
@@ -54,8 +51,8 @@ export function drawPanelSheet(page: PDFPage, font: PDFFont, bold: PDFFont, docu
     if (fullLabel) {
       const compact = box.height < 52
       const textSize = compact ? 7 : 8
-      const labels = compact ? [bounded(`${identifier(document, part)} / ${part.part.name}`, bold, textSize, box.width - 12), orientedSize(part)]
-        : [identifier(document, part), bounded(part.part.name, bold, textSize, box.width - 12), orientedSize(part)]
+      const labels = compact ? [bounded(`${panelPartReference(document, part)} / ${part.part.name}`, bold, textSize, box.width - 12), orientedSize(part)]
+        : [panelPartReference(document, part), bounded(part.part.name, bold, textSize, box.width - 12), orientedSize(part)]
       labels.forEach((text, index) => {
         const selectedFont = index === (compact ? 0 : 1) ? bold : font
         page.drawText(text, { x: box.x + box.width / 2 - selectedFont.widthOfTextAtSize(text, textSize) / 2, y: box.y + box.height / 2 + (compact ? 3 : 10) - index * (compact ? 10 : 12), size: textSize, font: selectedFont, color: ink })
@@ -63,7 +60,7 @@ export function drawPanelSheet(page: PDFPage, font: PDFFont, bold: PDFFont, docu
     }
     else {
       // A tiny reference remains a vector glyph inside its exact region; full details stay in the tables.
-      const text = identifier(document, part)
+      const text = panelPartReference(document, part)
       const padding = Math.min(3, box.width / 8, box.height / 8)
       const textSize = Math.min(6, (box.width - padding * 2) / bold.widthOfTextAtSize(text, 1), box.height - padding * 2)
       const glyphHeight = bold.heightAtSize(textSize, { descender: false })

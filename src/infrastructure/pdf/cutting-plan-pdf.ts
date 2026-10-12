@@ -43,7 +43,15 @@ function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, do
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const page = pdf.addPage([size.width, size.height])
   const drawing = drawPanelSheet(page, font, bold, document, heading)
-  return { page, position: drawing.titleBlock.sheetPosition }
+  const sheets = [{ page, position: drawing.titleBlock.sheetPosition }]
+  if (drawing.titleBlock.continued.length) {
+    const tables = createPdfTables(pdf, font, bold, size, continuation => {
+      continuation.drawRectangle({ x: 28, y: 36, width: size.width - 56, height: size.height - 52, borderColor: muted, borderWidth: 0.5 })
+      sheets.push({ page: continuation, position: { x: size.width - 130, y: 48 } })
+    })
+    tables.table(`${heading} / Parts continued`, [{ label: 'Panel / Part', weight: 3 }, { label: 'Dimensions (mm)', weight: 1, nowrap: true }, { label: 'Qty', weight: 0.5, numeric: true }], drawing.titleBlock.continued.map(row => ({ cells: [`${row.ref} / ${row.name}`, row.dimensions, '1'], kind: 'child' })))
+  }
+  return sheets
 }
 
 function materialName(document: ProjectCuttingPdfDocument, part: Part): string {
@@ -96,7 +104,7 @@ async function renderCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<U
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
   const sheet = appendCuttingPlanPdf(pdf, font, bold, document)
-  return finishPdf(pdf, font, undefined, [sheet])
+  return finishPdf(pdf, font, undefined, sheet)
 }
 export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocument): Promise<Uint8Array<ArrayBuffer>> {
   return withFontErrors(async () => {
@@ -113,7 +121,7 @@ export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocum
     const firstBaseline = size.height / 2 + (lines.length - 1) * titleLineHeight / 2 - glyphHeight / 2
     for (const [index, text] of lines.entries()) cover.drawText(text, { x: size.width / 2 - bold.widthOfTextAtSize(text, titleSize) / 2, y: firstBaseline - index * titleLineHeight, font: bold, size: titleSize, color: ink })
     appendFabricationSections(pdf, font, bold, document, date)
-    const sheets = document.panels.map((panel, index) => appendCuttingPlanPdf(pdf, font, bold, panel, `Panel ${String(index + 1)}`))
+    const sheets = document.panels.flatMap((panel, index) => appendCuttingPlanPdf(pdf, font, bold, panel, `Panel ${String(index + 1)}`))
     return finishPdf(pdf, font, cover, sheets)
   })
 }
