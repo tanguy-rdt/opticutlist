@@ -92,7 +92,7 @@ describe('Konva read-only canvas adapter', () => {
     expect(selected).toHaveBeenCalledWith(key)
     canvas.setSelection(key)
     expect(part.attrs.stroke).toBe('selected')
-    expect(part.attrs.strokeWidth).toBe(3)
+    expect(part.attrs.strokeWidth).toBe(2)
     const draws = layer.draws
     canvas.setSelection(key)
     expect(layer.draws).toBe(draws)

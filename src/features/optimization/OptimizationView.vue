@@ -340,7 +340,10 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
 
 <template>
   <section class="optimization-workspace space-y-3">
-    <header class="flex flex-wrap items-center justify-between gap-3">
+    <header
+      v-if="exportStep"
+      class="flex flex-wrap items-center justify-between gap-3"
+    >
       <h1 class="text-xl font-semibold">
         {{ exportStep ? 'Export' : 'Optimization' }}
       </h1>
@@ -377,9 +380,12 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       <form
         id="optimization-controls"
         novalidate
-        class="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface p-3"
+        class="flex flex-wrap items-center gap-3 border-b border-line pb-3"
         @submit.prevent="start"
       >
+        <h1 class="mr-2 text-xl font-semibold">
+          Optimization
+        </h1>
         <button
           type="submit"
           class="button button-primary"
@@ -408,7 +414,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         >
           Cutting settings
         </button>
-        <span class="text-xs text-muted">Kerf: {{ kerf }} mm · Margin: {{ margin }} mm</span>
       </form>
       <CatalogFormDialog
         :open="settingsOpen"
@@ -590,7 +595,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       class="cutting-workspace-grid items-start gap-3"
     >
       <aside
-        class="panel min-w-0 space-y-3 p-3 lg:max-h-[70dvh] lg:overflow-y-auto"
+        class="min-w-0 space-y-2 py-2 lg:max-h-[70dvh] lg:overflow-y-auto"
         aria-label="Panels used"
       >
         <h2 class="text-sm font-semibold">
@@ -617,7 +622,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
               <span class="min-w-0 flex-1"><span
                 class="block font-semibold"
               >Panel {{ index + 1 }}</span><span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.lengthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.widthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.thicknessMm }} mm</span></span>
-              <span class="rounded bg-success-surface px-1.5 py-1 text-xs text-accent">{{ allocation.plan.metrics.utilizationPercent.toFixed(1) }}%</span>
+              <span class="text-xs tabular-nums text-muted">{{ allocation.plan.metrics.utilizationPercent.toFixed(1) }}%</span>
             </button>
             <ul
               v-show="panelIndex === index"
@@ -637,7 +642,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
                   :aria-pressed="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex])"
                   @click="selectCopy(index, JSON.stringify([placed.partId, placed.copyIndex]))"
                 >
-                  <span class="block font-medium">{{ partName(placed.partId) }} / {{ placed.copyIndex + 1 }}</span>
+                  <span class="block font-medium">{{ partName(placed.partId) }}<span class="sr-only"> / {{ placed.copyIndex + 1 }}</span></span>
                   <span class="text-muted">× 1</span>
                 </button>
               </li>
@@ -661,6 +666,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             :key="panelIndex"
             :allocation="activePanel"
             :panel="activeChoice.product"
+            :panel-label="`Panel ${panelIndex + 1}`"
             :parts="result.parts"
             :settings="result.settings"
             :material-name="activeChoice.materialName"

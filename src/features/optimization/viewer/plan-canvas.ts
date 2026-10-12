@@ -85,7 +85,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
         previous?.stroke(colors.partBorder); previous?.strokeWidth(1)
         selected = key
         const next = shapes.get(selected)
-        next?.stroke(colors.selected); next?.strokeWidth(3)
+        next?.stroke(colors.selected); next?.strokeWidth(2)
         layer.batchDraw()
       },
       setPalette(next) { colors = next; applyPalette() },

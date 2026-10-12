@@ -11,14 +11,16 @@ import AppIcon from '../../shared/ui/AppIcon.vue'
 import { createPlanCanvas, type PlanCanvas, type PlanPalette } from './viewer/plan-canvas'
 import { fitViewport, panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
 
-const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; selectedCopyKey?: string | undefined; confirmReset?: (() => boolean) | undefined }>()
+const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; panelLabel?: string | undefined; selectedCopyKey?: string | undefined; confirmReset?: (() => boolean) | undefined }>()
 const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean]; 'select-copy': [key: string] }>()
 const session = shallowRef<PlanEditingSession | null>(null)
 const editFeedback = ref('')
 const editError = ref('')
 const swapKey = ref('')
+const swapOpen = ref(false)
 watch([() => props.plan, () => props.panel, () => props.parts, () => props.settings], () => {
   session.value = null
+  swapOpen.value = false
   swapKey.value = ''
   editFeedback.value = ''
   editError.value = ''
@@ -42,6 +44,16 @@ function unavailableReason(edit: CuttingTreeEdit | null, emptyMessage: string): 
   const proposed = applyPlanEdit(session.value, edit)
   return proposed.ok ? '' : proposed.error.message
 }
+const compatibleSwaps = computed(() => {
+  const selected = selectedPart.value
+  const editingSession = session.value
+  if (!selected || !editingSession || projection.value.status !== 'valid') return []
+  return projection.value.scene.parts.filter(part => part.key !== selectedKey.value && applyPlanEdit(editingSession, {
+    kind: 'swap', first: { partId: selected.part.id, copyIndex: selected.copyIndex },
+    second: { partId: part.part.id, copyIndex: part.copyIndex },
+  }).ok)
+})
+watch(selectedKey, () => { swapOpen.value = false; swapKey.value = '' })
 const rotationReason = computed(() => unavailableReason(rotationEdit.value, 'Select a placed copy to rotate.'))
 const swapReason = computed(() => unavailableReason(swapEdit.value, 'Select two different placed copies to swap.'))
 function announceSession(next: PlanEditingSession, message: string): void {
@@ -54,6 +66,8 @@ function applyEdit(edit: CuttingTreeEdit | null): void {
   if (session.value === null || edit === null) return
   const outcome = applyPlanEdit(session.value, edit)
   if (!outcome.ok) { editError.value = outcome.error.message; editFeedback.value = ''; return }
+  swapOpen.value = false
+  swapKey.value = ''
   announceSession(outcome.session, edit.kind === 'rotate' ? 'Rotation accepted and independently validated.' : 'Swap accepted and independently validated.')
 }
 function undo(): void { if (session.value !== null) announceSession(undoPlanEdit(session.value), 'Edit undone.') }
@@ -168,6 +182,13 @@ onBeforeUnmount(() => {
     aria-label="Cutting layout"
   >
     <div class="canvas-toolbar">
+      <p
+        v-if="!selectedPart && projection.status === 'valid'"
+        class="panel-context text-xs text-muted"
+        aria-label="Current panel dimensions"
+      >
+        {{ panelLabel ?? 'Panel' }} · {{ panel.lengthMm }} × {{ panel.widthMm }} × {{ panel.thicknessMm }} mm
+      </p>
       <div
         v-if="selectedPart"
         class="selected-strip"
@@ -213,145 +234,197 @@ onBeforeUnmount(() => {
         role="group"
         aria-label="Cutting layout view controls"
       >
-        <button
-          type="button"
-          class="tool"
-          :disabled="!canvasReady"
-          title="Zoom out"
-          @click="zoom(0.8)"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          ><path d="M5 12h14" /></svg><span class="sr-only">Zoom out</span>
-        </button>
-        <output
-          aria-label="Canvas zoom"
-          class="min-w-12 text-center text-xs"
-          aria-live="polite"
-        >{{ zoomPercent }}%<span class="sr-only"> of fit</span></output>
-        <button
-          type="button"
-          class="tool"
-          :disabled="!canvasReady"
-          title="Zoom in"
-          @click="zoom(1.25)"
-        >
-          <AppIcon name="plus" /><span class="sr-only">Zoom in</span>
-        </button>
-        <button
-          type="button"
-          class="tool"
-          :disabled="!canvasReady"
-          title="Fit to view"
-          @click="fit"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          ><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5" /></svg><span class="sr-only">Fit to view</span>
-        </button>
-        <button
-          type="button"
-          class="tool"
-          :disabled="!canvasReady"
-          title="Reset view"
-          @click="reset"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          ><path d="M4 10V4h6M4 4a10 10 0 1 1-2 10" /></svg><span class="sr-only">Reset view</span>
-        </button>
-        <button
-          type="button"
-          class="tool"
-          :disabled="Boolean(rotationReason)"
-          title="Rotate selected copy 90°"
-          aria-describedby="edit-rotation-reason"
-          @click="applyEdit(rotationEdit)"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          ><path d="M20 10V4h-6m6 0a10 10 0 1 0 2 10" /></svg><span class="sr-only">Rotate selected copy 90°</span>
-        </button>
         <div
-          v-if="projection.status === 'valid'"
-          class="editing-tools"
-          aria-label="Constrained plan editing"
+          class="tool-group"
+          role="group"
+          aria-label="Selection and pan"
         >
-          <label
-            class="sr-only"
-            for="cutting-viewer-swap"
-          >Swap with placed copy</label>
-          <select
-            v-if="selectedPart"
-            id="cutting-viewer-swap"
-            v-model="swapKey"
-            class="copy-picker field"
-            aria-label="Swap with placed copy"
+          <button
+            type="button"
+            class="tool"
+            :disabled="!canvasReady"
+            title="Focus canvas — select parts or drag to pan"
+            @click="host?.parentElement?.focus()"
           >
-            <option value="">
-              Swap with…
-            </option>
-            <option
-              v-for="part in projection.scene.parts.filter(part => part.key !== selectedKey)"
-              :key="part.key"
-              :value="part.key"
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            ><path d="m5 3 14 9-7 1-3 7Z" /></svg><span class="sr-only">Select and pan</span>
+          </button>
+        </div>
+        <div
+          class="tool-group"
+          role="group"
+          aria-label="Editing actions"
+        >
+          <button
+            type="button"
+            class="tool"
+            :disabled="Boolean(rotationReason)"
+            title="Rotate selected copy 90°"
+            aria-describedby="edit-rotation-reason"
+            @click="applyEdit(rotationEdit)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            ><path d="M20 10V4h-6m6 0a10 10 0 1 0 2 10" /></svg><span class="sr-only">Rotate selected copy 90°</span>
+          </button>
+          <div
+            v-if="projection.status === 'valid'"
+            class="editing-tools"
+            aria-label="Constrained plan editing"
+          >
+            <button
+              v-if="selectedPart"
+              type="button"
+              class="tool"
+              :disabled="!compatibleSwaps.length"
+              :aria-expanded="swapOpen"
+              aria-controls="swap-options"
+              :title="compatibleSwaps.length ? 'Choose a compatible part to swap' : 'No compatible placed parts to swap'"
+              @click="swapOpen = !swapOpen"
             >
-              {{ part.part.name }} / {{ part.copyIndex + 1 }}
-            </option>
-          </select>
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              ><path d="M4 8h16m-4-4 4 4-4 4M20 16H4m4-4-4 4 4 4" /></svg><span class="sr-only">Choose swap target</span>
+            </button>
+            <div
+              v-if="swapOpen && compatibleSwaps.length"
+              id="swap-options"
+              class="swap-options"
+              @keydown.esc.stop="swapOpen = false"
+            >
+              <label
+                class="sr-only"
+                for="cutting-viewer-swap"
+              >Swap with placed copy</label>
+              <select
+                v-if="selectedPart"
+                id="cutting-viewer-swap"
+                v-model="swapKey"
+                class="copy-picker field"
+                aria-label="Swap with placed copy"
+              >
+                <option value="">
+                  Swap with…
+                </option>
+                <option
+                  v-for="part in compatibleSwaps"
+                  :key="part.key"
+                  :value="part.key"
+                >
+                  {{ part.part.name }} / {{ part.copyIndex + 1 }}
+                </option>
+              </select>
+              <button
+                v-if="selectedPart"
+                type="button"
+                class="tool"
+                :disabled="Boolean(swapReason)"
+                title="Swap selected copies"
+                aria-describedby="edit-swap-reason"
+                @click="applyEdit(swapEdit)"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                ><path d="M4 8h16m-4-4 4 4-4 4M20 16H4m4-4-4 4 4 4" /></svg><span class="sr-only">Swap selected copies</span>
+              </button>
+            </div>
+            <button
+              type="button"
+              class="tool"
+              :disabled="!session || session.cursor === 0"
+              title="Undo edit"
+              @click="undo"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              ><path d="m8 4-5 5 5 5M3 9h10a7 7 0 0 1 0 14" /></svg><span class="sr-only">Undo edit</span>
+            </button>
+            <button
+              type="button"
+              class="tool"
+              :disabled="!session || session.cursor >= session.history.length - 1"
+              title="Redo edit"
+              @click="redo"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              ><path d="m16 4 5 5-5 5M21 9H11a7 7 0 0 0 0 14" /></svg><span class="sr-only">Redo edit</span>
+            </button>
+            <button
+              type="button"
+              class="tool"
+              :disabled="!session || session.history.length === 1"
+              :title="savedBaseline ? 'Reset to Saved Plan' : 'Reset to Optimized Plan'"
+              @click="resetOptimized"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              ><path d="M4 10V4h6M4 4a10 10 0 1 1-2 10" /></svg><span class="sr-only">{{ savedBaseline ? 'Reset to Saved Plan' : 'Reset to Optimized Plan' }}</span>
+            </button>
+          </div>
+        </div>
+        <div
+          class="tool-group"
+          role="group"
+          aria-label="Zoom and fit"
+        >
           <button
-            v-if="selectedPart"
             type="button"
             class="tool"
-            :disabled="Boolean(swapReason)"
-            title="Swap selected copies"
-            aria-describedby="edit-swap-reason"
-            @click="applyEdit(swapEdit)"
+            :disabled="!canvasReady"
+            title="Zoom out"
+            @click="zoom(0.8)"
           >
             <svg
               viewBox="0 0 24 24"
               aria-hidden="true"
-            ><path d="M4 8h16m-4-4 4 4-4 4M20 16H4m4-4-4 4 4 4" /></svg><span class="sr-only">Swap selected copies</span>
+            ><path d="M5 12h14" /></svg><span class="sr-only">Zoom out</span>
+          </button>
+          <output
+            aria-label="Canvas zoom"
+            class="min-w-12 text-center text-xs"
+            aria-live="polite"
+          >{{ zoomPercent }}%<span class="sr-only"> of fit</span></output>
+          <button
+            type="button"
+            class="tool"
+            :disabled="!canvasReady"
+            title="Zoom in"
+            @click="zoom(1.25)"
+          >
+            <AppIcon name="plus" /><span class="sr-only">Zoom in</span>
           </button>
           <button
             type="button"
             class="tool"
-            :disabled="!session || session.cursor === 0"
-            title="Undo edit"
-            @click="undo"
+            :disabled="!canvasReady"
+            title="Fit to view"
+            @click="fit"
           >
             <svg
               viewBox="0 0 24 24"
               aria-hidden="true"
-            ><path d="m8 4-5 5 5 5M3 9h10a7 7 0 0 1 0 14" /></svg><span class="sr-only">Undo edit</span>
+            ><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5" /></svg><span class="sr-only">Fit to view</span>
           </button>
           <button
             type="button"
             class="tool"
-            :disabled="!session || session.cursor >= session.history.length - 1"
-            title="Redo edit"
-            @click="redo"
+            :disabled="!canvasReady"
+            title="Reset view"
+            @click="reset"
           >
             <svg
               viewBox="0 0 24 24"
               aria-hidden="true"
-            ><path d="m16 4 5 5-5 5M21 9H11a7 7 0 0 0 0 14" /></svg><span class="sr-only">Redo edit</span>
-          </button>
-          <button
-            type="button"
-            class="tool"
-            :disabled="!session || session.history.length === 1"
-            :title="savedBaseline ? 'Reset to Saved Plan' : 'Reset to Optimized Plan'"
-            @click="resetOptimized"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            ><path d="M4 10V4h6M4 4a10 10 0 1 1-2 10" /></svg><span class="sr-only">{{ savedBaseline ? 'Reset to Saved Plan' : 'Reset to Optimized Plan' }}</span>
+            ><path d="M4 10V4h6M4 4a10 10 0 1 1-2 10" /></svg><span class="sr-only">Reset view</span>
           </button>
         </div>
       </div>
@@ -444,15 +517,19 @@ onBeforeUnmount(() => {
 <style scoped>
 .canvas-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .5rem .65rem; border-bottom: 1px solid var(--line); }
 .selected-strip { display: flex; align-items: center; gap: .65rem; flex: 1; }
-.canvas-tools { display: flex; align-items: center; gap: .25rem; margin-left: auto; }
+.canvas-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-left: auto; }
+.tool-group { display: flex; align-items: center; gap: .2rem; }
+.tool-group + .tool-group { border-left: 1px solid var(--line); padding-left: .5rem; }
+.swap-options { position: absolute; z-index: 5; right: 0; top: calc(100% + .5rem); display: flex; gap: .35rem; padding: .5rem; background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 12%, transparent); }
+.panel-context { margin-right: auto; }
 .tool { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border: 1px solid var(--line); border-radius: .4rem; background: var(--surface); }
 .tool:hover:not(:disabled) { background: var(--success-surface); color: var(--accent); }
 .tool:disabled { opacity: .4; }
 .tool :deep(svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.copy-picker { width: 6.5rem; }
+.copy-picker { width: 12rem; max-width: 60vw; }
 .graph-paper { background-color: var(--canvas); background-image: linear-gradient(color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px); background-size: 20px 20px; }
 .cutting-canvas-host { height: clamp(360px, 62dvh, 800px); }
-.editing-tools { display: flex; align-items: center; gap: .25rem; }
+.editing-tools { position: relative; display: flex; align-items: center; gap: .25rem; }
 .cutting-viewer :deep(.field) { min-height: 2rem; padding-block: .375rem; font-size: .875rem; }
 @media (max-width: 640px) { .canvas-tools { flex-wrap: wrap; margin-left: 0; } .selected-strip { flex-basis: 100%; } }
 </style>

@@ -29,7 +29,13 @@ describe('Cutting layout workspace', () => {
     const call = vi.mocked(createPlanCanvas).mock.calls[0]
     const part = call?.[1].parts[0]
     if (!call || !part) throw new Error('Missing rendered part')
+    expect(wrapper.get('[aria-label="Current panel dimensions"]').text()).toContain('Panel')
+    expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
+    await flushPromises()
+    await button(wrapper, 'Select and pan').trigger('click')
+    expect(document.activeElement).toBe(wrapper.get('[aria-label="Cutting plan canvas"]').element)
     await wrapper.setProps({ selectedCopyKey: part.key })
+    expect(wrapper.find('[aria-label="Current panel dimensions"]').exists()).toBe(false)
     expect(canvas.setSelection).toHaveBeenLastCalledWith(part.key)
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Shelf / 1')
     call[4]('')

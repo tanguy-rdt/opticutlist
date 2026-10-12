@@ -245,6 +245,7 @@ describe('Automatic project optimization', () => {
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(0)
     wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector<HTMLButtonElement>('[data-copy-key]')?.click()
     await flushPromises()
+    await wrapper.findAll('button').find(control => control.text() === 'Choose swap target')?.trigger('click')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click('Swap selected copies')
     expect(wrapper.text()).toContain('Swap accepted and independently validated')
@@ -296,7 +297,7 @@ describe('Automatic project optimization', () => {
     expect(wrapper.findAll('button').some(button => button.text() === 'Refresh inputs')).toBe(false)
     expect(wrapper.find('[aria-label="Cutting plan canvas"]').exists()).toBe(true)
     expect(wrapper.find('[aria-label="Overall utilization"]').exists()).toBe(true)
-    expect(wrapper.get('[aria-label="Panels used"]').text()).toContain('Side panel / 1')
+    expect(wrapper.get('[aria-label="Panels used"]').text()).toContain('Side panel')
     expect(wrapper.get('[aria-label="Panels used"]').text()).toContain('× 1')
     expect(wrapper.get('[aria-label="Panels used"]').text()).not.toContain('Catalog')
     expect(wrapper.get('[aria-label="Panels used"]').text()).not.toContain('Local Timber Yard')
@@ -633,6 +634,7 @@ describe('automatic workflow and per-panel integration', () => {
     }
     wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector<HTMLButtonElement>('[data-copy-key]')?.click()
     await flushPromises()
+    await wrapper.findAll('button').find(control => control.text() === 'Choose swap target')?.trigger('click')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click('Swap selected copies')
     expect(activeCopy(wrapper)).toContain('Side panel / 2')
@@ -695,6 +697,7 @@ describe('automatic current result in the optimization workspace', () => {
   async function editSwap(wrapper: VueWrapper): Promise<void> {
     wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector<HTMLButtonElement>('[data-copy-key]')?.click()
     await flushPromises()
+    await wrapper.findAll('button').find(control => control.text() === 'Choose swap target')?.trigger('click')
     await wrapper.get('#cutting-viewer-swap').setValue(wrapper.get('#cutting-viewer-swap option:nth-child(2)').attributes('value'))
     await click(wrapper, 'Swap selected copies')
   }
