@@ -38,16 +38,12 @@ function sheetFrame(page: PDFPage, font: PDFFont, project: string, title: string
   drawLines(page, [`Generated: ${date}`, `Scale ${scale}`, 'Units: mm'], font, margin + left + 8, 88, 8)
   if (scale !== 'N/A') page.drawText('Print: Actual size / 100%', { x: margin, y: 46, size: 8, font, color: muted })
 }
-function drawingTitleBlock(page: PDFPage, font: PDFFont, project: string, title: string, material: string, thickness: number, scale: string, date: string): void {
-  sheetFrame(page, font, project, title, scale, date)
-  page.drawText(`${material.length > 30 ? material.slice(0, 27) + '...' : material} / ${String(thickness)} mm`, { x: margin, y: 60, size: 8, font, color: muted })
-}
-/** Exactly one technical sheet per validated physical panel; no repeated detail or annotation pages. */
-function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: CuttingPlanPdfDocument, heading = 'Cutting panel', date = new Date().toISOString().slice(0, 10)): void {
+/** Exactly one technical sheet per validated physical panel. */
+function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: CuttingPlanPdfDocument, heading = 'Panel 1') {
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const page = pdf.addPage([size.width, size.height])
   const drawing = drawPanelSheet(page, font, bold, document, heading)
-  drawingTitleBlock(page, font, document.projectName ?? 'Cutting plan', heading, document.materialName, document.panel.thicknessMm, drawing.scale, date)
+  return { page, position: drawing.titleBlock.sheetPosition }
 }
 
 function materialName(document: ProjectCuttingPdfDocument, part: Part): string {
@@ -89,8 +85,8 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
   }
   appendPartDrawings(pdf, font, bold, document.parts, document.pageSize ?? 'A4', document.orientation, part => materialName(document, part), page => { sheetFrame(page, font, document.title, 'Individual part drawings', 'Per drawing', date) })
 }
-async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage): Promise<Uint8Array<ArrayBuffer>> {
-  for (const [index, current] of pdf.getPages().entries()) if (current !== cover) current.drawText(`Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`, { x: current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2, y: 67, size: 9, font, color: ink })
+async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage, panelSheets: readonly { page: PDFPage; position: { x: number; y: number } }[] = []): Promise<Uint8Array<ArrayBuffer>> {
+  for (const [index, current] of pdf.getPages().entries()) if (current !== cover) current.drawText(`Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`, { ...(panelSheets.find(sheet => sheet.page === current)?.position ?? { x: current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2, y: 67 }), size: panelSheets.some(sheet => sheet.page === current) ? 8 : 9, font, color: ink })
   pdf.setTitle('OptiCutList cutting plan')
   pdf.setProducer('OptiCutList / pdf-lib')
   return new Uint8Array(await pdf.save())
@@ -99,8 +95,8 @@ async function renderCuttingPlanPdf(document: CuttingPlanPdfDocument): Promise<U
   const pdf = await PDFDocument.create()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  appendCuttingPlanPdf(pdf, font, bold, document)
-  return finishPdf(pdf, font)
+  const sheet = appendCuttingPlanPdf(pdf, font, bold, document)
+  return finishPdf(pdf, font, undefined, [sheet])
 }
 export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocument): Promise<Uint8Array<ArrayBuffer>> {
   return withFontErrors(async () => {
@@ -117,8 +113,8 @@ export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocum
     const firstBaseline = size.height / 2 + (lines.length - 1) * titleLineHeight / 2 - glyphHeight / 2
     for (const [index, text] of lines.entries()) cover.drawText(text, { x: size.width / 2 - bold.widthOfTextAtSize(text, titleSize) / 2, y: firstBaseline - index * titleLineHeight, font: bold, size: titleSize, color: ink })
     appendFabricationSections(pdf, font, bold, document, date)
-    document.panels.forEach((panel, index) => { appendCuttingPlanPdf(pdf, font, bold, panel, `OptiCutList / Panel ${String(index + 1)} of ${String(document.panels.length)}`, date) })
-    return finishPdf(pdf, font, cover)
+    const sheets = document.panels.map((panel, index) => appendCuttingPlanPdf(pdf, font, bold, panel, `Panel ${String(index + 1)}`))
+    return finishPdf(pdf, font, cover, sheets)
   })
 }
 async function withFontErrors(work: () => Promise<Uint8Array<ArrayBuffer>>): Promise<Uint8Array<ArrayBuffer>> {

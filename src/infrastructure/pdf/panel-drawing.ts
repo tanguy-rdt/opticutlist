@@ -3,6 +3,7 @@ import type { CuttingPlanPdfDocument } from '../../application/export/cutting-pl
 import type { ScenePart } from '../../application/optimization/cutting-plan-scene'
 import type { GrainDirection } from '../../domain/model/orientation'
 import { pdfPageSize, pdfRect, type PdfBox } from './pdf-layout'
+import { drawPanelTitleBlock, layoutPanelTitleBlock } from './panel-title-block'
 import { DIMENSION_CLEARANCE, drawDimensions, drawGrain, drawWaste, scaleLabel, technicalTransform } from './technical-drawing'
 
 const ink = rgb(0.14, 0.14, 0.14)
@@ -31,34 +32,20 @@ function compactGrain(page: PDFPage, box: PdfBox, direction: GrainDirection): vo
   page.drawLine({ start, end, thickness: 0.35, color: ink })
   for (const side of [-1, 1]) page.drawLine({ start: end, end: direction === 'length' ? { x: end.x - 2, y: end.y + side * 1.5 } : { x: end.x + side * 1.5, y: end.y + 2 }, thickness: 0.35, color: ink })
 }
-/** The printable area reserves the actual header, title block, dimensions and grain marker. */
-export function layoutPanelDrawing(document: CuttingPlanPdfDocument) {
+/** Reserve the measured bottom block and physical dimension/grain clearance only. */
+export function layoutPanelDrawing(document: CuttingPlanPdfDocument, font: PDFFont, bold: PDFFont, reference = 'Panel 1') {
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
-  const titleBlockTop = 104
-  const headerBottom = size.height - 100
-  const bottom = titleBlockTop + 12 + DIMENSION_CLEARANCE
-  const grainClearance = document.panel.grainDirection === 'none' ? 0 : 27
-  const top = headerBottom - 12 - grainClearance
+  const titleBlock = layoutPanelTitleBlock(document, font, bold, reference)
+  const bottom = titleBlock.top + 12 + DIMENSION_CLEARANCE
+  const grainClearance = document.panel.grainDirection === 'none' ? 0 : 43
+  const top = size.height - 28 - grainClearance
   const available = { x: margin + 30, y: bottom, width: size.width - margin * 2 - 60, height: top - bottom }
   const transform = technicalTransform(document.scene.panel, available)
-  return { size, transform, panelBox: pdfRect(document.scene.panel, transform), available }
+  return { size, transform, panelBox: pdfRect(document.scene.panel, transform), available, titleBlock }
 }
 export function drawPanelSheet(page: PDFPage, font: PDFFont, bold: PDFFont, document: CuttingPlanPdfDocument, heading: string) {
-  const layout = layoutPanelDrawing(document)
-  const { size, transform, panelBox } = layout
-  const leftWidth = size.width - margin * 2 - 190
-  page.drawText(bounded(heading, bold, 13, leftWidth), { x: margin, y: size.height - 42, size: 13, font: bold, color: ink })
-  page.drawText(bounded(document.panel.name, font, 9, leftWidth), { x: margin, y: size.height - 58, size: 9, font, color: ink })
-  page.drawText(`${String(document.panel.lengthMm)} × ${String(document.panel.widthMm)} × ${String(document.panel.thicknessMm)} mm`, { x: margin, y: size.height - 72, size: 9, font, color: muted })
-  const elsewhere = document.unplaced.filter(range => range.reason.kind === 'allocatedElsewhere').reduce((sum, range) => sum + range.count, 0)
-  const unplaced = document.unplaced.reduce((sum, range) => sum + range.count, 0) - elsewhere
-  if (unplaced) page.drawText(`${String(unplaced)} copies unplaced`, { x: margin, y: size.height - 86, size: 8, font, color: muted })
-  const parameters = { x: size.width - margin - 170, y: size.height - 100, width: 170, height: 62 }
-  page.drawRectangle({ ...parameters, borderColor: muted, borderWidth: 0.4 })
-  page.drawText('Cutting parameters', { x: parameters.x + 8, y: parameters.y + 47, font: bold, size: 8, color: ink })
-  page.drawText(`Kerf: ${String(document.settings.kerfMm)} mm`, { x: parameters.x + 8, y: parameters.y + 31, font, size: 8, color: ink })
-  page.drawText(`Edge margin: ${String(document.settings.edgeMarginMm)} mm`, { x: parameters.x + 8, y: parameters.y + 17, font, size: 8, color: ink })
-  page.drawText(`Grain: ${document.panel.grainDirection}`, { x: parameters.x + 8, y: parameters.y + 5, font, size: 8, color: muted })
+  const layout = layoutPanelDrawing(document, font, bold, heading)
+  const { transform, panelBox } = layout
   for (const waste of document.scene.waste) drawWaste(page, pdfRect(waste, transform))
   for (const part of document.scene.parts) {
     const box = pdfRect(part.region, transform)
@@ -93,5 +80,6 @@ export function drawPanelSheet(page: PDFPage, font: PDFFont, bold: PDFFont, docu
   page.drawRectangle({ ...panelBox, borderColor: ink, borderWidth: 0.6 })
   drawDimensions(page, font, panelBox, document.panel.lengthMm, document.panel.widthMm)
   if (document.panel.grainDirection !== 'none') drawGrain(page, { x: panelBox.x, y: panelBox.y + panelBox.height + 8, width: 40, height: 35 }, document.panel.grainDirection)
+  drawPanelTitleBlock(page, font, bold, layout.titleBlock, scaleLabel(transform))
   return { ...layout, scale: scaleLabel(transform) }
 }
