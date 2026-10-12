@@ -17,7 +17,7 @@ function bounded(text: string, font: PDFFont, size: number, width: number): stri
 function identifier(document: CuttingPlanPdfDocument, part: ScenePart): string {
   return `P${String(document.parts.findIndex(record => record.id === part.part.id) + 1)}${part.part.quantity > 1 ? `.${String(part.copyIndex + 1)}` : ''}`
 }
-function orientedSize(part: ScenePart): string { return `${String(part.dimensions.lengthMm)} x ${String(part.dimensions.widthMm)} mm${part.orientation === 'rotated' ? ' / 90°' : ''}` }
+function orientedSize(part: ScenePart): string { return `${String(part.dimensions.lengthMm)} × ${String(part.dimensions.widthMm)} mm${part.orientation === 'rotated' ? ' / 90°' : ''}` }
 function fitsLabel(document: CuttingPlanPdfDocument, part: ScenePart, font: PDFFont, transform: ReturnType<typeof technicalTransform>): boolean {
   const box = pdfRect(part.region, transform)
   const size = box.height >= 52 ? 8 : 7
@@ -55,7 +55,7 @@ export function drawPanelSheet(page: PDFPage, font: PDFFont, bold: PDFFont, docu
   const leftWidth = size.width - margin * 2 - 190
   page.drawText(bounded(heading, bold, 13, leftWidth), { x: margin, y: size.height - 42, size: 13, font: bold, color: ink })
   page.drawText(bounded(document.panel.name, font, 9, leftWidth), { x: margin, y: size.height - 58, size: 9, font, color: ink })
-  page.drawText(`${String(document.panel.lengthMm)} x ${String(document.panel.widthMm)} x ${String(document.panel.thicknessMm)} mm`, { x: margin, y: size.height - 72, size: 9, font, color: muted })
+  page.drawText(`${String(document.panel.lengthMm)} × ${String(document.panel.widthMm)} × ${String(document.panel.thicknessMm)} mm`, { x: margin, y: size.height - 72, size: 9, font, color: muted })
   const elsewhere = document.unplaced.filter(range => range.reason.kind === 'allocatedElsewhere').reduce((sum, range) => sum + range.count, 0)
   const unplaced = document.unplaced.reduce((sum, range) => sum + range.count, 0) - elsewhere
   if (unplaced) page.drawText(`${String(unplaced)} copies unplaced`, { x: margin, y: size.height - 86, size: 8, font, color: muted })
@@ -105,6 +105,5 @@ export function drawPanelSheet(page: PDFPage, font: PDFFont, bold: PDFFont, docu
       })
     })
   }
-  page.drawText('Hatch: waste / Dashed: usable area / Dark band: kerf', { x: margin, y: 116, font, size: 7, color: muted })
   return { ...layout, scale: scaleLabel(transform) }
 }

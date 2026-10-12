@@ -51,7 +51,7 @@ describe('One-panel technical sheet', () => {
     const drawing = drawPanelSheet(page, font, bold, document, 'Panel 1')
     const labels = text.mock.calls.map(([label]) => label)
     expect(labels).toContain('Shelf')
-    expect(labels).toContain('30 x 50 mm / 90°')
+    expect(labels).toContain('30 × 50 mm / 90°')
     expect(labels).toContain('100 mm'); expect(labels).toContain('80 mm')
     expect(labels).toContain('Kerf: 2 mm'); expect(labels).toContain('Edge margin: 5 mm')
     expect(labels).not.toContain('Small parts / positions from top-left origin (mm)')

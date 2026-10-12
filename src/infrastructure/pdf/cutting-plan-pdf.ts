@@ -11,7 +11,7 @@ const lineHeight = 14
 
 export { wrapPdfText } from './pdf-text'
 import { wrapPdfText } from './pdf-text'
-import { createPdfTables } from './pdf-table'
+import { createPdfTables, type TableRow } from './pdf-table'
 import { purchasingSchedule } from './purchasing-schedule'
 import { appendPartDrawings } from './part-drawings'
 function drawLines(page: PDFPage, lines: readonly string[], font: PDFFont, x: number, y: number, size = 10): number {
@@ -19,7 +19,7 @@ function drawLines(page: PDFPage, lines: readonly string[], font: PDFFont, x: nu
   return y
 }
 function dimensions(item: { lengthMm: number; widthMm: number; thicknessMm: number }): string {
-  return `${String(item.lengthMm)} x ${String(item.widthMm)} x ${String(item.thicknessMm)} mm`
+  return `${String(item.lengthMm)} × ${String(item.widthMm)} × ${String(item.thicknessMm)} mm`
 }
 
 function partCode(parts: readonly Part[], id: string): string { return `P${String(parts.findIndex(part => part.id === id) + 1)}` }
@@ -51,44 +51,46 @@ function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, do
 }
 
 function materialName(document: ProjectCuttingPdfDocument, part: Part): string {
-  return document.panels.find(panel => panel.panel.materialId === part.materialId)?.materialName ?? 'Material name unavailable'
+  return document.panels.find(panel => panel.panel.materialId === part.materialId)?.materialName ?? 'N/A'
 }
 function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: ProjectCuttingPdfDocument, date: string): void {
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const tables = createPdfTables(pdf, font, bold, size, page => { sheetFrame(page, font, document.title, 'Fabrication schedules', 'N/A', date) })
-  const columns = [{ label: 'Reference', weight: 1 }, { label: 'Name', weight: 2.4 }, { label: 'Material', weight: 2 }, { label: 'Length', weight: 1, numeric: true }, { label: 'Width', weight: 1, numeric: true }, { label: 'Thickness', weight: 1.2, numeric: true }, { label: 'Quantity', weight: 1, numeric: true }]
-  const describe = (part: Part) => [partCode(document.parts, part.id), part.name, materialName(document, part), String(part.lengthMm), String(part.widthMm), String(part.thicknessMm), String(part.quantity)]
+  const columns = [{ label: 'Ref', weight: 1, nowrap: true }, { label: 'Part name', weight: 2.4 }, { label: 'Material', weight: 2 }, { label: 'Dimensions (mm)', weight: 1.8, nowrap: true }, { label: 'Qty', weight: 1, numeric: true }]
+  const describe = (part: Part) => [partCode(document.parts, part.id), part.name, materialName(document, part), dimensions(part), String(part.quantity)]
   tables.table('Complete parts list', columns, document.parts.map(describe))
   const sources = new Map<string, { panel: CuttingPlanPdfDocument; count: number }>()
   for (const panel of document.panels) {
     const previous = sources.get(panel.panel.id)
     sources.set(panel.panel.id, { panel, count: (previous?.count ?? 0) + 1 })
   }
-  const purchasing = purchasingSchedule([...sources.values()])
   tables.table('Materials and purchasing', [
-    { label: 'Material', weight: 1.6 }, { label: 'Panel reference', weight: 2 }, { label: 'Dimensions (mm)', weight: 1.8 }, { label: 'Quantity', weight: 0.8, numeric: true }, { label: 'Supplier / provenance', weight: 1.6 }, { label: 'Unit price', weight: 1, numeric: true }, { label: 'Total price', weight: 1, numeric: true },
-  ], purchasing)
-  const materials = [...new Set(document.parts.map(part => part.materialId))]
-  for (const id of materials) tables.table('Parts grouped by material / ' + (document.panels.find(panel => panel.panel.materialId === id)?.materialName ?? 'Material name unavailable'), columns, document.parts.filter(part => part.materialId === id).map(describe))
-  if (!materials.length) tables.table('Parts grouped by material', columns, [])
-  const orderedSources = [...sources.values()].sort((a, b) => a.panel.panel.materialId < b.panel.panel.materialId ? -1 : a.panel.panel.materialId > b.panel.panel.materialId ? 1 : 0)
-  const inventory = createPdfTables(pdf, font, bold, size, page => { sheetFrame(page, font, document.title, 'Panel inventory', 'N/A', date) })
-  for (const { panel } of orderedSources) {
-    for (const [index, allocated] of document.panels.entries()) {
-      if (allocated.panel.id !== panel.panel.id) continue
-      const grouped = new Map<string, { name: string; dimensions: string; count: number }>()
-      for (const placed of allocated.scene.parts) {
-        const key = partCode(document.parts, placed.part.id) + '/' + placed.orientation
-        const previous = grouped.get(key)
-        grouped.set(key, { name: `${partCode(document.parts, placed.part.id)} / ${placed.part.name}`, dimensions: dimensions(placed.dimensions), count: (previous?.count ?? 0) + 1 })
-      }
-      inventory.table(`${panel.materialName} / ${panel.panel.name} / Panel ${String(index + 1)}`, [{ label: 'Allocated part', weight: 3 }, { label: 'Dimensions (mm)', weight: 2 }, { label: 'Quantity', weight: 1, numeric: true }], [...grouped.values()].map(part => [part.name, part.dimensions, String(part.count)]))
+    { label: 'Panel reference', weight: 2 }, { label: 'Material', weight: 1.6 }, { label: 'Dimensions (mm)', weight: 1.8, nowrap: true }, { label: 'Qty', weight: 0.8, numeric: true }, { label: 'Supplier / Source', weight: 1.6 }, { label: 'Unit price', weight: 1, numeric: true }, { label: 'Total', weight: 1, numeric: true },
+  ], purchasingSchedule([...sources.values()]))
+  const inventory: TableRow[] = []
+  for (const [index, panel] of document.panels.entries()) {
+    inventory.push({ cells: [`Panel ${String(index + 1)}`, panel.panel.name, panel.materialName, dimensions(panel.panel), '1'], kind: 'parent', keepWithNext: panel.scene.parts.length > 0 })
+    const grouped = new Map<string, { ref: string; name: string; dimensions: string; count: number }>()
+    for (const placed of panel.scene.parts) {
+      const ref = partCode(document.parts, placed.part.id)
+      const key = ref + '/' + placed.orientation
+      const previous = grouped.get(key)
+      grouped.set(key, { ref, name: placed.part.name, dimensions: dimensions(placed.dimensions), count: (previous?.count ?? 0) + 1 })
     }
+    for (const part of grouped.values()) inventory.push({ cells: [part.ref, part.name, '', part.dimensions, String(part.count)], kind: 'child' })
+  }
+  tables.table('Panel inventory', [{ label: 'Ref', weight: 1.2, nowrap: true }, { label: 'Panel / Part name', weight: 2.4 }, { label: 'Material', weight: 2 }, { label: 'Dimensions (mm)', weight: 1.8, nowrap: true }, { label: 'Qty', weight: 1, numeric: true }], inventory)
+  if (document.unplaced.length) {
+    const reasons = { noCompatiblePanel: 'No compatible panel', constraintsPreventPlacement: 'Cutting constraints prevent placement', panelLimitReached: 'Insufficient panels or usable space' }
+    tables.table('Unplaced parts', [...columns, { label: 'Reason', weight: 2 }], document.unplaced.map(missing => {
+      const part = document.parts.find(part => part.id === missing.partId)
+      return [partCode(document.parts, missing.partId), part?.name ?? 'N/A', part ? materialName(document, part) : 'N/A', part ? dimensions(part) : 'N/A', String(missing.count), reasons[missing.reason]]
+    }))
   }
   appendPartDrawings(pdf, font, bold, document.parts, document.pageSize ?? 'A4', document.orientation, part => materialName(document, part), page => { sheetFrame(page, font, document.title, 'Individual part drawings', 'Per drawing', date) })
 }
-async function finishPdf(pdf: PDFDocument, font: PDFFont): Promise<Uint8Array<ArrayBuffer>> {
-  for (const [index, current] of pdf.getPages().entries()) current.drawText(`Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`, { x: current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2, y: 67, size: 9, font, color: ink })
+async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage): Promise<Uint8Array<ArrayBuffer>> {
+  for (const [index, current] of pdf.getPages().entries()) if (current !== cover) current.drawText(`Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`, { x: current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2, y: 67, size: 9, font, color: ink })
   pdf.setTitle('OptiCutList cutting plan')
   pdf.setProducer('OptiCutList / pdf-lib')
   return new Uint8Array(await pdf.save())
@@ -107,32 +109,16 @@ export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocum
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
     const date = new Date().toISOString().slice(0, 10)
     const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
-    let page = pdf.addPage([size.width, size.height])
-    sheetFrame(page, font, document.title, 'Project summary', 'N/A', date)
-    let y = size.height - margin
-    function row(text: string, heading = false): void {
-      const selected = heading ? bold : font
-      for (const line of wrapPdfText(text, selected, heading ? 14 : 10, size.width - 2 * margin)) {
-        if (y < 120) { page = pdf.addPage([size.width, size.height]); sheetFrame(page, font, document.title, 'Project summary', 'N/A', date); y = size.height - margin }
-        y = drawLines(page, [line], selected, margin, y, heading ? 14 : 10)
-      }
-      y -= 8
-    }
-    row('OptiCutList / Project cutting result', true)
-    row(document.title)
-    row(`${String(document.panels.length)} panels / ${String(document.metrics.placedCount)} copies placed / ${String(document.metrics.unplacedCount)} copies unplaced`)
-    row(document.metrics.unplacedCount ? 'INCOMPLETE - unplaced parts are not produced by these layouts.' : 'All requested copies are placed.')
-    row(`Utilization: ${document.metrics.utilizationPercent.toFixed(2)}% / Waste: ${document.metrics.wasteAreaMm2.toLocaleString('en-US')} mm² (including kerf and margins)`)
-    row('Unplaced project parts', true)
-    if (!document.unplaced.length) row('None.')
-    const reasons = { noCompatiblePanel: 'No compatible selected panel', constraintsPreventPlacement: 'Dimensions, grain, rotation, kerf or margins prevent placement', panelLimitReached: 'Insufficient panel quantity or remaining usable space' }
-    for (const missing of document.unplaced) {
-      const part = document.parts.find(part => part.id === missing.partId)
-      row(`${part?.name ?? 'Unavailable part'} / ${String(missing.count)} copies starting at ${String(missing.firstCopyIndex + 1)}${part ? ` / ${dimensions(part)}` : ''} / ${reasons[missing.reason]}`)
-    }
+    const cover = pdf.addPage([size.width, size.height])
+    const titleSize = 28
+    const lines = wrapPdfText(document.title, bold, titleSize, size.width - margin * 2)
+    const titleLineHeight = 34
+    const glyphHeight = bold.heightAtSize(titleSize, { descender: false })
+    const firstBaseline = size.height / 2 + (lines.length - 1) * titleLineHeight / 2 - glyphHeight / 2
+    for (const [index, text] of lines.entries()) cover.drawText(text, { x: size.width / 2 - bold.widthOfTextAtSize(text, titleSize) / 2, y: firstBaseline - index * titleLineHeight, font: bold, size: titleSize, color: ink })
     appendFabricationSections(pdf, font, bold, document, date)
     document.panels.forEach((panel, index) => { appendCuttingPlanPdf(pdf, font, bold, panel, `OptiCutList / Panel ${String(index + 1)} of ${String(document.panels.length)}`, date) })
-    return finishPdf(pdf, font)
+    return finishPdf(pdf, font, cover)
   })
 }
 async function withFontErrors(work: () => Promise<Uint8Array<ArrayBuffer>>): Promise<Uint8Array<ArrayBuffer>> {

@@ -15,7 +15,7 @@ export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFon
   const records = parts.map((part, index) => {
     const name = wrapPdfText(part.name, bold, 8, cellWidth - 20)
     const material = wrapPdfText(materialName(part), font, 8, cellWidth - 20)
-    const metadata = wrapPdfText(`Thickness: ${String(part.thicknessMm)} mm / Quantity: ${String(part.quantity)}`, font, 8, cellWidth - 20)
+    const metadata = wrapPdfText(`Thickness: ${String(part.thicknessMm)} mm / Qty: ${String(part.quantity)}`, font, 8, cellWidth - 20)
     const scaleSuffix = part.grainDirection === 'none' ? '' : ` / Grain: ${part.grainDirection}`
     return { part, identifier: `P${String(index + 1)}`, name, material, metadata, scaleSuffix, headerHeight: 24 + name.length * 10, footerHeight: 12 + (material.length + metadata.length + 1) * 10 }
   })

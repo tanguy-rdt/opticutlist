@@ -61,9 +61,9 @@ describe('Vector cutting plan PDF', () => {
     expect(operators).not.toMatch(/\bDo\b/u)
     for (const [, object] of pdf.context.enumerateIndirectObjects()) expect(object.toString()).not.toContain('/Subtype /Image')
     expect(hasText(operators, 'Birch plywood')).toBe(true)
-    expect(hasText(operators, '100 x 80 x 18 mm')).toBe(true)
+    expect(hasText(operators, '100 × 80 × 18 mm')).toBe(true)
     expect(operators).toMatch(/\bW\b/u)
-    expect(hasText(operators, '30 x 50 mm / 90')).toBe(true)
+    expect(hasText(operators, '30 × 50 mm / 90')).toBe(true)
     expect(hasText(operators, 'Cutting parameters')).toBe(true)
     expect(request).toEqual(original)
   })
@@ -78,7 +78,7 @@ describe('Vector cutting plan PDF', () => {
     if (!edit.ok) throw new Error(edit.error.message)
     const original = structuredClone(rotationPlan)
     const edited = await exportPdf({ ...pdfRequest, plan: currentEditingPlan(edit.session), edited: true })
-    expect(hasText(pageOperators(edited, 0), '50 x 30 mm')).toBe(true)
+    expect(hasText(pageOperators(edited, 0), '50 × 30 mm')).toBe(true)
     expect(hasText(pageOperators(edited, 0), '90°')).toBe(false)
     expect(rotationPlan).toEqual(original)
   })
@@ -139,13 +139,13 @@ describe('Complete multi-panel vector PDF', () => {
     if (!result.ok) throw new Error(result.error.message)
     const pdf = await PDFDocument.load(result.bytes)
     const pages = pdf.getPages().map((_, index) => pageOperators(pdf, index))
-    const positions = ['Project cutting result', 'Complete parts list', 'Materials and purchasing', 'Parts grouped by material', 'Individual part drawing', 'Panel 1 of 2'].map(title => pages.findIndex(page => hasText(page, title)))
+    const positions = ['Workshop cabinet', 'Complete parts list', 'Materials and purchasing', 'Panel inventory', 'Individual part drawing', 'Panel 1 of 2'].map(title => pages.findIndex(page => hasText(page, title)))
     expect(positions.every(index => index >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
     const firstDrawing = positions[4]
     if (firstDrawing === undefined) throw new Error('Missing drawing')
     expect(hasText(pages[firstDrawing] ?? '', 'Individual part drawings')).toBe(true)
-    expect(hasText(pages[firstDrawing] ?? '', 'Quantity: 4')).toBe(true)
+    expect(hasText(pages[firstDrawing] ?? '', 'Qty: 4')).toBe(true)
     expect(hasText(pages[firstDrawing] ?? '', '90 mm')).toBe(true)
     expect(hasText(pages[firstDrawing] ?? '', '80 mm')).toBe(true)
     pages.forEach((operators, index) => {
@@ -175,7 +175,7 @@ describe('Complete multi-panel vector PDF', () => {
     expect(panelPages).toHaveLength(1)
     for (const number of [1, 15, 30]) expect(hasText(panelPages[0] ?? '', `P${String(number)} /`)).toBe(true)
     for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, 'Individual part drawings') && hasText(page, `P${String(number)}`))).toBe(true)
-    for (const [index, page] of pages.entries()) expect(hasText(page, `Sheet ${String(index + 1)} / ${String(pages.length)}`)).toBe(true)
+    for (const [index, page] of pages.entries()) expect(hasText(page, `Sheet ${String(index + 1)} / ${String(pages.length)}`)).toBe(index > 0)
   })
   it.each(['portrait', 'landscape'] as const)('renders a global summary and every %s panel with no images', async orientation => {
     const request = { ...multiPanelPdfRequest(true), orientation }
@@ -189,8 +189,9 @@ describe('Complete multi-panel vector PDF', () => {
     const pages = pdf.getPages().map((_page, index) => pageOperators(pdf, index))
     expect(pages.filter(page => hasText(page, 'Cutting parameters'))).toHaveLength(request.plan.panels.length)
     expect(pages.some(page => hasText(page, 'Placed parts - oriented dimensions'))).toBe(false)
-    expect(hasText(pages[0] ?? '', 'INCOMPLETE')).toBe(true)
-    expect(hasText(pages[0] ?? '', '2 panels / 4 copies placed / 1 copies unplaced')).toBe(true)
+    expect(hasText(pages[0] ?? '', 'Workshop project')).toBe(true)
+    expect(hasText(pages[0] ?? '', 'INCOMPLETE')).toBe(false)
+    expect(pages.some(page => hasText(page, 'Unplaced parts'))).toBe(true)
     expect(hasText(pages.join(''), 'Oversized part')).toBe(true)
     for (let index = 1; index <= 2; index += 1) {
       const layout = pages.find(page => hasText(page, `Panel ${String(index)} of 2`))
@@ -198,7 +199,7 @@ describe('Complete multi-panel vector PDF', () => {
       expect(layout).toMatch(/\bm\b/u)
       expect(layout).toMatch(/\bl\b/u)
       expect(layout).toMatch(/\bf\b/u)
-      expect(hasText(layout ?? '', '210 x 110 x 18 mm')).toBe(true)
+      expect(hasText(layout ?? '', '210 × 110 × 18 mm')).toBe(true)
       expect(hasText(layout ?? '', 'Kerf: 2 mm')).toBe(true)
       expect(hasText(layout ?? '', 'Edge margin: 5 mm')).toBe(true)
     }
@@ -215,6 +216,7 @@ it.each(['A4', 'A3'] as const)('frames every %s sheet with a fixed title block, 
     const pdf = await PDFDocument.load(result.bytes)
     const texts = pdf.getPages().map((_, index) => pageOperators(pdf, index))
     for (const [index, text] of texts.entries()) {
+      if (index === 0) { expect(hasText(text, 'Sheet')).toBe(false); continue }
       expect(hasText(text, `Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`)).toBe(true)
       expect(hasText(text, 'Units: mm')).toBe(true)
       expect(hasText(text, 'Project: Workshop project')).toBe(true)
@@ -226,11 +228,11 @@ it.each(['A4', 'A3'] as const)('frames every %s sheet with a fixed title block, 
       for (const source of request.sources) { expect(hasText(text, source.product.id)).toBe(false); expect(hasText(text, source.product.materialId)).toBe(false) }
     }
     const lists = texts.find(text => hasText(text, 'Complete parts list')) ?? ''
-    expect(hasText(lists, 'Reference')).toBe(true)
-    expect(hasText(lists, 'Quantity')).toBe(true)
+    expect(hasText(lists, 'Ref')).toBe(true)
+    expect(hasText(lists, 'Qty')).toBe(true)
     expect(hasText(lists, 'Workshop shelf')).toBe(true)
     expect(hasText(lists, 'Materials and purchasing')).toBe(true)
-    expect(texts.some(text => hasText(text, 'Allocated part'))).toBe(true)
+    expect(texts.some(text => hasText(text, 'Panel / Part name'))).toBe(true)
   }
 })
 
@@ -249,4 +251,76 @@ it('prints known prices from explicit validated export metadata, without changin
   expect(request).toEqual(before)
   expect(await service.exportProject({ ...request, panelPrices: [{ id: source.product.id, price: -1, currency: 'EUR' }] })).toMatchObject({ ok: false, error: { kind: 'invalidPlan' } })
   expect(await service.exportProject({ ...request, panelPrices: [{ id: source.product.id, price: 1, currency: 'EUR' }, { id: source.product.id, price: 2, currency: 'EUR' }] })).toMatchObject({ ok: false, error: { kind: 'invalidPlan' } })
+})
+
+function printedText(pdf: PDFDocument, page: number) {
+  return [...pageOperators(pdf, page).matchAll(/1 0 0 1 ([\d.]+) ([\d.]+) Tm\n<([\dA-F]*)> Tj/gu)].map(match => ({ x: Number(match[1]), y: Number(match[2]), text: Buffer.from(match[3] ?? '', 'hex').toString('latin1') }))
+}
+
+it.each(['A4', 'A3'] as const)('centers only the actual project name on the %s cover in both orientations', async pageSize => {
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    const request = { ...multiPanelPdfRequest(true), title: 'Kitchen cabinet', pageSize, orientation }
+    const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    const page = pdf.getPage(0)
+    const texts = printedText(pdf, 0)
+    const font = await pdf.embedFont(StandardFonts.HelveticaBold)
+    expect(texts).toHaveLength(1)
+    expect(texts[0]?.text).toBe(request.title)
+    expect((texts[0]?.x ?? 0) + font.widthOfTextAtSize(request.title, 28) / 2).toBeCloseTo(page.getWidth() / 2)
+    expect((texts[0]?.y ?? 0) + font.heightAtSize(28, { descender: false }) / 2).toBeCloseTo(page.getHeight() / 2)
+    expect(pageOperators(pdf, 0)).not.toMatch(/\b(?:S|f|re)\b/u)
+  }
+})
+
+it('prints consistent table columns, a hierarchical inventory and exact known costs without duplicating panels', async () => {
+  const request = multiPanelPdfRequest()
+  const source = request.sources[0]
+  if (!source) throw new Error('Missing source')
+  const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject({ ...request, panelPrices: [{ id: source.product.id, price: 19.95, currency: 'EUR' }] })
+  if (!result.ok) throw new Error(result.error.message)
+  const pdf = await PDFDocument.load(result.bytes)
+  const rows = printedText(pdf, 1)
+  const header = rows.find(row => row.text === 'Panel reference')
+  const fields = rows.filter(row => row.y === header?.y).map(row => row.text)
+  expect(fields).toEqual(['Panel reference', 'Material', 'Dimensions (mm)', 'Qty', 'Supplier / Source', 'Unit price', 'Total'])
+  const partsHeader = rows.find(row => row.text === 'Part name')
+  expect(rows.filter(row => row.y === partsHeader?.y).map(row => row.text)).toEqual(['Ref', 'Part name', 'Material', 'Dimensions (mm)', 'Qty'])
+  expect(rows.filter(row => row.text === 'Panel 1')).toHaveLength(1)
+  expect(rows.filter(row => row.text === 'Panel 2')).toHaveLength(1)
+  const panel = rows.find(row => row.text === 'Panel 1')
+  const child = rows.find(row => row.text === 'P1' && row.y < (panel?.y ?? 0))
+  expect(child?.x).toBe((panel?.x ?? 0) + 8)
+  expect(rows.filter(row => row.y === child?.y).map(row => row.text)).toEqual(['P1', 'Workshop shelf', '', '90 × 80 × 18 mm', '2'])
+  expect(rows.filter(row => row.text === '39.90 EUR')).toHaveLength(2) // one purchasing row and one total
+  expect(rows.filter(row => row.text === 'Known total')).toHaveLength(1)
+  const priceHeader = rows.find(row => row.text === 'Unit price')
+  const price = rows.find(row => row.text === '19.95 EUR')
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  expect((price?.x ?? 0) + font.widthOfTextAtSize('19.95 EUR', 8)).toBeCloseTo((priceHeader?.x ?? 0) + bold.widthOfTextAtSize('Unit price', 8))
+  const all = pdf.getPages().flatMap((_, index) => printedText(pdf, index)).map(row => row.text).join('\n')
+  expect(all).not.toContain('Not available'); expect(all).not.toContain('Quantity'); expect(all).not.toContain('Parts grouped by material')
+  expect(all).not.toContain('Utilization'); expect(all).not.toContain('Waste:')
+  const panelPages = pdf.getPages().map((_, index) => printedText(pdf, index)).filter(page => page.some(row => row.text === 'Cutting parameters'))
+  expect(panelPages).toHaveLength(2)
+  expect(panelPages.every(page => page.some(row => row.text === 'Workshop shelf') && page.some(row => row.text === '90 × 80 mm'))).toBe(true)
+})
+
+it('wraps long project names on the cover without adding content or clipping', async () => {
+  const request = { ...multiPanelPdfRequest(), title: 'Kitchen cabinet '.repeat(12).trim(), orientation: 'landscape' as const }
+  const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+  if (!result.ok) throw new Error(result.error.message)
+  const pdf = await PDFDocument.load(result.bytes)
+  const font = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const page = pdf.getPage(0)
+  const texts = printedText(pdf, 0)
+  expect(texts.length).toBeGreaterThan(1)
+  expect(texts.map(row => row.text).join(' ')).toBe(request.title)
+  for (const text of texts) {
+    expect(text.x).toBeGreaterThanOrEqual(36)
+    expect(text.x + font.widthOfTextAtSize(text.text, 28)).toBeLessThanOrEqual(page.getWidth() - 36)
+    expect(text.y).toBeGreaterThan(36); expect(text.y).toBeLessThan(page.getHeight() - 36)
+  }
 })

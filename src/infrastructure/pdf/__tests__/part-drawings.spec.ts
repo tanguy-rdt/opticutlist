@@ -49,7 +49,7 @@ describe('Individual part drawing grid', () => {
       }
     }
   })
-  it.each([[50, 20, 1], [100, 50, 2], [250, 100, 5], [500, 200, 10]])('draws %i x %i mm at a physically accurate 1:%i scale', (lengthMm, widthMm, denominator) => {
+  it.each([[50, 20, 1], [100, 50, 2], [250, 100, 5], [500, 200, 10]])('draws %i × %i mm at a physically accurate 1:%i scale', (lengthMm, widthMm, denominator) => {
     const cell = partDrawingCells(pdfPageSize('A4', 'portrait'))[0]
     if (!cell) throw new Error('Missing cell')
     const { box, transform } = partDrawingGeometry({ xMm: 0, yMm: 0, lengthMm, widthMm }, cell, 34, 42)
@@ -70,7 +70,7 @@ describe('Individual part drawing grid', () => {
     expect(labels).toContain('Shelf 1'); expect(labels).toContain('Shelf 2')
     expect(labels).toContain('50 mm'); expect(labels).toContain('20 mm')
     expect(labels).toContain('500 mm'); expect(labels).toContain('200 mm')
-    expect(labels).toContain('Thickness: 18 mm / Quantity: 12')
+    expect(labels).toContain('Thickness: 18 mm / Qty: 12')
     expect(labels).toContain('Birch plywood')
     expect(labels).toContain('Scale 1:1 / Grain: length')
     expect(labels).toContain('Scale 1:10 / Grain: length')
