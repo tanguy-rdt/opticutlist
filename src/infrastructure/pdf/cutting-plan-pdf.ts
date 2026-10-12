@@ -13,6 +13,7 @@ export { wrapPdfText } from './pdf-text'
 import { wrapPdfText } from './pdf-text'
 import { createPdfTables } from './pdf-table'
 import { purchasingSchedule } from './purchasing-schedule'
+import { appendPartDrawings } from './part-drawings'
 function drawLines(page: PDFPage, lines: readonly string[], font: PDFFont, x: number, y: number, size = 10): number {
   for (const text of lines) { page.drawText(text, { x, y, size, font, color: ink }); y -= lineHeight }
   return y
@@ -170,7 +171,6 @@ function materialName(document: ProjectCuttingPdfDocument, part: Part): string {
 }
 function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: ProjectCuttingPdfDocument, date: string): void {
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
-  const width = size.width - margin * 2
   const tables = createPdfTables(pdf, font, bold, size, page => { sheetFrame(page, font, document.title, 'Fabrication schedules', 'N/A', date) })
   const columns = [{ label: 'Reference', weight: 1 }, { label: 'Name', weight: 2.4 }, { label: 'Material', weight: 2 }, { label: 'Length', weight: 1, numeric: true }, { label: 'Width', weight: 1, numeric: true }, { label: 'Thickness', weight: 1.2, numeric: true }, { label: 'Quantity', weight: 1, numeric: true }]
   const describe = (part: Part) => [partCode(document.parts, part.id), part.name, materialName(document, part), String(part.lengthMm), String(part.widthMm), String(part.thicknessMm), String(part.quantity)]
@@ -201,23 +201,7 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
       inventory.table(`${panel.materialName} / ${panel.panel.name} / Panel ${String(index + 1)}`, [{ label: 'Allocated part', weight: 3 }, { label: 'Dimensions (mm)', weight: 2 }, { label: 'Quantity', weight: 1, numeric: true }], [...grouped.values()].map(part => [part.name, part.dimensions, String(part.count)]))
     }
   }
-  for (const part of document.parts) {
-    const page = pdf.addPage([size.width, size.height])
-    const identifier = partCode(document.parts, part.id)
-    let y = size.height - margin
-    page.drawText(`${identifier} / Individual part drawing`, { x: margin, y, font: bold, size: 16, color: ink }); y -= 28
-    drawLines(page, wrapPdfText(part.name, font, 10, width), font, margin, y)
-    y -= wrapPdfText(`${part.name} / ID: ${part.id}`, font, 10, width).length * lineHeight
-    y = drawLines(page, wrapPdfText(`Material: ${materialName(document, part)} / Thickness: ${String(part.thicknessMm)} mm / Quantity: ${String(part.quantity)} / Grain: ${part.grainDirection} / Rotation: ${part.rotation}`, font, 10, width), font, margin, y)
-    const rect = { xMm: 0, yMm: 0, lengthMm: part.lengthMm, widthMm: part.widthMm }
-    const transform = technicalTransform(rect, { x: margin + DIMENSION_CLEARANCE, y: 170, width: width - DIMENSION_CLEARANCE * 2, height: y - 190 })
-    const box = pdfRect(rect, transform)
-    page.drawRectangle({ ...box, borderColor: ink, borderWidth: 0.6 })
-    drawDimensions(page, font, box, part.lengthMm, part.widthMm)
-    drawGrain(page, box, part.grainDirection)
-    drawScaleBar(page, font, margin, 127, transform)
-    drawingTitleBlock(page, font, document.title, `${identifier} / ${part.name}`, materialName(document, part), part.thicknessMm, scaleLabel(transform), date)
-  }
+  appendPartDrawings(pdf, font, bold, document.parts, document.pageSize ?? 'A4', document.orientation, part => materialName(document, part), page => { sheetFrame(page, font, document.title, 'Individual part drawings', 'Per drawing', date) })
 }
 async function finishPdf(pdf: PDFDocument, font: PDFFont): Promise<Uint8Array<ArrayBuffer>> {
   for (const [index, current] of pdf.getPages().entries()) current.drawText(`Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`, { x: current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2, y: 67, size: 9, font, color: ink })

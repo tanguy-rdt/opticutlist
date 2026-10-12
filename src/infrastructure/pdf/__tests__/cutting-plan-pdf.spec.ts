@@ -149,7 +149,7 @@ describe('Complete multi-panel vector PDF', () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
     const firstDrawing = positions[4]
     if (firstDrawing === undefined) throw new Error('Missing drawing')
-    expect(hasText(pages[firstDrawing] ?? '', 'P1 / Individual part drawing')).toBe(true)
+    expect(hasText(pages[firstDrawing] ?? '', 'Individual part drawings')).toBe(true)
     expect(hasText(pages[firstDrawing] ?? '', 'Quantity: 4')).toBe(true)
     expect(hasText(pages[firstDrawing] ?? '', '90 mm')).toBe(true)
     expect(hasText(pages[firstDrawing] ?? '', '80 mm')).toBe(true)
@@ -174,9 +174,9 @@ describe('Complete multi-panel vector PDF', () => {
     if (!result.ok) throw new Error(result.error.message)
     const pdf = await PDFDocument.load(result.bytes)
     const pages = pdf.getPages().map((_, index) => pageOperators(pdf, index))
-    expect(pages.filter(page => hasText(page, 'Individual part drawing'))).toHaveLength(30)
+    expect(pages.filter(page => hasText(page, 'Individual part drawing'))).toHaveLength(8)
     expect(pages.some(page => hasText(page, 'Labels continued'))).toBe(true)
-    for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, `P${String(number)} / Individual part drawing`))).toBe(true)
+    for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, 'Individual part drawings') && hasText(page, `P${String(number)}`))).toBe(true)
     for (const [index, page] of pages.entries()) expect(hasText(page, `Sheet ${String(index + 1)} / ${String(pages.length)}`)).toBe(true)
   })
   it.each(['portrait', 'landscape'] as const)('renders a global summary and every %s panel with no images', async orientation => {
