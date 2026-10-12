@@ -38,8 +38,9 @@ describe('Vector cutting plan PDF', () => {
       expect(page.getWidth()).toBeCloseTo(orientation === 'portrait' ? 841.88976378 : 1190.5511811)
       expect(page.getHeight()).toBeCloseTo(orientation === 'portrait' ? 1190.5511811 : 841.88976378)
     }
-    expect(pageOperators(pdf, 1)).toMatch(/\bm\b/u)
-    expect(pageOperators(pdf, 1)).toMatch(/\bl\b/u)
+    const drawing = pdf.getPages().map((_, index) => pageOperators(pdf, index)).find(page => hasText(page, 'Individual part drawing'))
+    expect(drawing).toMatch(/\bm\b/u)
+    expect(drawing).toMatch(/\bl\b/u)
     expect(request).toEqual(before)
   })
   it.each(['portrait', 'landscape'] as const)('exports %s A4 vector paths and text with no raster images', async orientation => {
@@ -63,6 +64,8 @@ describe('Vector cutting plan PDF', () => {
     expect(hasText(operators, '100 x 80 x 18 mm')).toBe(true)
     expect(hasText(operators, '18.75%')).toBe(true)
     expect(hasText(operators, '6,500 mm')).toBe(true)
+    expect(operators).toMatch(/\bW\b/u)
+    expect(hasText(pageOperators(pdf, 1), 'Waste regions / potential reusable offcuts')).toBe(true)
     expect(hasText(pageOperators(pdf, 1), 'Rotated 90')).toBe(true)
     expect(request).toEqual(original)
   })
@@ -134,6 +137,47 @@ it('exports each allocated panel as vectors and identifies copies allocated else
 })
 
 describe('Complete multi-panel vector PDF', () => {
+  it('preserves fabrication section order, consistent identifiers and dated scale-aware drawing title blocks', async () => {
+    const request = { ...multiPanelPdfRequest(true), title: 'Workshop cabinet' }
+    const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    const pages = pdf.getPages().map((_, index) => pageOperators(pdf, index))
+    const positions = ['Project cutting result', 'Complete parts list', 'Materials and purchasing', 'Parts grouped by material', 'Individual part drawing', 'Panel 1 of 2'].map(title => pages.findIndex(page => hasText(page, title)))
+    expect(positions.every(index => index >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+    const firstDrawing = positions[4]
+    if (firstDrawing === undefined) throw new Error('Missing drawing')
+    expect(hasText(pages[firstDrawing] ?? '', 'P1 / Individual part drawing')).toBe(true)
+    expect(hasText(pages[firstDrawing] ?? '', 'Quantity: 4')).toBe(true)
+    expect(hasText(pages[firstDrawing] ?? '', '90 mm')).toBe(true)
+    expect(hasText(pages[firstDrawing] ?? '', '80 mm')).toBe(true)
+    pages.forEach((operators, index) => {
+      if (!hasText(operators, 'Scale 1:')) return
+      expect(hasText(operators, 'Project: Workshop cabinet')).toBe(true)
+      expect(hasText(operators, `Sheet ${String(index + 1)}`)).toBe(true)
+      expect(hasText(operators, 'Generated:')).toBe(true)
+      expect(hasText(operators, 'Actual size / 100%')).toBe(true)
+      expect(operators).not.toMatch(/\bDo\b/u)
+    })
+  })
+  it('paginates many part drawings, panel layouts and small-part leader annotations without dropping identities', async () => {
+    const base = multiPanelPdfRequest()
+    const product = supplierProductSchema.parse({ ...validSupplierProductInput, lengthMm: 100, widthMm: 100, grainDirection: 'none' })
+    const parts = Array.from({ length: 30 }, (_, index) => partSchema.parse({ ...validPartInput, id: `tiny-${String(index)}`, name: `Tiny part ${String(index)}`, lengthMm: 1, widthMm: 1, grainDirection: 'none', quantity: 1 }))
+    const settings = { kerfMm: 0, edgeMarginMm: 5 }
+    const optimized = optimizeProject({ parts, panels: [{ product, quantity: 1 }], settings })
+    if (!optimized.ok) throw new Error(optimized.error.message)
+    const request = { ...base, plan: optimized.plan, parts, settings, sources: [{ product: { id: product.id, name: product.name, materialId: product.materialId, lengthMm: product.lengthMm, widthMm: product.widthMm, thicknessMm: product.thicknessMm, grainDirection: product.grainDirection }, quantity: 1, materialName: 'Birch', supplierName: 'Supplier' }], editedPanelIndices: [] }
+    const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    const pages = pdf.getPages().map((_, index) => pageOperators(pdf, index))
+    expect(pages.filter(page => hasText(page, 'Individual part drawing'))).toHaveLength(30)
+    expect(pages.some(page => hasText(page, 'Labels continued'))).toBe(true)
+    for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, `P${String(number)} / Individual part drawing`))).toBe(true)
+    for (const [index, page] of pages.entries()) expect(hasText(page, `OptiCutList / ${String(index + 1)} of ${String(pages.length)}`)).toBe(true)
+  })
   it.each(['portrait', 'landscape'] as const)('renders a global summary and every %s panel with no images', async orientation => {
     const request = { ...multiPanelPdfRequest(true), orientation }
     const original = structuredClone(request)

@@ -29,6 +29,7 @@ const { cuttingPlansStep } = defineProps<{ cuttingPlansStep?: boolean }>()
 const cuttingState = useCuttingWorkspaceState()
 const selectedCopies = ref<Record<number, string>>({})
 const projectId = useProjectId()
+const projectName = ref('')
 const projects = useProjectService()
 const catalogs = useCatalogRepositories()
 const materials = useMaterialRepository()
@@ -146,6 +147,7 @@ async function readInputs() {
     catalogs.supplierProducts.list(), catalogs.suppliers.list(), materials.list(), stockRepository?.list() ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
   if (!project.ok) throw new Error(persistenceErrorMessage(project.error, 'Project'))
+  projectName.value = project.value.name
   if (!scopedParts.ok) throw new Error(persistenceErrorMessage(scopedParts.error, 'Part'))
   if (!products.ok) throw new Error(persistenceErrorMessage(products.error, 'Product'))
   if (!supplierRecords.ok) throw new Error(persistenceErrorMessage(supplierRecords.error, 'Supplier'))
@@ -676,7 +678,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
     <CuttingPlansWorkspace
       v-if="cuttingPlansStep && displayedInput && cuttingPlansAvailable"
       :input="displayedInput"
-      title="Project cutting result"
+      :title="projectName || 'Project cutting result'"
     />
     <div
       v-else-if="cuttingPlansStep && state !== 'loading'"

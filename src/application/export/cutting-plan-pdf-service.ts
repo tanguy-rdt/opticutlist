@@ -15,6 +15,8 @@ export interface CuttingPlanPdfRequest {
   readonly panel: PanelSnapshot
   readonly parts: readonly Part[]
   readonly settings: CuttingSettings
+  readonly projectName?: string
+  readonly supplierName?: string
   readonly materialName: string
   readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
@@ -63,7 +65,7 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
     const panels = snapshot.plan.panels.map((allocation, index) => {
       const source = snapshot.sources.find(source => source.product.id === allocation.supplierProductId)
       if (!source) throw new Error('Missing historical panel reference.')
-      return panelDocument({ plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
+      return panelDocument({ plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, projectName: snapshot.title, supplierName: source.supplierName, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
     })
     return { ok: true, document: { title: snapshot.title, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, metrics: snapshot.plan.metrics, unplaced: snapshot.plan.unplaced, parts: snapshot.parts, panels } }
   } catch (cause) { return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting result.' } } }
