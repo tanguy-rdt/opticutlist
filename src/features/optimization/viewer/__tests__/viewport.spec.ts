@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitViewport, grainPoints, panelGrainPoints, labelLayout, panViewport, rectToCanvas, zoomViewport } from '../viewport'
+import { fitViewport, grainMarker, hatchLines, grainPoints, panelGrainPoints, labelLayout, panViewport, rectToCanvas, zoomViewport } from '../viewport'
 describe('Millimeter-to-canvas transforms', () => {
   it('uses one scale and translation for every panel, part, margin and kerf region', () => {
     expect(rectToCanvas({ xMm: 5, yMm: 5, lengthMm: 30, widthMm: 50 }, { scale: 2, x: 10, y: 20 })).toEqual({ x: 20, y: 30, width: 60, height: 100 })
@@ -34,6 +34,20 @@ describe('Millimeter-to-canvas transforms', () => {
     expect(panelGrainPoints(rect, 'length', 2)).toEqual([42.5, -5, 57.5, -5])
     expect(panelGrainPoints(rect, 'width', 2)).toEqual([-5, 32.5, -5, 47.5])
     expect(panelGrainPoints(rect, 'none', 2)).toEqual([])
+  })
+  it('uses evenly spaced 45-degree hatch strokes at any zoom', () => {
+    const rect = { x: 0, y: 0, width: 40, height: 20 }
+    const lines = hatchLines(rect, 2)
+    expect(lines.length).toBeGreaterThan(2)
+    for (const [x1, y1, x2, y2] of lines) expect(x1 - x2).toBeCloseTo(y2 - y1)
+    expect((lines[1]?.[0] ?? 0) - (lines[0]?.[0] ?? 0)).toBeCloseTo(Math.SQRT2 * 4)
+  })
+  it('draws restrained parallel grain markings on the resolved axis only with sufficient space', () => {
+    const rect = { x: 0, y: 0, width: 100, height: 80 }
+    expect(grainMarker(rect, 'length', 1)).toEqual({ arrow: [68, 68, 88, 68], lines: [[68, 65, 88, 65], [68, 62, 88, 62], [68, 59, 88, 59]] })
+    expect(grainMarker(rect, 'width', 1)?.arrow).toEqual([88, 48, 88, 68])
+    expect(grainMarker(rect, 'none', 1)).toBeNull()
+    expect(grainMarker({ ...rect, width: 10 }, 'length', 1)).toBeNull()
   })
   it('rejects invalid input rather than producing non-finite geometry', () => {
     expect(() => fitViewport({ lengthMm: 0, widthMm: 80 }, { width: 200, height: 200 })).toThrow(RangeError)

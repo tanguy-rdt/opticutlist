@@ -6,7 +6,7 @@ import type { AllocatedPanel } from '../../domain/optimizer/project-plan'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import CuttingPlanViewer from './CuttingPlanViewer.vue'
 
-defineProps<{ allocation: AllocatedPanel; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; materialName: string; panelLabel?: string; savedEdited?: boolean; savedBaseline?: boolean; confirmReset?: () => boolean; selectedCopyKey?: string }>()
+defineProps<{ allocation: AllocatedPanel; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; materialName: string; panelLabel?: string; fitRequest?: number; savedEdited?: boolean; savedBaseline?: boolean; confirmReset?: () => boolean; selectedCopyKey?: string }>()
 const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean]; 'select-copy': [key: string] }>()
 </script>
 <template>
@@ -20,6 +20,7 @@ const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boo
       :plan="allocation.plan"
       :panel="panel"
       :panel-label="panelLabel"
+      :fit-request="fitRequest"
       :parts="parts"
       :settings="settings"
       :selected-copy-key="selectedCopyKey"

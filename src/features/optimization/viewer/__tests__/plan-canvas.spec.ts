@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCuttingPlanScene } from '../../../../application/optimization/cutting-plan-scene'
 import { viewerPanel, viewerPart, viewerPlan, viewerSettings } from '../../../../domain/cutting-tree/__tests__/viewer-fixtures'
+import { swapInput, swapPlan } from '../../../../domain/cutting-tree/__tests__/editing-fixtures'
 import { createPlanCanvas, type PlanPalette } from '../plan-canvas'
 
 // jsdom has no canvas backend: test Konva node attributes and events, not browser rasterization.
@@ -36,10 +37,13 @@ const fake = vi.hoisted(() => {
   class Layer extends FakeNode { constructor() { super('Layer') } }
   class Rect extends FakeNode { constructor(attrs: Record<string, unknown>) { super('Rect', attrs) } }
   class Text extends FakeNode { constructor(attrs: Record<string, unknown>) { super('Text', attrs) } }
+  class Group extends FakeNode { constructor(attrs: Record<string, unknown>) { super('Group', attrs) } }
+  class Shape extends FakeNode { constructor(attrs: Record<string, unknown>) { super('Shape', attrs) } }
+  class Line extends FakeNode { constructor(attrs: Record<string, unknown>) { super('Line', attrs) } }
   class Arrow extends FakeNode { constructor(attrs: Record<string, unknown>) { super('Arrow', attrs) } }
-  return { nodes, Stage, Layer, Rect, Text, Arrow }
+  return { nodes, Stage, Layer, Rect, Text, Arrow, Shape, Line, Group }
 })
-vi.mock('konva', () => ({ default: { Stage: fake.Stage, Layer: fake.Layer, Rect: fake.Rect, Text: fake.Text, Arrow: fake.Arrow } }))
+vi.mock('konva', () => ({ default: { Stage: fake.Stage, Layer: fake.Layer, Rect: fake.Rect, Text: fake.Text, Arrow: fake.Arrow, Shape: fake.Shape, Line: fake.Line, Group: fake.Group } }))
 beforeEach(() => { fake.nodes.length = 0 })
 afterEach(() => { vi.unstubAllGlobals() })
 const palette: PlanPalette = { surface: 'surface', margin: 'margin', ink: 'ink', muted: 'muted', part: 'part', partBorder: 'part-border', selected: 'selected', kerf: 'kerf' }
@@ -79,8 +83,55 @@ describe('Konva read-only canvas adapter', () => {
     expect(rectangles).toContainEqual(expect.objectContaining({ x: 35, y: 5, width: 2, height: 70, fill: 'kerf' }))
     expect(rectangles).toContainEqual(expect.objectContaining({ x: 5, y: 55, width: 30, height: 2, fill: 'kerf' }))
     expect(rectangles).toContainEqual(expect.objectContaining({ x: 37, y: 5, width: 58, height: 70, fill: 'margin' }))
-    expect(fake.nodes.find(node => node.kind === 'Text')?.attrs.text).toBe('Shelf / 1\n30 × 50 × 18 mm')
-    expect(fake.nodes.find(node => node.kind === 'Arrow')?.attrs.points).toEqual([29, 15, 29, 45])
+    expect(fake.nodes.find(node => node.kind === 'Text')?.attrs.text).toBe('Shelf\n30 × 50 × 18 mm')
+    canvas.setViewport({ x: 0, y: 0, scale: 2 })
+    expect(fake.nodes.find(node => node.attrs.name === 'part-grain')?.attrs.points).toEqual([29, 39, 29, 49])
+    canvas.destroy()
+  })
+  it('labels repeated demand with the stable copy identity and total quantity', () => {
+    const part = { ...viewerPart, quantity: 2 }
+    const scene = createCuttingPlanScene(viewerPlan, { panel: viewerPanel, parts: [part], settings: viewerSettings })
+    if (scene.status !== 'valid') throw new Error('Invalid repeated-copy fixture')
+    const canvas = createPlanCanvas(document.createElement('div'), scene.scene, { width: 640, height: 400 }, palette, vi.fn(), vi.fn())
+    expect(fake.nodes.find(node => node.kind === 'Text')?.attrs.text).toBe('Shelf · 1/2\n30 × 50 × 18 mm')
+    expect(part.name).toBe('Shelf')
+    canvas.destroy()
+  })
+  it('clips vector hatching to each exact waste leaf and leaves placed parts solid', () => {
+    const { canvas } = setup()
+    const clips = fake.nodes.filter(node => node.kind === 'Group').map(node => node.attrs)
+    expect(clips).toEqual([
+      expect.objectContaining({ name: 'waste-hatching', clipX: 5, clipY: 57, clipWidth: 30, clipHeight: 18, listening: false }),
+      expect.objectContaining({ name: 'waste-hatching', clipX: 37, clipY: 5, clipWidth: 58, clipHeight: 70, listening: false }),
+    ])
+    expect(fake.nodes.filter(node => node.kind === 'Shape')).toHaveLength(2)
+    canvas.destroy()
+  })
+  it('keeps nonzero kerf bands at exact physical width and zero kerf as a screen separator', () => {
+    const { canvas } = setup()
+    canvas.setViewport({ x: 0, y: 0, scale: 4 })
+    expect(fake.nodes.filter(node => node.attrs.name === 'saw-kerf').map(node => node.attrs)).toEqual([
+      expect.objectContaining({ x: 35, y: 5, width: 2, height: 70, strokeWidth: 0 }),
+      expect.objectContaining({ x: 5, y: 55, width: 30, height: 2, strokeWidth: 0 }),
+    ])
+    canvas.destroy(); fake.nodes.length = 0
+    const scene = createCuttingPlanScene(swapPlan, swapInput)
+    if (scene.status !== 'valid') throw new Error('Invalid zero-kerf fixture')
+    const zero = createPlanCanvas(document.createElement('div'), scene.scene, { width: 640, height: 400 }, palette, vi.fn(), vi.fn())
+    expect(fake.nodes.filter(node => node.attrs.name === 'saw-kerf').map(node => node.attrs)).toEqual([
+      expect.objectContaining({ x: 35, y: 5, width: 0, height: 50, strokeWidth: 0.75, strokeScaleEnabled: false }),
+      expect.objectContaining({ x: 35, y: 35, width: 50, height: 0, strokeWidth: 0.75, strokeScaleEnabled: false }),
+    ])
+    expect(fake.nodes.some(node => node.kind === 'Arrow')).toBe(false)
+    zero.destroy()
+  })
+  it('keeps grain markings small, follows rotated grain and hides them at low zoom', () => {
+    const { canvas } = setup()
+    canvas.setViewport({ x: 0, y: 0, scale: 2 })
+    expect(fake.nodes.filter(node => node.attrs.name === 'grain-line')).toHaveLength(3)
+    expect(fake.nodes.find(node => node.attrs.name === 'part-grain')?.attrs).toMatchObject({ points: [29, 39, 29, 49], pointerLength: 1.5, visible: true })
+    canvas.setViewport({ x: 0, y: 0, scale: 0.5 })
+    expect(fake.nodes.filter(node => node.attrs.name === 'grain-line' || node.attrs.name === 'part-grain').every(node => node.attrs.visible === false)).toBe(true)
     canvas.destroy()
   })
   it('changes only highlight attributes on selection and avoids repeated redraws', () => {

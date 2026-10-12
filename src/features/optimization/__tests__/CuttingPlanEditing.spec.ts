@@ -95,7 +95,7 @@ describe('Always available constrained editing', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Swap accepted and independently validated')
     expect(wrapper.find('#cutting-viewer-swap').exists()).toBe(false)
-    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('First piece / 1')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('First piece')
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('35, 5 mm')
     const scene = vi.mocked(createPlanCanvas).mock.calls.at(-1)?.[1]
     expect(scene?.parts.map(part => part.part.name)).toEqual(['Second piece', 'First piece'])

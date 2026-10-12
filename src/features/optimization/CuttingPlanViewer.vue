@@ -7,11 +7,12 @@ import type { CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
 import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
+import { copyLabel } from './viewer/copy-label'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { createPlanCanvas, type PlanCanvas, type PlanPalette } from './viewer/plan-canvas'
 import { fitViewport, panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
 
-const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; panelLabel?: string | undefined; selectedCopyKey?: string | undefined; confirmReset?: (() => boolean) | undefined }>()
+const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; panelLabel?: string | undefined; fitRequest?: number | undefined; selectedCopyKey?: string | undefined; confirmReset?: (() => boolean) | undefined }>()
 const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean]; 'select-copy': [key: string] }>()
 const session = shallowRef<PlanEditingSession | null>(null)
 const editFeedback = ref('')
@@ -115,6 +116,14 @@ function keyboard(event: KeyboardEvent): void {
   }
   event.preventDefault()
 }
+function sizeToViewport(): void {
+  if (paused || host.value === null) return
+  const top = host.value.getBoundingClientRect().top
+  host.value.style.height = `${String(Math.max(240, window.innerHeight - top - 24))}px`
+}
+function windowResized(): void { sizeToViewport(); resize() }
+watch(() => props.plan, () => { isFitted = true })
+watch(() => props.fitRequest, () => { isFitted = true; if (canvas) fit() })
 function resize(): void {
   if (paused || host.value === null || projection.value.status !== 'valid') return
   const next = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
@@ -133,6 +142,7 @@ function render(): void {
   if (projection.value.status !== 'valid' || !projection.value.scene.parts.some(part => part.key === selectedKey.value)) selectedKey.value = ''
   if (paused || projection.value.status !== 'valid' || host.value === null) return
   try {
+    sizeToViewport()
     size = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
     fittedView.value = fitViewport(projection.value.scene.panel, size)
     canvas = createPlanCanvas(host.value, projection.value.scene, size, palette(), key => { selectedKey.value = key }, next => { isFitted = false; view.value = next })
@@ -142,6 +152,8 @@ function render(): void {
     canvas.setSelection(selectedKey.value)
     resizeObserver?.disconnect()
     resizeObserver?.observe(host.value)
+    const toolbar = host.value.closest('section')?.querySelector('.canvas-toolbar')
+    if (toolbar) resizeObserver?.observe(toolbar)
   } catch {
     canvas?.destroy(); canvas = null
     canvasReady.value = false
@@ -151,8 +163,9 @@ function render(): void {
 watch(projection, render, { flush: 'post' })
 watch(selectedKey, key => { canvas?.setSelection(key); emit('select-copy', key) })
 onMounted(() => {
-  if (typeof ResizeObserver !== 'undefined') resizeObserver = new ResizeObserver(resize)
-  else window.addEventListener('resize', resize)
+  if (typeof ResizeObserver !== 'undefined') resizeObserver = new ResizeObserver(windowResized)
+  window.addEventListener('resize', windowResized)
+  sizeToViewport()
   themeObserver = new MutationObserver(themeChanged)
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
   if (typeof window.matchMedia === 'function') {
@@ -168,10 +181,10 @@ onDeactivated(() => {
   canvas?.destroy(); canvas = null
   canvasReady.value = false
 })
-onActivated(() => { if (paused) { paused = false; render() } })
+onActivated(() => { if (paused) { paused = false; sizeToViewport(); render() } })
 onBeforeUnmount(() => {
   resizeObserver?.disconnect(); themeObserver?.disconnect()
-  window.removeEventListener('resize', resize)
+  window.removeEventListener('resize', windowResized)
   media?.removeEventListener('change', themeChanged)
   canvas?.destroy(); canvas = null
 })
@@ -200,7 +213,7 @@ onBeforeUnmount(() => {
             <dt class="sr-only">
               Part / copy
             </dt><dd class="font-semibold text-sm">
-              {{ selectedPart.part.name }} / {{ selectedPart.copyIndex + 1 }}
+              {{ copyLabel(selectedPart.part, selectedPart.copyIndex) }}
             </dd>
           </div>
           <div>
@@ -315,7 +328,7 @@ onBeforeUnmount(() => {
                   :key="part.key"
                   :value="part.key"
                 >
-                  {{ part.part.name }} / {{ part.copyIndex + 1 }}
+                  {{ copyLabel(part.part, part.copyIndex) }}
                 </option>
               </select>
               <button
@@ -528,7 +541,7 @@ onBeforeUnmount(() => {
 .tool :deep(svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .copy-picker { width: 12rem; max-width: 60vw; }
 .graph-paper { background-color: var(--canvas); background-image: linear-gradient(color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px); background-size: 20px 20px; }
-.cutting-canvas-host { height: clamp(360px, 62dvh, 800px); }
+.cutting-canvas-host { height: 400px; min-height: 240px; }
 .editing-tools { position: relative; display: flex; align-items: center; gap: .25rem; }
 .cutting-viewer :deep(.field) { min-height: 2rem; padding-block: .375rem; font-size: .875rem; }
 @media (max-width: 640px) { .canvas-tools { flex-wrap: wrap; margin-left: 0; } .selected-strip { flex-basis: 100%; } }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { copyLabel } from './viewer/copy-label'
 import { stockPanel } from '../../domain/optimizer/panel-source'
 import { useStockRepository } from '../inventory/stock-repository'
 import { isCompatible } from '../../domain/compatibility'
@@ -70,6 +71,8 @@ const inputError = ref('')
 const fieldErrors = ref<{ kerfMm?: string; edgeMarginMm?: string }>({})
 const result = shallowRef<RunResult | null>(null)
 const panelIndex = ref(0)
+const panelFitRequest = ref(0)
+watch(panelIndex, () => { panelFitRequest.value += 1 })
 const activePanel = computed(() => result.value?.selection.plan.panels[panelIndex.value])
 const activeChoice = computed(() => result.value?.choices.find(choice => choice.product.id === activePanel.value?.supplierProductId))
 let generation = 0
@@ -642,7 +645,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
                   :aria-pressed="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex])"
                   @click="selectCopy(index, JSON.stringify([placed.partId, placed.copyIndex]))"
                 >
-                  <span class="block font-medium">{{ partName(placed.partId) }}<span class="sr-only"> / {{ placed.copyIndex + 1 }}</span></span>
+                  <span class="block font-medium">{{ copyLabel(result.parts.find(part => part.id === placed.partId) ?? { name: partName(placed.partId), quantity: 1 }, placed.copyIndex) }}</span>
                   <span class="text-muted">× 1</span>
                 </button>
               </li>
@@ -667,6 +670,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             :allocation="activePanel"
             :panel="activeChoice.product"
             :panel-label="`Panel ${panelIndex + 1}`"
+            :fit-request="panelFitRequest"
             :parts="result.parts"
             :settings="result.settings"
             :material-name="activeChoice.materialName"

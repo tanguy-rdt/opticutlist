@@ -63,3 +63,31 @@ export function panelGrainPoints(rect: CanvasRect, grain: GrainDirection, scale:
     ? [centerX - half, rect.y - offset, centerX + half, rect.y - offset]
     : [rect.x - offset, centerY - half, rect.x - offset, centerY + half]
 }
+
+/** Screen-sized annotations, independent of the physical cutting geometry. */
+export function grainMarker(rect: CanvasRect, grain: GrainDirection, scale: number) {
+  positive(scale)
+  if (grain === 'none' || rect.width * scale < 48 || rect.height * scale < 48) return null
+  const x = rect.x + rect.width - 12 / scale
+  const y = rect.y + rect.height - 12 / scale
+  const span = 20 / scale
+  const gap = 3 / scale
+  const arrow = grain === 'length' ? [x - span, y, x, y] : [x, y - span, x, y]
+  const lines = [1, 2, 3].map(index => grain === 'length'
+    ? [x - span, y - gap * index, x, y - gap * index]
+    : [x - gap * index, y - span, x - gap * index, y])
+  return { arrow, lines }
+}
+
+/** 45-degree strokes spaced in screen pixels; Konva clips them to the waste leaf. */
+export function hatchLines(rect: CanvasRect, scale: number): readonly (readonly [number, number, number, number])[] {
+  positive(scale)
+  const step = Math.SQRT2 * 8 / scale
+  const min = rect.x + rect.y
+  const max = min + rect.width + rect.height
+  const lines: [number, number, number, number][] = []
+  for (let sum = Math.ceil(min / step) * step; sum <= max; sum += step) {
+    lines.push([sum - rect.y, rect.y, sum - rect.y - rect.height, rect.y + rect.height])
+  }
+  return lines
+}

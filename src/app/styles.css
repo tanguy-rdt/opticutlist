@@ -28,7 +28,7 @@
   --cutting-waste: #dbc29f;
   --cutting-ink: #302c25;
   --cutting-line: #87745c;
-  --cutting-kerf: #c4aa88;
+  --cutting-kerf: #795a3c;
   --canvas: #f5f3ee;
   --surface: #ffffff;
   --subtle: #eaf0e9;
@@ -52,7 +52,7 @@
     --cutting-waste: #a38969;
     --cutting-ink: #211e19;
     --cutting-line: #5f513d;
-    --cutting-kerf: #b59b79;
+    --cutting-kerf: #654b34;
     color-scheme: dark;
     --canvas: #141c19;
     --surface: #1d2823;
@@ -77,7 +77,7 @@
   --cutting-waste: #a38969;
   --cutting-ink: #211e19;
   --cutting-line: #5f513d;
-  --cutting-kerf: #b59b79;
+  --cutting-kerf: #654b34;
   color-scheme: dark;
   --canvas: #141c19;
   --surface: #1d2823;

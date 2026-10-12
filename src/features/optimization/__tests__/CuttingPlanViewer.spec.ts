@@ -1,5 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Viewport } from '../viewer/viewport'
 import CuttingPlanViewer from '../CuttingPlanViewer.vue'
 import { createPlanCanvas, type PlanCanvas } from '../viewer/plan-canvas'
 import { freezeDeep, viewerPanel, viewerPart, viewerPlan, viewerSettings } from '../../../domain/cutting-tree/__tests__/viewer-fixtures'
@@ -7,7 +8,7 @@ import { freezeDeep, viewerPanel, viewerPart, viewerPlan, viewerSettings } from 
 vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: vi.fn() }))
 const wrappers: VueWrapper[] = []
 function fakeCanvas() {
-  return { setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() } satisfies PlanCanvas
+  return { setViewport: vi.fn<(view: Viewport) => void>(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() } satisfies PlanCanvas
 }
 let canvas = fakeCanvas()
 beforeEach(() => { vi.mocked(createPlanCanvas).mockReset(); canvas = fakeCanvas(); vi.mocked(createPlanCanvas).mockReturnValue(canvas) })
@@ -37,7 +38,7 @@ describe('Cutting layout workspace', () => {
     await wrapper.setProps({ selectedCopyKey: part.key })
     expect(wrapper.find('[aria-label="Current panel dimensions"]').exists()).toBe(false)
     expect(canvas.setSelection).toHaveBeenLastCalledWith(part.key)
-    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Shelf / 1')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Shelf')
     call[4]('')
     await flushPromises()
     expect(wrapper.emitted('select-copy')?.at(-1)).toEqual([''])
@@ -92,7 +93,7 @@ describe('Cutting layout workspace', () => {
     if (selected === undefined) throw new Error('Missing part')
     call[4](selected.key)
     await flushPromises()
-    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Shelf / 1')
+    expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Shelf')
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('50 × 30 × 18 mm')
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('30 × 50 × 18 mm')
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('Rotated 90°')
@@ -160,6 +161,36 @@ describe('Cutting layout workspace', () => {
     expect(canvas.destroy).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('The graphical viewer is unavailable')
     expect(wrapper.get('[aria-label="Cutting layout view controls"]').findAll('button').every(item => item.attributes('disabled') !== undefined)).toBe(true)
+  })
+  it('fills the remaining viewport, refits automatically and preserves manual zoom/pan on resize', async () => {
+    let notify: () => void = () => { throw new Error('Observer not ready') }
+    class Observer {
+      constructor(callback: () => void) { notify = callback }
+      observe = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('ResizeObserver', Observer)
+    vi.stubGlobal('innerHeight', 700)
+    const wrapper = setup()
+    await flushPromises()
+    const host = wrapper.get('.cutting-canvas-host').element
+    let width = 640; let height = 400
+    Object.defineProperty(host, 'clientWidth', { get: () => width })
+    Object.defineProperty(host, 'clientHeight', { get: () => height })
+    expect(host.getAttribute('style')).toContain('676px')
+    width = 900; height = 500; notify()
+    expect(canvas.resize).toHaveBeenLastCalledWith({ width: 900, height: 500 })
+    expect(canvas.setViewport).toHaveBeenLastCalledWith({ x: 167.5, y: 24, scale: 5.65 })
+    await button(wrapper, 'Zoom in').trigger('click')
+    await wrapper.get('[aria-label="Cutting plan canvas"]').trigger('keydown', { key: 'ArrowLeft' })
+    const manual = canvas.setViewport.mock.calls.at(-1)?.[0]
+    const count = canvas.setViewport.mock.calls.length
+    width = 700; height = 450; notify()
+    expect(canvas.setViewport).toHaveBeenCalledTimes(count)
+    expect(canvas.setViewport.mock.calls.at(-1)?.[0]).toEqual(manual)
+    await button(wrapper, 'Fit to view').trigger('click')
+    expect(canvas.setViewport.mock.calls.at(-1)?.[0]).not.toEqual(manual)
+    expect(wrapper.get('output').text()).toBe('100% of fit')
   })
   it('updates theme colors without rebuilding and disconnects observers and media listeners on unmount', async () => {
     const disconnect = vi.fn()
