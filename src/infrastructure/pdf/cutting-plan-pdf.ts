@@ -1,8 +1,8 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import type { CuttingPlanPdfDocument, ProjectCuttingPdfDocument } from '../../application/export/cutting-plan-pdf-service'
-import { DIMENSION_CLEARANCE, drawDimensions, drawGrain, drawScaleBar, drawWaste, scaleLabel, technicalTransform } from './technical-drawing'
 import type { Part } from '../../domain/model/part'
-import { pdfPageSize, pdfRect } from './pdf-layout'
+import { pdfPageSize } from './pdf-layout'
+import { drawPanelSheet } from './panel-drawing'
 
 const ink = rgb(0.12, 0.15, 0.17)
 const muted = rgb(0.35, 0.38, 0.4)
@@ -42,128 +42,12 @@ function drawingTitleBlock(page: PDFPage, font: PDFFont, project: string, title:
   sheetFrame(page, font, project, title, scale, date)
   page.drawText(`${material.length > 30 ? material.slice(0, 27) + '...' : material} / ${String(thickness)} mm`, { x: margin, y: 60, size: 8, font, color: muted })
 }
-function drawKerfs(page: PDFPage, document: CuttingPlanPdfDocument, transform: ReturnType<typeof technicalTransform>): void {
-  for (const kerf of document.scene.kerfs) {
-    const box = pdfRect(kerf, transform)
-    if (box.width === 0 || box.height === 0) page.drawLine({ start: { x: box.x, y: box.y }, end: { x: box.x + box.width, y: box.y + box.height }, thickness: 0.4, color: muted })
-    else page.drawRectangle({ ...box, color: rgb(0.38, 0.39, 0.37) })
-  }
-}
-/** True PDF paths and text from the shared validated scene; no canvas/image dependency. */
-function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: CuttingPlanPdfDocument, heading = 'OptiCutList / Cutting plan', date = new Date().toISOString().slice(0, 10)): void {
+/** Exactly one technical sheet per validated physical panel; no repeated detail or annotation pages. */
+function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: CuttingPlanPdfDocument, heading = 'Cutting panel', date = new Date().toISOString().slice(0, 10)): void {
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const page = pdf.addPage([size.width, size.height])
-  const contentWidth = size.width - 2 * margin
-  let y = size.height - margin
-  page.drawText(heading, { x: margin, y, size: 19, font: bold, color: ink }); y -= 24
-  y = drawLines(page, wrapPdfText(`${document.edited ? 'Manually edited' : 'Optimized'} panel plan`, font, 10, contentWidth), font, margin, y)
-  // Reserve the existing drawing-header footprint so metadata cleanup cannot change its physical scale.
-  const panelHeader = `Panel: ${document.panel.name} / ${dimensions(document.panel)}`
-  drawLines(page, wrapPdfText(panelHeader, font, 10, contentWidth), font, margin, y)
-  y -= wrapPdfText(`Panel: ${document.panel.name} / ID: ${document.panel.id} / ${dimensions(document.panel)}`, font, 10, contentWidth).length * lineHeight
-  drawLines(page, wrapPdfText(`Material: ${document.materialName}`, font, 10, contentWidth), font, margin, y)
-  y -= wrapPdfText(`Material: ${document.materialName} / ID: ${document.panel.materialId}`, font, 10, contentWidth).length * lineHeight
-  y = drawLines(page, wrapPdfText(`Panel grain: ${document.panel.grainDirection} / Kerf: ${String(document.settings.kerfMm)} mm / Edge margin: ${String(document.settings.edgeMarginMm)} mm`, font, 10, contentWidth), font, margin, y)
-  const elsewhere = document.unplaced.filter(part => part.reason.kind === 'allocatedElsewhere').reduce((total, part) => total + part.count, 0)
-  const unplacedCount = document.unplaced.reduce((total, part) => total + part.count, 0) - elsewhere
-  y -= 6
-  y = drawLines(page, wrapPdfText(`${String(document.scene.parts.length)} copies placed / ${String(unplacedCount)} copies unplaced${elsewhere ? ` / ${String(elsewhere)} copies on other panels` : ''} / Utilization: ${document.metrics.utilizationPercent.toFixed(2)}%`, bold, 11, contentWidth), bold, margin, y, 11)
-  y = drawLines(page, wrapPdfText(`Waste: ${document.metrics.wasteAreaMm2.toLocaleString('en-US')} mm² (includes margins and kerf)`, font, 10, contentWidth), font, margin, y)
-  const drawingArea = { x: margin + DIMENSION_CLEARANCE, y: 210, width: contentWidth - DIMENSION_CLEARANCE * 2, height: y - 226 }
-  const initialTransform = technicalTransform(document.scene.panel, drawingArea)
-  const needsCallouts = document.scene.parts.some(part => {
-    const box = pdfRect(part.region, initialTransform)
-    const label = `${partCode(document.parts, part.part.id)}.${String(part.copyIndex + 1)} / ${dimensions(part.dimensions)}`
-    return box.height < 26 || font.widthOfTextAtSize(label, 8) > box.width - 8
-  })
-  if (needsCallouts) drawingArea.width -= 120
-  const transform = technicalTransform(document.scene.panel, drawingArea)
-  const panelBox = pdfRect(document.scene.panel, transform)
-  for (const [index, waste] of document.scene.waste.entries()) {
-    const box = pdfRect(waste, transform)
-    drawWaste(page, box)
-    const label = `W${String(index + 1)}`
-    const labelWidth = font.widthOfTextAtSize(label, 7)
-    if (box.width > labelWidth + 6 && box.height > 16) {
-      const x = box.x + box.width / 2 - labelWidth / 2
-      const y = box.y + box.height / 2 - 3
-      page.drawRectangle({ x: x - 2, y: y - 2, width: labelWidth + 4, height: 11, color: rgb(1, 1, 1) })
-      page.drawText(label, { x, y, size: 7, font, color: muted })
-    }
-  }
-  const outside: { label: string; box: ReturnType<typeof pdfRect> }[] = []
-  for (const part of document.scene.parts) {
-    const box = pdfRect(part.region, transform)
-    page.drawRectangle({ ...box, borderWidth: 0.5, borderColor: ink })
-    const identifier = partCode(document.parts, part.part.id) + (part.part.quantity > 1 ? `.${String(part.copyIndex + 1)}` : '')
-    const label = `${identifier} / ${dimensions(part.dimensions)}`
-    if (box.height >= 26 && font.widthOfTextAtSize(label, 8) <= box.width - 8) {
-      page.drawText(identifier, { x: box.x + 4, y: box.y + box.height - 12, size: 8, font: bold, color: rgb(0.14, 0.3, 0.21) })
-      page.drawText(dimensions(part.dimensions), { x: box.x + 4, y: box.y + box.height - 23, size: 8, font, color: ink })
-    } else outside.push({ label: `${identifier} / ${String(part.dimensions.lengthMm)} x ${String(part.dimensions.widthMm)} mm`, box })
-    drawGrain(page, box, part.grain)
-  }
-  drawKerfs(page, document, transform)
-  page.drawRectangle({ ...pdfRect(document.scene.usableArea, transform), borderColor: muted, borderWidth: 0.5, borderDashArray: [3, 3] })
-  page.drawRectangle({ ...panelBox, borderColor: ink, borderWidth: 0.7 })
-  drawDimensions(page, font, panelBox, document.panel.lengthMm, document.panel.widthMm)
-  drawGrain(page, panelBox, document.panel.grainDirection)
-  const labelsPerSheet = Math.max(1, Math.floor(drawingArea.height / 42))
-  outside.sort((a, b) => b.box.y - a.box.y)
-  for (const [index, item] of outside.slice(0, labelsPerSheet).entries()) {
-    const labelY = drawingArea.y + drawingArea.height - index * 42
-    const labelX = margin + contentWidth - 108
-    page.drawLine({ start: { x: item.box.x + item.box.width / 2, y: item.box.y + item.box.height / 2 }, end: { x: labelX - 6, y: labelY + 2 }, thickness: 0.3, color: muted })
-    drawLines(page, wrapPdfText(item.label, font, 8, 108), font, labelX, labelY, 8)
-  }
-  // Additional label sheets retain the same validated geometry and physical scale.
-  for (let offset = labelsPerSheet; offset < outside.length; offset += labelsPerSheet) {
-    const continuation = pdf.addPage([size.width, size.height])
-    continuation.drawText(`${heading} / Labels continued`, { x: margin, y: size.height - margin, size: 13, font: bold, color: ink })
-    drawLines(continuation, [`${dimensions(document.panel)} / Kerf: ${String(document.settings.kerfMm)} mm / Edge margin: ${String(document.settings.edgeMarginMm)} mm`, 'Diagonal hatch: waste / Dashed outline: usable area / Arrows: grain'], font, margin, size.height - margin - 22, 9)
-    continuation.drawRectangle({ ...panelBox, borderColor: ink, borderWidth: 0.7 })
-    for (const part of document.scene.parts) {
-      const box = pdfRect(part.region, transform)
-      continuation.drawRectangle({ ...box, borderColor: ink, borderWidth: 0.5 })
-      drawGrain(continuation, box, part.grain)
-    }
-    drawKerfs(continuation, document, transform)
-    continuation.drawRectangle({ ...pdfRect(document.scene.usableArea, transform), borderColor: muted, borderWidth: 0.5, borderDashArray: [3, 3] })
-    drawGrain(continuation, panelBox, document.panel.grainDirection)
-    for (const waste of document.scene.waste) drawWaste(continuation, pdfRect(waste, transform))
-    for (const [index, item] of outside.slice(offset, offset + labelsPerSheet).entries()) {
-      const labelY = drawingArea.y + drawingArea.height - index * 42
-      const labelX = margin + contentWidth - 108
-      continuation.drawLine({ start: { x: item.box.x + item.box.width / 2, y: item.box.y + item.box.height / 2 }, end: { x: labelX - 6, y: labelY + 2 }, thickness: 0.3, color: muted })
-      drawLines(continuation, wrapPdfText(item.label, font, 8, 108), font, labelX, labelY, 8)
-    }
-    drawDimensions(continuation, font, panelBox, document.panel.lengthMm, document.panel.widthMm)
-    drawingTitleBlock(continuation, font, document.projectName ?? 'Cutting plan', heading, document.materialName, document.panel.thicknessMm, scaleLabel(transform), date)
-  }
-  drawLines(page, [
-    'Diagonal hatch: waste / Dashed outline: usable area / Outer band: margins',
-    'Dark narrow band: saw kerf (zero kerf shown as a line) / Arrows: grain',
-  ], font, margin, 144, 8)
-  drawScaleBar(page, font, size.width - margin - 80, 128, transform)
-  drawingTitleBlock(page, font, document.projectName ?? 'Cutting plan', heading, document.materialName, document.panel.thicknessMm, scaleLabel(transform), date)
-
-  const tables = createPdfTables(pdf, font, bold, size, sheet => { sheetFrame(sheet, font, document.projectName ?? 'Cutting plan', 'Panel inventory', 'N/A', date) })
-  tables.table('Placed parts - oriented dimensions, thickness and grain', [
-    { label: 'Reference', weight: 1 }, { label: 'Name', weight: 2.2 }, { label: 'Dimensions / orientation', weight: 2 }, { label: 'Position (mm)', weight: 1.4 }, { label: 'Grain', weight: 1 },
-  ], document.scene.parts.map(part => [partCode(document.parts, part.part.id) + '.' + String(part.copyIndex + 1), part.part.name, `${dimensions(part.dimensions)} / ${part.orientation === 'rotated' ? 'Rotated 90°' : 'Normal'}`, `${String(part.region.xMm)}, ${String(part.region.yMm)}`, part.grain]))
-  if (document.unplaced.length) tables.table('Unplaced parts - not produced by this panel', [
-    { label: 'Reference / name', weight: 2.5 }, { label: 'Copies', weight: 1.5 }, { label: 'Reason', weight: 3 },
-  ], document.unplaced.map(missing => {
-    const part = document.parts.find(part => part.id === missing.partId)
-    const reason = missing.reason.kind === 'allocatedElsewhere' ? 'Allocated to another panel in the project'
-      : missing.reason.kind === 'noSpaceLeft' ? 'No space left on this panel'
-      : missing.reason.kind === 'remainderNarrowerThanKerf' ? 'Remainder cannot be cut with this kerf'
-      : missing.reason.issues.map(issue => ({ materialMismatch: 'Material mismatch', thicknessMismatch: 'Exact thickness mismatch', noUsableArea: 'No usable area', grainRequiresRotation: 'Grain requires forbidden rotation', exceedsUsableArea: 'Exceeds usable panel size' })[issue.kind]).join('; ')
-    return [`${partCode(document.parts, missing.partId)} / ${part?.name ?? 'Unavailable part'}`, `${String(missing.count)} starting at copy ${String(missing.firstCopyIndex + 1)}`, reason]
-  }))
-  tables.table('Waste regions / potential reusable offcuts', [
-    { label: 'Reference', weight: 1 }, { label: 'Dimensions', weight: 2 }, { label: 'Material', weight: 2 }, { label: 'Position (mm)', weight: 1.5 }, { label: 'Grain', weight: 1 },
-  ], document.scene.waste.map((region, index) => [`W${String(index + 1)}`, dimensions({ ...region, thicknessMm: document.panel.thicknessMm }), document.materialName, `${String(region.xMm)}, ${String(region.yMm)}`, document.panel.grainDirection]))
+  const drawing = drawPanelSheet(page, font, bold, document, heading)
+  drawingTitleBlock(page, font, document.projectName ?? 'Cutting plan', heading, document.materialName, document.panel.thicknessMm, drawing.scale, date)
 }
 
 function materialName(document: ProjectCuttingPdfDocument, part: Part): string {
