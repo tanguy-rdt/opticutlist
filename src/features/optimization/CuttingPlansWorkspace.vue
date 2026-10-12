@@ -27,6 +27,7 @@ let renderController = new AbortController()
 let observer: ResizeObserver | null = null
 let disposed = false
 function canRender(): boolean { return paper.value !== null && !disposed }
+function canContinueRendering(signal: AbortSignal): boolean { return !signal.aborted && !disposed }
 function isCurrent(current: number): boolean { return current === generation && !disposed }
 function clearRender(): void {
   renderVersion += 1; renderController.abort(); renderController = new AbortController()
@@ -37,18 +38,57 @@ function clearDocument(): void {
   const previous = pdf; pdf = null
   if (previous) void previous.destroy().catch(() => { /* already cancelled */ })
   bytes.value = null; pageCount.value = 0
+  if (viewport.value) viewport.value.scrollTop = 0
 }
-async function renderPage(): Promise<void> {
-  clearRender()
+function updateCurrentPage(): void {
+  const root = viewport.value
+  if (!root || !root.clientHeight) return
+  const marker = root.getBoundingClientRect().top + Math.min(root.clientHeight / 4, 160)
+  const pages = paper.value?.querySelectorAll<HTMLElement>('[data-pdf-page]')
+  if (!pages) return
+  for (const element of pages) {
+    if (element.getBoundingClientRect().bottom > marker) {
+      page.value = Number(element.dataset.pdfPage)
+      return
+    }
+  }
+  if (pages.length) page.value = pages.length
+}
+async function renderPages(): Promise<void> {
+  const anchor = page.value
+  const oldPage = paper.value?.querySelector<HTMLElement>(`[data-pdf-page="${String(anchor)}"]`)
+  const oldHeight = oldPage?.getBoundingClientRect().height ?? 0
+  const fraction = oldHeight > 0 && viewport.value && oldPage
+    ? Math.max(-1, Math.min(1, (viewport.value.getBoundingClientRect().top - oldPage.getBoundingClientRect().top) / oldHeight)) : 0
+  // Keep the current pages readable until the replacement is complete.
+  renderVersion += 1; renderController.abort(); renderController = new AbortController()
   if (!pdf || !canRender()) return
   const current = renderVersion
   const document = pdf
-  const canvas = window.document.createElement('canvas')
-  canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', `Cutting document page ${String(page.value)}`)
+  const signal = renderController.signal
+  const width = Math.min((viewport.value?.clientWidth || 824) - 24, 900)
+  const scale = zoom.value
+  const pages = window.document.createDocumentFragment()
   rendering.value = true
   try {
-    await document.render(page.value, canvas, viewport.value?.clientWidth || 800, zoom.value, renderController.signal)
-    if (current === renderVersion && !disposed) paper.value?.replaceChildren(canvas)
+    for (let index = 1; index <= document.pageCount; index += 1) {
+      if (!canContinueRendering(signal)) return
+      const canvas = window.document.createElement('canvas')
+      canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', `Cutting document page ${String(index)}`)
+      await document.render(index, canvas, width, scale, signal)
+      if (!canContinueRendering(signal)) return
+      const sheet = window.document.createElement('div')
+      sheet.className = 'pdf-page'; sheet.dataset.pdfPage = String(index)
+      sheet.append(canvas); pages.append(sheet)
+    }
+    if (current === renderVersion && !disposed) {
+      paper.value?.replaceChildren(pages)
+      const target = paper.value?.querySelector<HTMLElement>(`[data-pdf-page="${String(anchor)}"]`)
+      if (oldHeight > 0 && target && viewport.value) {
+        viewport.value.scrollTop += target.getBoundingClientRect().top - viewport.value.getBoundingClientRect().top + fraction * target.getBoundingClientRect().height
+      }
+      updateCurrentPage()
+    }
   } catch (cause) {
     if (current === renderVersion && !disposed) error.value = cause instanceof Error ? cause.message : 'PDF preview failed.'
   } finally { if (current === renderVersion) rendering.value = false }
@@ -66,7 +106,8 @@ async function regenerate(): Promise<void> {
     const loaded = await loadPdfPreview(result.bytes, signal)
     if (!isCurrent(current)) { await loaded.destroy(); return }
     pdf = loaded; pageCount.value = loaded.pageCount
-    await nextTick(); await renderPage()
+    generating.value = false
+    await nextTick(); await renderPages()
   } catch (cause) {
     if (isCurrent(current)) error.value = cause instanceof Error ? cause.message : 'Could not prepare the cutting document.'
   } finally { if (current === generation) generating.value = false }
@@ -77,11 +118,11 @@ function download(): void {
   catch (cause) { error.value = cause instanceof Error ? cause.message : 'PDF download failed.' }
 }
 watch([() => props.input, () => props.title, pageSize, orientation], () => { void regenerate() }, { immediate: true, flush: 'sync' })
-watch([page, zoom], () => { void renderPage() })
+watch(zoom, () => { void renderPages() })
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && viewport.value) {
     let width = viewport.value.clientWidth
-    observer = new ResizeObserver(() => { const next = viewport.value?.clientWidth ?? 0; if (next !== width) { width = next; void renderPage() } })
+    observer = new ResizeObserver(() => { const next = viewport.value?.clientWidth ?? 0; if (next !== width) { width = next; void renderPages() } })
     observer.observe(viewport.value)
   }
 })
@@ -92,67 +133,13 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
     class="document-workspace"
     aria-label="Cutting Plans document workspace"
   >
-    <div class="document-toolbar">
-      <h2 class="mr-2 text-sm font-semibold">
-        Cutting Plan
-      </h2>
-      <fieldset
-        class="options"
-        aria-label="Page size"
-      >
-        <button
-          v-for="size in ['A4', 'A3'] as const"
-          :key="size"
-          type="button"
-          :aria-pressed="pageSize === size"
-          @click="pageSize = size"
-        >
-          {{ size }}
-        </button>
-      </fieldset>
-      <fieldset
-        class="options"
-        aria-label="Orientation"
-      >
-        <button
-          v-for="direction in ['portrait', 'landscape'] as const"
-          :key="direction"
-          type="button"
-          :aria-pressed="orientation === direction"
-          @click="orientation = direction"
-        >
-          {{ direction === 'portrait' ? 'Portrait' : 'Landscape' }}
-        </button>
-      </fieldset>
-      <span class="text-xs text-muted">Fit to page</span>
-      <div
-        class="flex items-center gap-1"
-        role="group"
-        aria-label="Preview zoom"
-      >
-        <button
-          type="button"
-          class="zoom-button"
-          aria-label="Zoom out preview"
-          :disabled="zoom <= 0.5"
-          @click="zoom = Math.max(0.5, zoom - 0.25)"
-        >
-          −
-        </button>
-        <output class="min-w-10 text-center text-xs">{{ Math.round(zoom * 100) }}%</output>
-        <button
-          type="button"
-          class="zoom-button"
-          aria-label="Zoom in preview"
-          :disabled="zoom >= 2"
-          @click="zoom = Math.min(2, zoom + 0.25)"
-        >
-          +
-        </button>
-      </div>
+    <div class="document-topbar">
+      <p class="text-sm text-muted">
+        Preview the complete cutting document
+      </p>
       <button
         type="button"
-        class="button button-primary button-compact ml-auto"
+        class="button button-primary button-compact"
         :disabled="!bytes || generating"
         @click="download"
       >
@@ -179,59 +166,142 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
     >
       {{ feedback }}
     </p>
-    <div
-      ref="viewport"
-      class="document-viewport"
-      :aria-busy="generating || rendering"
-    >
-      <p
-        v-if="generating || rendering"
-        role="status"
-        class="p-4 text-center text-sm text-muted"
+    <div class="document-grid">
+      <div class="preview-column">
+        <div class="preview-toolbar">
+          <span class="text-xs font-medium text-muted">PDF preview</span>
+          <output
+            aria-label="Current PDF page"
+            class="page-indicator"
+          >{{ pageCount ? page : 0 }} / {{ pageCount }}</output>
+          <div
+            class="zoom-controls"
+            role="group"
+            aria-label="Preview zoom"
+          >
+            <button
+              type="button"
+              class="zoom-button"
+              aria-label="Zoom out preview"
+              :disabled="zoom <= 0.5"
+              @click="zoom = Math.max(0.5, zoom - 0.25)"
+            >
+              −
+            </button>
+            <output class="min-w-10 text-center text-xs">{{ Math.round(zoom * 100) }}%</output>
+            <button
+              type="button"
+              class="zoom-button"
+              aria-label="Zoom in preview"
+              :disabled="zoom >= 2"
+              @click="zoom = Math.min(2, zoom + 0.25)"
+            >
+              +
+            </button>
+          </div>
+          <span
+            v-if="generating || rendering"
+            role="status"
+            class="text-xs text-muted"
+          >{{ generating ? 'Generating cutting document…' : 'Rendering pages…' }}</span>
+        </div>
+        <div
+          ref="viewport"
+          class="document-viewport"
+          tabindex="0"
+          role="region"
+          aria-label="Scrollable cutting document"
+          :aria-busy="generating || rendering"
+          @scroll.passive="updateCurrentPage"
+        >
+          <div
+            ref="paper"
+            class="paper"
+          />
+        </div>
+      </div>
+      <aside
+        class="document-settings"
+        aria-labelledby="document-settings-title"
       >
-        {{ generating ? 'Generating cutting document…' : 'Rendering page…' }}
-      </p>
-      <div
-        ref="paper"
-        class="paper"
-      />
+        <h2
+          id="document-settings-title"
+          class="text-base font-semibold"
+        >
+          Document settings
+        </h2>
+        <fieldset
+          class="setting"
+          aria-label="Page size"
+        >
+          <legend>Paper size</legend>
+          <div class="options">
+            <button
+              v-for="size in ['A4', 'A3'] as const"
+              :key="size"
+              type="button"
+              :aria-pressed="pageSize === size"
+              @click="pageSize = size"
+            >
+              {{ size }}
+            </button>
+          </div>
+        </fieldset>
+        <fieldset
+          class="setting"
+          aria-label="Orientation"
+        >
+          <legend>Orientation</legend>
+          <div class="options">
+            <button
+              v-for="direction in ['portrait', 'landscape'] as const"
+              :key="direction"
+              type="button"
+              :aria-pressed="orientation === direction"
+              @click="orientation = direction"
+            >
+              {{ direction === 'portrait' ? 'Portrait' : 'Landscape' }}
+            </button>
+          </div>
+        </fieldset>
+        <div class="setting">
+          <p class="setting-label">
+            Scaling
+          </p>
+          <p class="text-sm">
+            Fit to page
+          </p>
+        </div>
+        <p class="settings-hint">
+          The preview updates automatically.
+        </p>
+      </aside>
     </div>
-    <nav
-      class="page-navigation"
-      aria-label="Document pages"
-    >
-      <button
-        type="button"
-        class="button button-compact"
-        :disabled="page <= 1 || generating"
-        @click="page -= 1"
-      >
-        Previous page
-      </button>
-      <span
-        class="text-sm"
-        aria-live="polite"
-      >Page {{ pageCount ? page : 0 }} of {{ pageCount }}</span>
-      <button
-        type="button"
-        class="button button-compact"
-        :disabled="page >= pageCount || generating"
-        @click="page += 1"
-      >
-        Next page
-      </button>
-    </nav>
   </section>
 </template>
 <style scoped>
-.document-workspace { min-width: 0; display: flex; flex-direction: column; gap: .75rem; }
-.document-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .5rem 0; }
-.options { display: flex; gap: .125rem; border: 1px solid var(--line); padding: .125rem; border-radius: .45rem; }
-.options button, .zoom-button { min-height: 2rem; padding: .25rem .6rem; border-radius: .3rem; font-size: .75rem; }
-.options button[aria-pressed='true'] { background: var(--success-surface); color: var(--accent); font-weight: 600; }
-.options button:hover, .zoom-button:hover { background: var(--subtle); }
-.document-viewport { min-height: 55dvh; max-height: 70dvh; overflow: auto; padding: 1.25rem; background: var(--subtle); border-radius: .5rem; }
-.paper { width: max-content; margin-inline: auto; }
-.paper :deep(canvas) { display: block; background: white; box-shadow: 0 2px 12px rgb(0 0 0 / .12); }
-.page-navigation { display: flex; justify-content: center; align-items: center; gap: 1rem; }
+.document-workspace { width: 100%; max-width: 1440px; margin-inline: auto; min-width: 0; display: flex; flex-direction: column; gap: .75rem; }
+.document-topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .75rem; padding-bottom: .5rem; }
+.document-grid { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 1.5rem; align-items: start; }
+.preview-column { min-width: 0; overflow: hidden; border-radius: .65rem; }
+.preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .65rem 1rem; background: var(--surface); border-bottom: 1px solid var(--line); }
+.page-indicator { margin-left: auto; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.zoom-controls { display: flex; align-items: center; gap: .2rem; padding-left: .75rem; border-left: 1px solid var(--line); }
+.zoom-button { width: 2rem; height: 2rem; border-radius: .35rem; }
+.zoom-button:hover:not(:disabled) { background: var(--subtle); }
+.zoom-button:disabled { opacity: .4; }
+.document-viewport { height: 68dvh; min-height: 320px; overflow: auto; padding: 2rem; background: color-mix(in srgb, var(--canvas) 85%, var(--line)); scrollbar-gutter: stable; }
+.paper { width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2rem; }
+.paper :deep(.pdf-page) { flex: none; background: white; box-shadow: 0 2px 5px rgb(0 0 0 / .08), 0 8px 24px rgb(0 0 0 / .08); }
+.paper :deep(canvas) { display: block; }
+.document-settings { padding: 1.25rem; background: var(--surface); border: 1px solid var(--line); border-radius: .65rem; }
+.setting { margin-top: 1.5rem; min-width: 0; }
+.setting legend, .setting-label { margin-bottom: .5rem; font-size: .75rem; color: var(--muted); font-weight: 600; }
+.options { display: flex; gap: .25rem; padding: .2rem; background: var(--canvas); border-radius: .45rem; }
+.options button { flex: 1; min-height: 2.25rem; padding: .3rem .5rem; border-radius: .3rem; font-size: .8125rem; }
+.options button[aria-pressed='true'] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
+.options button:hover { color: var(--accent); }
+.settings-hint { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .75rem; }
+@media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); gap: 1rem; } .document-settings { grid-row: 1; display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: center; } .document-settings h2 { flex-basis: 100%; } .setting { margin-top: 0; } .settings-hint { display: none; } }
+@media (max-width: 640px) { .document-viewport { padding: 1rem; height: 62dvh; } .paper { gap: 1.5rem; } .document-settings { padding: 1rem; } }
 </style>

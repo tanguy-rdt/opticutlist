@@ -70,7 +70,6 @@ async function showExport(wrapper: VueWrapper): Promise<void> {
   await flushPromises()
 }
 async function showOptimization(wrapper: VueWrapper): Promise<void> {
-  await wrapper.get('a').trigger('click')
   await wrapper.setProps({ cuttingPlansStep: false })
   await flushPromises()
 }
@@ -231,7 +230,7 @@ describe('Automatic project optimization', () => {
     const input = structuredClone(worker.request.input)
     worker.complete(); await flushPromises()
     async function click(label: string): Promise<void> {
-      if (label === 'Back to Optimization') { await showOptimization(wrapper); return }
+      if (label === 'Optimization') { await showOptimization(wrapper); return }
       const button = wrapper.findAll('button').find(button => button.text() === label)
       if (button === undefined) throw new Error(`Missing ${label}`)
       await button.trigger('click')
@@ -241,7 +240,7 @@ describe('Automatic project optimization', () => {
     expect(wrapper.findAll('button').some(control => control.text() === 'Continue to Export')).toBe(false)
     await showExport(wrapper);
     await click('Download PDF'); await flushPromises()
-    await click('Back to Optimization')
+    await click('Optimization')
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]).toMatchObject({ edited: false, materialName: validMaterialInput.name })
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(0)
     wrapper.get('[data-panel-index][aria-pressed="true"]').element.closest('li')?.querySelector<HTMLButtonElement>('[data-copy-key]')?.click()
@@ -256,7 +255,7 @@ describe('Automatic project optimization', () => {
     await click('Portrait')
     await flushPromises()
     await click('Download PDF'); await flushPromises()
-    await click('Back to Optimization')
+    await click('Optimization')
     expect(pdfGenerate.mock.calls.at(-1)?.[0].panels[0]).toMatchObject({ edited: true, orientation: 'portrait' })
     expect(pdfGenerate.mock.calls.at(-1)?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(1)
     await click('Undo edit')
@@ -264,7 +263,7 @@ describe('Automatic project optimization', () => {
     expect(activeCopy(wrapper)).toContain('Side panel · 1/2')
     await showExport(wrapper);
     await click('Download PDF'); await flushPromises()
-    await click('Back to Optimization')
+    await click('Optimization')
     expect(pdfGenerate.mock.calls.at(-1)?.[0].panels[0]?.edited).toBe(false)
     expect(pdfGenerate.mock.calls.at(-1)?.[0].panels[0]?.scene).toEqual(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene)
     await click('Redo edit')
@@ -629,7 +628,7 @@ describe('automatic workflow and per-panel integration', () => {
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(4)
     expect(wrapper.findAll('[data-panel-index]')).toHaveLength(2)
     async function click(label: string): Promise<void> {
-      if (label === 'Back to Optimization') { await showOptimization(wrapper); return }
+      if (label === 'Optimization') { await showOptimization(wrapper); return }
       const button = wrapper.findAll('button').find(button => button.text() === label)
       if (!button) throw new Error(`Missing ${label}`)
       await button.trigger('click')
@@ -644,7 +643,7 @@ describe('automatic workflow and per-panel integration', () => {
     expect(wrapper.get('[aria-label="Canvas zoom"]').text()).toBe('125% of fit')
     await showExport(wrapper);
     await click('Download PDF'); await flushPromises()
-    await click('Back to Optimization')
+    await click('Optimization')
     expect(wrapper.get('[aria-label="Canvas zoom"]').text()).toBe('125% of fit')
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.edited).toBe(true)
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.unplaced).toMatchObject([{ firstCopyIndex: 2, count: 2, reason: { kind: 'allocatedElsewhere' } }])
@@ -660,7 +659,7 @@ describe('automatic workflow and per-panel integration', () => {
     expect(wrapper.findAll('[aria-label="Cutting plan canvas"]')).toHaveLength(1)
     await showExport(wrapper);
     await click('Download PDF'); await flushPromises()
-    await click('Back to Optimization')
+    await click('Optimization')
     expect(pdfGenerate.mock.calls[1]?.[0].panels[1]?.edited).toBe(false)
     expect(pdfGenerate.mock.calls[1]?.[0].panels[1]?.scene.parts[0]?.copyIndex).toBe(2)
     await wrapper.get('[data-panel-index="0"]').trigger('click')
@@ -675,7 +674,7 @@ describe('automatic workflow and per-panel integration', () => {
     pdfGenerate.mockImplementationOnce(() => new Promise(resolve => { finish = () => { resolve(new Uint8Array([2])) } }))
     await showExport(wrapper);
     expect(wrapper.text()).toContain('Generating cutting document')
-    await click('Back to Optimization')
+    await click('Optimization')
     await wrapper.get('[data-panel-index="1"]').trigger('click')
     finish(); await flushPromises()
     expect(vi.mocked(downloadCuttingPlanPdf).mock.calls).toHaveLength(downloads)
@@ -694,7 +693,7 @@ describe('automatic workflow and per-panel integration', () => {
 
 describe('automatic current result in the optimization workspace', () => {
   async function click(wrapper: VueWrapper, text: string): Promise<void> {
-    if (text === 'Back to Optimization') { await showOptimization(wrapper); return }
+    if (text === 'Optimization') { await showOptimization(wrapper); return }
     const button = wrapper.findAll('button').find(button => button.text() === text)
     if (!button) throw new Error(`Missing ${text}`)
     await button.trigger('click')
@@ -737,7 +736,7 @@ describe('automatic current result in the optimization workspace', () => {
     expect(activeCopy(wrapper)).toContain('Side panel · 2/4')
     await showExport(wrapper);
     await click(wrapper, 'Download PDF'); await flushPromises()
-    await click(wrapper, 'Back to Optimization')
+    await click(wrapper, 'Optimization')
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.edited).toBe(true)
     expect(pdfGenerate.mock.calls[0]?.[0].panels[0]?.scene.parts[0]?.copyIndex).toBe(1)
     await wrapper.get('[data-panel-index="1"]').trigger('click')

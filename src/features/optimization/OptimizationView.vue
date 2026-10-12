@@ -328,18 +328,11 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
   <section class="optimization-workspace space-y-3">
     <header
       v-if="cuttingPlansStep"
-      class="flex flex-wrap items-center justify-between gap-3"
+      class="mx-auto w-full max-w-[1440px]"
     >
-      <h1 class="text-xl font-semibold">
+      <h1 class="text-2xl font-semibold tracking-tight">
         Cutting Plans
       </h1>
-      <RouterLink
-        v-if="cuttingPlansStep"
-        :to="{ name: 'project-optimization', params: { projectId } }"
-        class="button button-compact"
-      >
-        Back to Optimization
-      </RouterLink>
     </header>
     <p
       v-if="planError"
