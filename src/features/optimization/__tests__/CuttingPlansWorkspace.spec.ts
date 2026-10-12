@@ -15,7 +15,7 @@ function preview(): PdfPreviewDocument {
   return { pageCount: 3, render: vi.fn(() => Promise.resolve()), destroy: vi.fn(() => Promise.resolve()) }
 }
 beforeEach(() => { vi.mocked(loadPdfPreview).mockReset(); vi.mocked(loadPdfPreview).mockResolvedValue(preview()); vi.mocked(downloadCuttingPlanPdf).mockClear() })
-afterEach(() => { wrappers.forEach(wrapper => { wrapper.unmount() }); wrappers.length = 0; vi.restoreAllMocks() })
+afterEach(() => { wrappers.forEach(wrapper => { wrapper.unmount() }); wrappers.length = 0; vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function setup(generate = vi.fn<(document: ProjectCuttingPdfDocument) => Promise<Uint8Array<ArrayBuffer>>>().mockResolvedValue(new Uint8Array([1, 2]))) {
   const input = projectPdfRequest()
   const before = structuredClone(input)
@@ -38,6 +38,10 @@ describe('Cutting Plans workspace', () => {
     expect(wrapper.find('object, iframe, select').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Preview PDF')
     expect(wrapper.text()).not.toContain('Confirm Cutting')
+    expect(wrapper.text()).not.toContain('Preview the complete cutting document')
+    expect(wrapper.text()).not.toContain('The preview updates automatically')
+    const download = wrapper.findAll('button').find(button => button.text() === 'Download PDF')
+    expect(download?.element.closest('aside')).toBe(wrapper.get('.document-settings').element)
     await click(wrapper, 'Download PDF')
     expect(downloadCuttingPlanPdf).toHaveBeenCalledWith(new Uint8Array([1, 2]))
     expect(generate).toHaveBeenCalledOnce()
@@ -107,6 +111,25 @@ describe('Cutting Plans workspace', () => {
     expect(viewport.element.scrollTop).toBe(1069.5)
     expect(wrapper.get('[aria-label="Current PDF page"]').text()).toBe('2 / 3')
     expect(pdf.render).toHaveBeenLastCalledWith(3, expect.any(HTMLCanvasElement), 900, 1.25, expect.any(AbortSignal))
+  })
+  it.each([
+    { height: 900, top: 210, expected: '670px' },
+    { height: 768, top: 210, expected: '538px' },
+  ])('fills the remaining viewport at $height pixels and updates on resize', async ({ height, top, expected }) => {
+    vi.stubGlobal('innerHeight', height)
+    const { wrapper, generate } = setup()
+    await flushPromises()
+    const root = wrapper.get<HTMLElement>('[aria-label="Cutting Plans document workspace"]')
+    vi.spyOn(root.element, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, top, 1200, 600))
+    window.dispatchEvent(new Event('resize'))
+    expect(root.element.style.height).toBe(expected)
+    vi.stubGlobal('innerHeight', height - 100)
+    window.dispatchEvent(new Event('resize'))
+    expect(root.element.style.height).toBe(`${String(height - 100 - top - 20)}px`)
+    expect(generate).toHaveBeenCalledOnce()
+    const remove = vi.spyOn(window, 'removeEventListener')
+    wrapper.unmount()
+    expect(remove).toHaveBeenCalledWith('resize', expect.any(Function))
   })
   it('rejects invalid current plans and keeps download unavailable', async () => {
     const { wrapper, generate } = setup()

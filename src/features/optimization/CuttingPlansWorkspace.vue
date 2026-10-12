@@ -16,6 +16,7 @@ const generating = ref(false)
 const rendering = ref(false)
 const error = ref('')
 const feedback = ref('')
+const workspace = ref<HTMLElement | null>(null)
 const paper = ref<HTMLDivElement | null>(null)
 const viewport = ref<HTMLDivElement | null>(null)
 const bytes = shallowRef<Uint8Array<ArrayBuffer> | null>(null)
@@ -119,33 +120,35 @@ function download(): void {
 }
 watch([() => props.input, () => props.title, pageSize, orientation], () => { void regenerate() }, { immediate: true, flush: 'sync' })
 watch(zoom, () => { void renderPages() })
+function sizeWorkspace(): void {
+  const root = workspace.value
+  if (!root || disposed) return
+  const main = root.closest('main')
+  const bottomPadding = main ? Number.parseFloat(getComputedStyle(main).paddingBottom) || 20 : 20
+  root.style.height = `${String(Math.max(0, window.innerHeight - root.getBoundingClientRect().top - bottomPadding))}px`
+}
 onMounted(() => {
+  sizeWorkspace()
+  window.addEventListener('resize', sizeWorkspace)
   if (typeof ResizeObserver !== 'undefined' && viewport.value) {
     let width = viewport.value.clientWidth
-    observer = new ResizeObserver(() => { const next = viewport.value?.clientWidth ?? 0; if (next !== width) { width = next; void renderPages() } })
+    observer = new ResizeObserver(() => {
+      sizeWorkspace()
+      const next = viewport.value?.clientWidth ?? 0
+      if (next !== width) { width = next; void renderPages() }
+    })
     observer.observe(viewport.value)
+    if (workspace.value) observer.observe(workspace.value)
   }
 })
-onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect(); clearDocument() })
+onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect(); window.removeEventListener('resize', sizeWorkspace); clearDocument() })
 </script>
 <template>
   <section
+    ref="workspace"
     class="document-workspace"
     aria-label="Cutting Plans document workspace"
   >
-    <div class="document-topbar">
-      <p class="text-sm text-muted">
-        Preview the complete cutting document
-      </p>
-      <button
-        type="button"
-        class="button button-primary button-compact"
-        :disabled="!bytes || generating"
-        @click="download"
-      >
-        Download PDF
-      </button>
-    </div>
     <p
       v-if="error"
       role="alert"
@@ -272,36 +275,42 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
             Fit to page
           </p>
         </div>
-        <p class="settings-hint">
-          The preview updates automatically.
-        </p>
+        <div class="document-action">
+          <button
+            type="button"
+            class="button button-primary button-compact w-full"
+            :disabled="!bytes || generating"
+            @click="download"
+          >
+            Download PDF
+          </button>
+        </div>
       </aside>
     </div>
   </section>
 </template>
 <style scoped>
-.document-workspace { width: 100%; max-width: 1440px; margin-inline: auto; min-width: 0; display: flex; flex-direction: column; gap: .75rem; }
-.document-topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .75rem; padding-bottom: .5rem; }
-.document-grid { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 1.5rem; align-items: start; }
-.preview-column { min-width: 0; overflow: hidden; border-radius: .65rem; }
-.preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .65rem 1rem; background: var(--surface); border-bottom: 1px solid var(--line); }
+.document-workspace { width: 100%; max-width: 1440px; margin-inline: auto; min-width: 0; min-height: 0; height: calc(100dvh - 240px); display: flex; flex-direction: column; gap: .5rem; overflow: hidden; }
+.document-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 1.25rem; align-items: start; }
+.preview-column { height: 100%; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line) 75%, var(--canvas)); border-radius: .75rem; background: var(--canvas); box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 4%, transparent); }
+.preview-toolbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .5rem .9rem; background: color-mix(in srgb, var(--surface) 65%, var(--canvas)); border-bottom: 1px solid var(--line); }
 .page-indicator { margin-left: auto; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
-.zoom-controls { display: flex; align-items: center; gap: .2rem; padding-left: .75rem; border-left: 1px solid var(--line); }
-.zoom-button { width: 2rem; height: 2rem; border-radius: .35rem; }
+.zoom-controls { display: flex; align-items: center; gap: .2rem; padding-left: .65rem; border-left: 1px solid var(--line); }
+.zoom-button { width: 1.875rem; height: 1.875rem; border-radius: .35rem; }
 .zoom-button:hover:not(:disabled) { background: var(--subtle); }
 .zoom-button:disabled { opacity: .4; }
-.document-viewport { height: 68dvh; min-height: 320px; overflow: auto; padding: 2rem; background: color-mix(in srgb, var(--canvas) 85%, var(--line)); scrollbar-gutter: stable; }
-.paper { width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2rem; }
-.paper :deep(.pdf-page) { flex: none; background: white; box-shadow: 0 2px 5px rgb(0 0 0 / .08), 0 8px 24px rgb(0 0 0 / .08); }
+.document-viewport { flex: 1; min-height: 0; overflow: auto; padding: 1.5rem 2rem; background: var(--canvas); scrollbar-gutter: stable; }
+.paper { width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+.paper :deep(.pdf-page) { flex: none; background: white; box-shadow: 0 1px 3px rgb(0 0 0 / .07), 0 5px 16px rgb(0 0 0 / .08); }
 .paper :deep(canvas) { display: block; }
-.document-settings { padding: 1.25rem; background: var(--surface); border: 1px solid var(--line); border-radius: .65rem; }
-.setting { margin-top: 1.5rem; min-width: 0; }
+.document-settings { padding: 1.25rem; background: color-mix(in srgb, var(--surface) 92%, var(--canvas)); border: 1px solid var(--line); border-radius: .75rem; box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 4%, transparent); }
+.setting { margin-top: 1.25rem; min-width: 0; }
 .setting legend, .setting-label { margin-bottom: .5rem; font-size: .75rem; color: var(--muted); font-weight: 600; }
 .options { display: flex; gap: .25rem; padding: .2rem; background: var(--canvas); border-radius: .45rem; }
 .options button { flex: 1; min-height: 2.25rem; padding: .3rem .5rem; border-radius: .3rem; font-size: .8125rem; }
 .options button[aria-pressed='true'] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
 .options button:hover { color: var(--accent); }
-.settings-hint { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .75rem; }
-@media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); gap: 1rem; } .document-settings { grid-row: 1; display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: center; } .document-settings h2 { flex-basis: 100%; } .setting { margin-top: 0; } .settings-hint { display: none; } }
-@media (max-width: 640px) { .document-viewport { padding: 1rem; height: 62dvh; } .paper { gap: 1.5rem; } .document-settings { padding: 1rem; } }
+.document-action { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+@media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .75rem; } .document-settings { grid-row: 1; display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; padding: 1rem; } .document-settings h2 { flex-basis: 100%; } .setting { margin-top: 0; } .document-action { margin: 0 0 0 auto; padding: 0; border: 0; } }
+@media (max-width: 640px) { .document-viewport { padding: 1rem; } .paper { gap: 1.25rem; } .document-settings { gap: .75rem 1rem; } }
 </style>
