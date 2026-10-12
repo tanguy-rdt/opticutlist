@@ -28,6 +28,20 @@ async function exportPdf(request = pdfRequest) {
   return PDFDocument.load(result.bytes)
 }
 describe('Vector cutting plan PDF', () => {
+  it.each(['portrait', 'landscape'] as const)('exports every multi-panel page in %s A3 with vector paths', async orientation => {
+    const request = { ...multiPanelPdfRequest(), pageSize: 'A3' as const, orientation }
+    const before = structuredClone(request)
+    const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    for (const page of pdf.getPages()) {
+      expect(page.getWidth()).toBeCloseTo(orientation === 'portrait' ? 841.88976378 : 1190.5511811)
+      expect(page.getHeight()).toBeCloseTo(orientation === 'portrait' ? 1190.5511811 : 841.88976378)
+    }
+    expect(pageOperators(pdf, 1)).toMatch(/\bm\b/u)
+    expect(pageOperators(pdf, 1)).toMatch(/\bl\b/u)
+    expect(request).toEqual(before)
+  })
   it.each(['portrait', 'landscape'] as const)('exports %s A4 vector paths and text with no raster images', async orientation => {
     const request = structuredClone({ ...pdfRequest, orientation })
     const original = structuredClone(request)

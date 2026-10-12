@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import type { CuttingPlanPdfDocument, ProjectCuttingPdfDocument } from '../../application/export/cutting-plan-pdf-service'
-import { a4PageSize, fitPdfPanel, pdfRect } from './pdf-layout'
+import { pdfPageSize, fitPdfPanel, pdfRect } from './pdf-layout'
 
 const ink = rgb(0.12, 0.15, 0.17)
 const muted = rgb(0.35, 0.38, 0.4)
@@ -35,7 +35,7 @@ function dimensions(item: { lengthMm: number; widthMm: number; thicknessMm: numb
 
 /** True PDF paths and text from the shared validated scene; no canvas/image dependency. */
 function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: CuttingPlanPdfDocument, heading = 'OptiCutList / Cutting plan'): void {
-  const size = a4PageSize(document.orientation)
+  const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const page = pdf.addPage([size.width, size.height])
   const contentWidth = size.width - 2 * margin
   let y = size.height - margin
@@ -134,7 +134,7 @@ export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocum
     const pdf = await PDFDocument.create()
     const font = await pdf.embedFont(StandardFonts.Helvetica)
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-    const size = a4PageSize(document.orientation)
+    const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
     let page = pdf.addPage([size.width, size.height])
     let y = size.height - margin
     function row(text: string, heading = false): void {

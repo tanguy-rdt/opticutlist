@@ -105,17 +105,17 @@ onMounted(load)
           </RouterLink>
           <RouterLink
             v-if="cuttingState.available.value"
-            :to="{ name: 'project-cutting-export', params: { projectId: project.id } }"
+            :to="{ name: 'project-cutting-plans', params: { projectId: project.id } }"
             class="nav-link"
           >
-            Export
+            Cutting Plans
           </RouterLink>
           <span
             v-else
             class="nav-link cursor-not-allowed opacity-60"
             aria-disabled="true"
             title="Optimize a valid cutting plan first"
-          >Export</span>
+          >Cutting Plans</span>
         </nav>
         <ProjectExport :project-id="project.id" />
       </div>

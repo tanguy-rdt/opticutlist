@@ -13,8 +13,7 @@ import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
 import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import { useCurrentResultService } from './current-result-service'
-import { useCuttingConfirmationService } from '../inventory/cutting-confirmation-service'
-import CuttingFinalization from './CuttingFinalization.vue'
+import CuttingPlansWorkspace from './CuttingPlansWorkspace.vue'
 import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
 import { useCuttingWorkspaceState } from '../projects/cutting-workspace-state'
 import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
@@ -26,9 +25,8 @@ import { useProjectId, useProjectService } from '../projects/project-service'
 import { useCatalogRepositories } from '../suppliers/catalog-repositories'
 import { useOptimizationService } from './optimization-service'
 
-const { exportStep } = defineProps<{ exportStep?: boolean }>()
+const { cuttingPlansStep } = defineProps<{ cuttingPlansStep?: boolean }>()
 const cuttingState = useCuttingWorkspaceState()
-const inventoryWorking = ref(false)
 const selectedCopies = ref<Record<number, string>>({})
 const projectId = useProjectId()
 const projects = useProjectService()
@@ -37,9 +35,7 @@ const materials = useMaterialRepository()
 const stockRepository = useStockRepository()
 const optimizer = useOptimizationService()
 const currentResults = useCurrentResultService()?.forProject(projectId)
-const cutting = useCuttingConfirmationService()?.forProject(projectId)
 const settingsOpen = ref(false)
-const confirmed = ref(false)
 const planBusy = ref(false)
 const planError = ref('')
 const planNotice = ref('')
@@ -85,7 +81,7 @@ const displayedInput = computed<SavePlanInput | null>(() => result.value === nul
   parts: [...result.value.parts], settings: result.value.settings, sources: result.value.sources,
   editedPanelIndices: result.value.selection.plan.panels.flatMap((_, index) => editedPlans.value.has(index) || result.value?.savedEdited.includes(index) ? [index] : []),
 })
-const inventoryProblem = computed(() => !cutting ? 'The inventory service is unavailable.' : planError.value ? planError.value : planBusy.value || fingerprint.value !== savedFingerprint.value || !savedSummary.value ? 'The current layouts have not finished automatic persistence.' : '')
+
 const unsavedManualChanges = computed(() => result.value !== null && (savedFingerprint.value === null ? editedPlans.value.size > 0 : fingerprint.value !== savedFingerprint.value))
 function canDiscard(): boolean { return !unsavedManualChanges.value || window.confirm('Discard unsaved manual cutting-plan changes? Automatic persistence has not completed.') }
 function planChanged(index: number, plan: PanelCuttingPlan, modified: boolean): void {
@@ -98,14 +94,13 @@ function planChanged(index: number, plan: PanelCuttingPlan, modified: boolean): 
 }
 function panelPlan(index: number): PanelCuttingPlan | undefined { return editedPlans.value.get(index) ?? result.value?.selection.plan.panels[index]?.plan }
 function selectCopy(index: number, key: string): void { panelIndex.value = index; selectedCopies.value[index] = key }
-const exportAvailable = computed(() => !!result.value && !planBusy.value && !planError.value && fingerprint.value === savedFingerprint.value)
-watch(exportAvailable, available => { if (cuttingState) cuttingState.available.value = available }, { flush: 'sync' })
+const cuttingPlansAvailable = computed(() => !!result.value && !planBusy.value && !planError.value && fingerprint.value === savedFingerprint.value)
+watch(cuttingPlansAvailable, available => { if (cuttingState) cuttingState.available.value = available }, { flush: 'sync' })
 async function leaveWorkspace(to: { name?: unknown }): Promise<boolean> {
-  if (inventoryWorking.value) return false
-  if (to.name === 'project-cutting-export') {
+  if (to.name === 'project-cutting-plans') {
     if (!result.value) return true
     await persistenceQueue
-    if (!exportAvailable.value) { planError.value ||= 'The current result is not ready for Export. Optimize again or resolve the persistence error.'; return false }
+    if (!cuttingPlansAvailable.value) { planError.value ||= 'The current result is not ready for Cutting Plans. Optimize again or resolve the persistence error.'; return false }
   }
   return canDiscard()
 }
@@ -116,7 +111,6 @@ function invalidate(markStale = true): void {
   selectedCopies.value = {}
   persistenceController.abort()
   persistenceController = new AbortController()
-  confirmed.value = false
   optimizer.cancel()
   result.value = null
   editedPlans.value = new Map()
@@ -282,7 +276,6 @@ function persistCurrent(): void {
   if (!input) return
   // Serialize accepted edits, including undo/reset and edits on inactive layouts.
   planBusy.value = true
-  confirmed.value = false
   persistenceQueue = persistenceQueue.then(async () => {
     if (signal.aborted) return
     try {
@@ -292,7 +285,6 @@ function persistCurrent(): void {
       if (cuttingState) cuttingState.invalidated.value = false
       savedSummary.value = saved.value.summary
       savedFingerprint.value = currentFingerprint
-      confirmed.value = false
       planError.value = ''
     } catch (cause) {
       if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not persist the current cutting result.'
@@ -300,14 +292,6 @@ function persistCurrent(): void {
   })
   const queued = persistenceQueue
   void queued.then(() => { if (queued === persistenceQueue) planBusy.value = false })
-}
-async function refreshConfirmation(): Promise<void> {
-  if (!cutting || !savedSummary.value) return
-  const current = generation
-  const receipts = await cutting.list()
-  if (current !== generation) return
-  if (!receipts.ok) { planError.value = persistenceErrorMessage(receipts.error, 'Cutting confirmation'); return }
-  confirmed.value = receipts.value.some(receipt => receipt.id === savedSummary.value?.id)
 }
 async function restoreCurrent(current: number): Promise<void> {
   if (!currentResults || cuttingState?.invalidated.value) return
@@ -329,7 +313,6 @@ async function restoreCurrent(current: number): Promise<void> {
     savedSummary.value = summary
     savedFingerprint.value = fingerprint.value
     state.value = 'success'
-    await refreshConfirmation()
   } catch (cause) { if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not restore the current cutting result.' }
 }
 function beforeUnload(event: BeforeUnloadEvent): void { if (unsavedManualChanges.value) event.preventDefault() }
@@ -344,14 +327,14 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
 <template>
   <section class="optimization-workspace space-y-3">
     <header
-      v-if="exportStep"
+      v-if="cuttingPlansStep"
       class="flex flex-wrap items-center justify-between gap-3"
     >
       <h1 class="text-xl font-semibold">
-        {{ exportStep ? 'Export' : 'Optimization' }}
+        Cutting Plans
       </h1>
       <RouterLink
-        v-if="exportStep"
+        v-if="cuttingPlansStep"
         :to="{ name: 'project-optimization', params: { projectId } }"
         class="button button-compact"
       >
@@ -379,7 +362,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
     >
       Loading project inputs…
     </p>
-    <template v-if="!exportStep">
+    <template v-if="!cuttingPlansStep">
       <form
         id="optimization-controls"
         novalidate
@@ -590,11 +573,11 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         role="status"
         class="text-sm text-danger"
       >
-        Incomplete cutting result — some parts remain unplaced. Review them in Export.
+        Incomplete cutting result — some parts remain unplaced. Review them in Cutting Plans.
       </p>
     </template>
     <div
-      v-show="!exportStep"
+      v-show="!cuttingPlansStep"
       class="cutting-workspace-grid items-start gap-3"
     >
       <aside
@@ -665,7 +648,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           :key="result.requestId"
         >
           <PanelPlanView
-            v-if="!exportStep && activePanel && activeChoice"
+            v-if="!cuttingPlansStep && activePanel && activeChoice"
             :key="panelIndex"
             :allocation="activePanel"
             :panel="activeChoice.product"
@@ -697,19 +680,13 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         </div>
       </div>
     </div>
-    <CuttingFinalization
-      v-if="exportStep && displayedInput && exportAvailable"
-      :key="savedSummary?.id ?? result?.requestId ?? 0"
+    <CuttingPlansWorkspace
+      v-if="cuttingPlansStep && displayedInput && cuttingPlansAvailable"
       :input="displayedInput"
-      :summary="savedSummary"
-      :cutting="cutting"
-      :inventory-problem="inventoryProblem"
-      embedded
-      @working="inventoryWorking = $event"
-      @confirmed="refreshConfirmation"
+      title="Project cutting result"
     />
     <div
-      v-else-if="exportStep && state !== 'loading'"
+      v-else-if="cuttingPlansStep && state !== 'loading'"
       class="panel space-y-3 p-6"
       role="status"
     >

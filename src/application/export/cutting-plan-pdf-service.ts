@@ -8,6 +8,7 @@ import type { Part } from '../../domain/model/part'
 import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
 import { computeAreaMetrics, type AreaMetrics, type PanelCuttingPlan, type UnplacedParts } from '../../domain/optimizer/plan-with-strategy'
 
+export type PdfPageSize = 'A4' | 'A3'
 export type PdfOrientation = 'portrait' | 'landscape'
 export interface CuttingPlanPdfRequest {
   readonly plan: PanelCuttingPlan
@@ -15,6 +16,7 @@ export interface CuttingPlanPdfRequest {
   readonly parts: readonly Part[]
   readonly settings: CuttingSettings
   readonly materialName: string
+  readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
   readonly edited: boolean
 }
@@ -24,11 +26,13 @@ export interface CuttingPlanPdfDocument extends Omit<CuttingPlanPdfRequest, 'pla
   readonly unplaced: readonly UnplacedParts[]
 }
 export interface ProjectCuttingPdfRequest extends SavePlanInput {
+  readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
   readonly title: string
 }
 export interface ProjectCuttingPdfDocument {
   readonly title: string
+  readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
   readonly metrics: ProjectCuttingPlan['metrics']
   readonly unplaced: ProjectCuttingPlan['unplaced']
@@ -59,9 +63,9 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
     const panels = snapshot.plan.panels.map((allocation, index) => {
       const source = snapshot.sources.find(source => source.product.id === allocation.supplierProductId)
       if (!source) throw new Error('Missing historical panel reference.')
-      return panelDocument({ plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
+      return panelDocument({ plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
     })
-    return { ok: true, document: { title: snapshot.title, orientation: snapshot.orientation, metrics: snapshot.plan.metrics, unplaced: snapshot.plan.unplaced, parts: snapshot.parts, panels } }
+    return { ok: true, document: { title: snapshot.title, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, metrics: snapshot.plan.metrics, unplaced: snapshot.plan.unplaced, parts: snapshot.parts, panels } }
   } catch (cause) { return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting result.' } } }
 }
 
