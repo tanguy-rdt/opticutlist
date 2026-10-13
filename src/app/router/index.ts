@@ -29,6 +29,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
         { path: 'parts', name: 'project-parts', component: ProjectPartsView },
         { path: 'materials', name: 'project-materials', component: MaterialsView },
         { path: 'optimization', name: 'project-optimization', component: OptimizationView, props: { cuttingPlansStep: false } },
+        { path: 'stock', name: 'project-stock', component: () => import('../../features/projects/ProjectStockView.vue') },
         { path: 'cutting-plans', alias: 'export', name: 'project-cutting-plans', component: OptimizationView, props: { cuttingPlansStep: true } },
       ] },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },

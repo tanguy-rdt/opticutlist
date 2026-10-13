@@ -1,3 +1,5 @@
+import { createProjectStockService } from './application/inventory/project-stock-service'
+import { projectStockServiceKey } from './features/projects/project-stock-service'
 import { createStockRepository } from './application/inventory/stock-repository'
 import { stockRepositoryKey } from './features/inventory/stock-repository'
 import { createCatalogTransferService } from './application/catalog/catalog-transfer-service'
@@ -32,6 +34,7 @@ const app = createApp(App)
 const persistence = createLocalPersistence()
 const catalog = createCatalogRepositories(persistence)
 app.provide(catalogStockRepositoryKey, persistence.stockItems)
+app.provide(projectStockServiceKey, createProjectStockService(persistence))
 app.provide(stockRepositoryKey, createStockRepository(persistence))
 app.provide(materialRepositoryKey, catalog.materials)
 app.provide(supplierRepositoryKey, catalog.suppliers)

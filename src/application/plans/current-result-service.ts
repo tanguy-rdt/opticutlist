@@ -1,3 +1,4 @@
+import { reconcileProjectStock } from '../inventory/project-stock-service'
 import { savedCuttingPlanIdSchema } from '../../domain/model/ids'
 import type { CuttingProjectId } from '../../domain/model/ids'
 import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
@@ -26,7 +27,9 @@ export function createCurrentResultService(persistence: LocalPersistence) {
           if (!current.ok) return current
           if (current.value) {
             const result = await readSavedPlan(repositories, projectId, current.value.planId)
-            return result.ok ? { ok: true, value: { result: result.value, ambiguousLegacyCount: 0 } } : result
+            if (!result.ok) return result
+            const stock = await reconcileProjectStock(repositories, result.value)
+            return stock.ok ? { ok: true, value: { result: result.value, ambiguousLegacyCount: 0 } } : stock
           }
           const legacy = await repositories.savedPlanSummaries.listForProject(projectId)
           if (!legacy.ok) return legacy
@@ -36,7 +39,9 @@ export function createCurrentResultService(persistence: LocalPersistence) {
           const result = await readSavedPlan(repositories, projectId, only.id)
           if (!result.ok) return result
           const linked = await repositories.currentCuttingResults.create({ id: projectId, planId: only.id, preserveLegacy: true })
-          return linked.ok ? { ok: true, value: { result: result.value, ambiguousLegacyCount: 0 } } : linked
+          if (!linked.ok) return linked
+          const stock = await reconcileProjectStock(repositories, result.value)
+          return stock.ok ? { ok: true, value: { result: result.value, ambiguousLegacyCount: 0 } } : stock
         })
       },
       replace(input: SavePlanInput, signal?: AbortSignal): Promise<PersistenceResult<OpenedSavedPlan>> {
@@ -52,7 +57,10 @@ export function createCurrentResultService(persistence: LocalPersistence) {
             if (!previous.ok) return previous
             const receipt = await repositories.cuttingConfirmations.find(current.value.planId)
             if (!receipt.ok) return receipt
-            if (!current.value.preserveLegacy && receipt.value === null) {
+            const offcuts = await repositories.projectStock.find(projectId)
+            if (!offcuts.ok) return offcuts
+            const audited = offcuts.value?.movements.some(movement => movement.planId === current.value?.planId) ?? false
+            if (!current.value.preserveLegacy && receipt.value === null && !audited) {
               const body = await repositories.savedPlanContents.delete(current.value.planId)
               if (!body.ok) return body
               const summary = await repositories.savedPlanSummaries.delete(current.value.planId)
@@ -67,7 +75,8 @@ export function createCurrentResultService(persistence: LocalPersistence) {
           const linked = current.value === null ? await repositories.currentCuttingResults.create(record) : await repositories.currentCuttingResults.update(projectId, record)
           if (!linked.ok) return linked
           if (signal?.aborted) return conflict('The result changed before automatic persistence completed.')
-          return prepared
+          const stock = await reconcileProjectStock(repositories, prepared.value)
+          return stock.ok ? prepared : stock
         })
       },
     }

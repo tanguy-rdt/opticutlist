@@ -1,3 +1,4 @@
+import { projectStockSchema } from '../../domain/model/project-stock'
 import { currentCuttingResultSchema } from '../../domain/model/current-cutting-result'
 import { savedPlanContentsSchema, savedPlanSummarySchema } from '../../domain/model/saved-cutting-plan'
 import { cuttingConfirmationSchema } from '../../domain/model/cutting-confirmation'
@@ -14,7 +15,7 @@ import { supplierSchema } from '../../domain/model/supplier'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 
 export const DATABASE_NAME = 'opticutlist'
-export const DATABASE_VERSION = 5
+export const DATABASE_VERSION = 6
 export const DATABASE_V1_STORES = {
   materials: 'id',
   parts: 'id',
@@ -26,7 +27,8 @@ export const DATABASE_V2_STORES = { ...DATABASE_V1_STORES, projects: 'id' } as c
 export const DATABASE_V3_STORES = { ...DATABASE_V2_STORES, savedPlanSummaries: 'id, projectId', savedPlanContents: 'id' } as const
 export const DATABASE_V4_STORES = { ...DATABASE_V3_STORES, cuttingConfirmations: 'id, projectId' } as const
 
-export const DATABASE_STORES = { ...DATABASE_V4_STORES, currentCuttingResults: 'id' } as const
+export const DATABASE_V5_STORES = { ...DATABASE_V4_STORES, currentCuttingResults: 'id' } as const
+export const DATABASE_STORES = { ...DATABASE_V5_STORES, projectStock: 'id' } as const
 
 class PersistenceFailure extends Error {
   constructor(readonly detail: PersistenceError) {
@@ -119,6 +121,7 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
   db.version(3).stores(DATABASE_V3_STORES)
   db.version(4).stores(DATABASE_V4_STORES)
   // Add only a project-keyed reference; never select or delete legacy layouts during upgrade.
+  db.version(5).stores(DATABASE_V5_STORES)
   db.version(DATABASE_VERSION).stores(DATABASE_STORES)
   db.on('ready', () => {
     // Dexie versions are multiplied by ten in the native IndexedDB version.
@@ -139,7 +142,18 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
     const summaries = tableFor('savedPlanSummaries')
     const confirmations = tableFor('cuttingConfirmations')
     const current = tableFor('currentCuttingResults')
+    const projectStock = tableFor('projectStock')
     return {
+      projectStock: {
+        ...createRepository(projectStock, projectStockSchema, cuttingProjectIdSchema, run),
+        find(id) {
+          return run('r', projectStock, async () => {
+            parse(cuttingProjectIdSchema, id)
+            const record = await projectStock.get(id)
+            return record === undefined ? null : parse(projectStockSchema, record)
+          })
+        },
+      },
       currentCuttingResults: {
         ...createRepository(current, currentCuttingResultSchema, cuttingProjectIdSchema, run),
         find(id) {

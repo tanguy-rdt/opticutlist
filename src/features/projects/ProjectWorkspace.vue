@@ -116,6 +116,12 @@ onMounted(load)
             aria-disabled="true"
             title="Optimize a valid cutting plan first"
           >Cutting Plans</span>
+          <RouterLink
+            :to="{ name: 'project-stock', params: { projectId: project.id } }"
+            class="nav-link"
+          >
+            Stock
+          </RouterLink>
         </nav>
         <ProjectExport :project-id="project.id" />
       </div>

@@ -68,7 +68,11 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
         v-if="item.provenance.source === 'cutting'"
         class="space-y-1 break-all text-xs text-muted"
       >
-        <p>Project: {{ item.provenance.projectId }}</p><p>Cutting result: {{ item.provenance.savedPlanId }}</p><p>Source stock: {{ item.provenance.sourceStockItemId }}</p><p>Panel {{ item.provenance.panelIndex + 1 }}, offcut {{ item.provenance.wasteIndex + 1 }}</p>
+        <p>Project: {{ item.provenance.projectId }}</p><p>Cutting result: {{ item.provenance.savedPlanId }}</p><p v-if="item.provenance.sourceStockItemId">
+          Source stock: {{ item.provenance.sourceStockItemId }}
+        </p><p v-else>
+          External catalogue panel: {{ item.provenance.supplierProductId }}
+        </p><p>Panel {{ item.provenance.panelIndex + 1 }}, offcut {{ item.provenance.wasteIndex + 1 }}</p>
       </div>
     </section>
     <section

@@ -197,14 +197,13 @@ describe('Automatic project optimization', () => {
     expect(wrapper.get('#optimization-kerf').attributes('aria-invalid')).toBe('true')
     expect(workers).toHaveLength(0)
   })
-  it('uses selected owned stock with its real quantity and geometry without consuming inventory', async () => {
+  it('uses exact owned-stock sources and consumes the current plan allocation automatically', async () => {
     const { wrapper, persistence, service, project, start, current } = await setup()
     const owner = await service.projects.get(project.id)
     if (!owner.ok) throw new Error('Missing project')
     const stock = stockItemSchema.parse({ ...validStockItemInput, lengthMm: 2500, widthMm: 1250, quantity: 2 })
     await persistence.stockItems.update(stock.id, stock)
     expect((await service.projects.update(project.id, { ...owner.value, supplierProductIds: [], stockItemIds: [stock.id] })).ok).toBe(true)
-    const before = await persistence.stockItems.list()
     await vi.waitFor(() => { expect(wrapper.find('form').exists()).toBe(true) })
     const worker = await start()
     const request = worker.request
@@ -215,7 +214,9 @@ describe('Automatic project optimization', () => {
     expect(wrapper.get('[data-panel-index="0"]').text()).toContain('Panel 1')
     expect(wrapper.get('[data-panel-index="0"]').text()).not.toContain('Owned stock')
     await vi.waitFor(async () => { const saved = await current.load(); expect(saved.ok && saved.value.result?.contents.sources[0]?.product.stockItemId).toBe(stock.id) })
-    expect(await persistence.stockItems.list()).toEqual(before)
+    expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [{ ...stock, quantity: 1 }] })
+    const ledger = await persistence.projectStock.find(project.id)
+    expect(ledger.ok && ledger.value?.consumed[0]?.quantity).toBe(1)
     expect(await persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [] })
     const saved = await current.load()
     expect(saved.ok && saved.value.result?.plan.metrics.placedCount).toBe(2)

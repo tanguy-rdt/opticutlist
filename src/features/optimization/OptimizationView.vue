@@ -144,7 +144,7 @@ watch(quantities, () => {
 async function readInputs() {
   const [project, scopedParts, products, supplierRecords, materialRecords, stockRecords] = await Promise.all([
     projects.projects.get(projectId), projects.parts(projectId).list(),
-    catalogs.supplierProducts.list(), catalogs.suppliers.list(), materials.list(), stockRepository?.list() ?? Promise.resolve({ ok: true as const, value: [] }),
+    catalogs.supplierProducts.list(), catalogs.suppliers.list(), materials.list(), stockRepository?.planningStock(projectId) ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
   if (!project.ok) throw new Error(persistenceErrorMessage(project.error, 'Project'))
   projectName.value = project.value.name

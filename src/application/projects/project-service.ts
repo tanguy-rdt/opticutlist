@@ -145,6 +145,9 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
         const plans = await repositories.savedPlanSummaries.listForProject(id)
         if (!plans.ok) return plans
         if (plans.value.length > 0) return conflict('A project with preserved cutting plans cannot be deleted.')
+        const stock = await repositories.projectStock.find(id)
+        if (!stock.ok) return stock
+        if (stock.value && (stock.value.entries.length || stock.value.movements.length)) return conflict('Projects with offcut decisions or inventory history must be preserved.')
         return repositories.projects.delete(id)
       }),
     },

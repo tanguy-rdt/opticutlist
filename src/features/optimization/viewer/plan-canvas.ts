@@ -14,6 +14,7 @@ export interface PlanPalette {
   readonly kerf: string
 }
 export interface PlanCanvas {
+  setKeptWaste?(indices: readonly number[]): void
   setViewport(view: Viewport): void
   setSelection(key: string): void
   setPalette(palette: PlanPalette): void
@@ -86,10 +87,11 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
     if (panelArrow !== null) layer.add(...panelLines, panelArrow)
     let selected = ''
     let colors = palette
+    let keptWaste: readonly number[] = []
     function applyPalette(): void {
       panel.fill(colors.margin); panel.stroke(colors.ink)
       usable.fill(colors.surface); usable.stroke(colors.muted); usableOutline.stroke(colors.muted)
-      for (const rect of waste) { rect.fill(colors.margin); rect.stroke(colors.muted) }
+      for (const [index, rect] of waste.entries()) { rect.fill(colors.margin); rect.stroke(keptWaste.includes(index) ? colors.selected : colors.muted); rect.strokeWidth(keptWaste.includes(index) ? 2 : 1) }
       for (const rect of kerfs) { rect.fill(colors.kerf); rect.stroke(colors.kerf) }
       for (const [key, shape] of shapes) { shape.fill(colors.part); shape.stroke(key === selected ? colors.selected : colors.partBorder) }
       for (const { text } of labels) text.fill(colors.ink)
@@ -102,6 +104,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
     stage.on('dragend', () => { viewport = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }; onPan(viewport) })
     applyPalette()
     return {
+      setKeptWaste(indices) { keptWaste = indices; applyPalette() },
       setViewport(view) {
         viewport = view
         stage.position({ x: view.x, y: view.y }); stage.scale({ x: view.scale, y: view.scale })

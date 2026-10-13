@@ -96,6 +96,9 @@ export function createSavedPlanService(persistence: LocalPersistence) {
           const confirmed = await repositories.cuttingConfirmations.find(id)
           if (!confirmed.ok) return confirmed
           if (confirmed.value !== null) return { ok: false, error: { kind: 'referenceConflict', message: 'Confirmed plans are retained for inventory movement history and cannot be deleted.' } }
+          const offcuts = await repositories.projectStock.find(projectId)
+          if (!offcuts.ok) return offcuts
+          if (offcuts.value?.movements.some(movement => movement.planId === id)) return { ok: false, error: { kind: 'referenceConflict', message: 'Inventory audit origins cannot be deleted.' } }
           const removed = await repositories.savedPlanContents.delete(id)
           return removed.ok ? repositories.savedPlanSummaries.delete(id) : removed
         })
