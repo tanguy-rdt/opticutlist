@@ -9,6 +9,7 @@ import { createLocalPersistence, DATABASE_V5_STORES } from '../../../infrastruct
 import type { PersistenceResult } from '../../persistence/repositories'
 import { createProjectStockService } from '../project-stock-service'
 import { createCurrentResultService } from '../../plans/current-result-service'
+import { createProjectService } from '../../projects/project-service'
 import { createStockRepository } from '../stock-repository'
 import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import { stockItemSchema } from '../../../domain/model/stock-item'
@@ -61,6 +62,36 @@ describe('automatic project stock reconciliation', () => {
     expect(value(await persistence.stockItems.get(stock.id))).toEqual(stock)
     expect(value(await persistence.cuttingConfirmations.list())).toEqual([])
   })
+  it('excludes only source-project offcuts from planning and rejects circular saved selections without changing stock', async () => {
+    const { persistence, indexedDB, service, select, optimize } = await setup()
+    await select()
+    const offcut = value(await service.preview()).rows[0]?.entry?.stock
+    if (!offcut) throw new Error('Missing offcut')
+    const other = cuttingProjectSchema.parse({ ...project, id: 'other-project' })
+    value(await persistence.projects.create(other))
+    const repository = createStockRepository(persistence)
+    expect(value(await repository.list())).toContainEqual(offcut)
+    expect(value(await repository.planningStock(project.id))).toEqual([stock])
+    expect(value(await repository.planningStock(other.id))).toContainEqual(offcut)
+    const projects = createProjectService(persistence).projects
+    expect(await projects.update(project.id, { ...project, stockItemIds: [offcut.id] })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect((await projects.update(other.id, { ...other, stockItemIds: [offcut.id] })).ok).toBe(true)
+    // Existing circular data stays readable and unchanged until explicitly removed.
+    value(await persistence.projects.update(project.id, { ...project, stockItemIds: [offcut.id] }))
+    const rejected = await repository.planningStock(project.id)
+    expect(rejected).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    if (!rejected.ok && rejected.error.kind === 'referenceConflict') expect(rejected.error.message).toContain('Remove that stock selection in Materials')
+    const reopened = createLocalPersistence('project-stock-test', { indexedDB, IDBKeyRange }); connections.push(reopened)
+    expect(await createStockRepository(reopened).planningStock(project.id)).toMatchObject({ ok: false })
+    expect(value(await projects.get(project.id)).stockItemIds).toEqual([offcut.id])
+    await optimize()
+    expect(value(await service.preview()).rows[0]?.entry?.stock).toEqual(offcut)
+    expect(await repository.planningStock(project.id)).toMatchObject({ ok: false })
+    value(await projects.update(project.id, { ...project, stockItemIds: [] }))
+    expect(value(await repository.planningStock(project.id))).toEqual([stock])
+    expect(value(await repository.list())).toContainEqual(offcut)
+  })
+
   it('restores selections after reload and does not duplicate movements on repeated synchronization', async () => {
     const { persistence, indexedDB, service, select } = await setup()
     await select()

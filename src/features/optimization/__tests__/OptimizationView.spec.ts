@@ -197,6 +197,21 @@ describe('Automatic project optimization', () => {
     expect(wrapper.get('#optimization-kerf').attributes('aria-invalid')).toBe('true')
     expect(workers).toHaveLength(0)
   })
+  it('rejects previously selected source-project offcuts before sending any worker input', async () => {
+    const { wrapper, persistence, service, project, workers } = await setup()
+    const owner = await service.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    const own = stockItemSchema.parse({ ...validStockItemInput, provenance: { source: 'cutting', projectId: project.id, savedPlanId: 'old-plan', supplierProductId: validSupplierProductInput.id, panelIndex: 0, wasteIndex: 0 } })
+    await persistence.stockItems.update(own.id, own)
+    await persistence.projects.update(project.id, { ...owner.value, stockItemIds: [own.id] })
+    await vi.waitFor(() => { expect(wrapper.find('form').exists()).toBe(true) })
+    await wrapper.get('form').trigger('submit')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Remove that stock selection in Materials before optimizing') })
+    expect(workers).toHaveLength(0)
+    expect(await persistence.stockItems.get(own.id)).toEqual({ ok: true, value: own })
+    expect(await persistence.projects.get(project.id)).toMatchObject({ ok: true, value: { stockItemIds: [own.id] } })
+  })
+
   it('uses exact owned-stock sources and consumes the current plan allocation automatically', async () => {
     const { wrapper, persistence, service, project, start, current } = await setup()
     const owner = await service.projects.get(project.id)
