@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
 import { RouterLink } from 'vue-router'
+import { projectPartMaterialIds } from '../../application/projects/part-materials'
+import { useStockRepository } from '../inventory/stock-repository'
 import type { Material } from '../../domain/model/material'
 import type { Part } from '../../domain/model/part'
 import AppIcon from '../../shared/ui/AppIcon.vue'
@@ -19,6 +21,7 @@ const materialRepository = useMaterialRepository()
 const service = useProjectService()
 const projectId = useProjectId()
 const catalog = useCatalogRepositories()
+const stockRepository = useStockRepository()
 const parts = shallowRef<readonly Part[]>([])
 const materials = shallowRef<readonly Material[]>([])
 const availableIds = ref<readonly Material['id'][]>([])
@@ -39,8 +42,8 @@ const formVersion = ref(0)
 const partForm = ref<InstanceType<typeof PartForm> | null>(null)
 
 async function loadMaterials(): Promise<void> {
-  const [materialResult, project, products] = await Promise.all([
-    materialRepository.list(), service.projects.get(projectId), catalog.supplierProducts.list(),
+  const [materialResult, project, products, stock] = await Promise.all([
+    materialRepository.list(), service.projects.get(projectId), catalog.supplierProducts.list(), stockRepository?.list() ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
   materials.value = materialResult.ok ? materialResult.value : []
   availableIds.value = []
@@ -48,10 +51,8 @@ async function loadMaterials(): Promise<void> {
   if (!materialResult.ok) materialError.value = persistenceErrorMessage(materialResult.error, 'Material')
   else if (!project.ok) materialError.value = persistenceErrorMessage(project.error, 'Project')
   else if (!products.ok) materialError.value = persistenceErrorMessage(products.error, 'Product')
-  else availableIds.value = [...new Set([
-    ...project.value.materialIds,
-    ...products.value.filter(product => project.value.supplierProductIds.includes(product.id)).map(product => product.materialId),
-  ])]
+  else if (!stock.ok) materialError.value = persistenceErrorMessage(stock.error, 'Stock item')
+  else availableIds.value = projectPartMaterialIds(project.value, products.value, stock.value)
 }
 async function load(): Promise<void> {
   loading.value = true

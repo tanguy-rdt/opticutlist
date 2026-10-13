@@ -1,3 +1,6 @@
+import { projectPartMaterialIds } from './part-materials'
+import type { SupplierProduct } from '../../domain/model/supplier-product'
+import type { StockItem } from '../../domain/model/stock-item'
 import { isStockEligibleForProject } from '../inventory/stock-eligibility'
 import { cuttingProjectSchema, type CuttingProject } from '../../domain/model/cutting-project'
 import { partSchema, type Part } from '../../domain/model/part'
@@ -91,13 +94,21 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
         // Read saved selections inside the same transaction as the Part/ownership write.
         // Panel selections make their associated material available without requiring a
         // separate material checkbox; a direct material choice needs no supplier product.
-        let selected = project.materialIds.includes(parsed.data.materialId)
+        const products: SupplierProduct[] = []
+        const stock: StockItem[] = []
+        let selected = projectPartMaterialIds(project, products, stock).includes(parsed.data.materialId)
         if (!selected) {
           for (const productId of project.supplierProductIds) {
             const product = await repositories.supplierProducts.get(productId)
             if (!product.ok) return product
-            if (product.value.materialId === parsed.data.materialId) { selected = true; break }
+            products.push(product.value)
           }
+          for (const stockId of project.stockItemIds ?? []) {
+            const item = await repositories.stockItems.get(stockId)
+            if (!item.ok) return item
+            stock.push(item.value)
+          }
+          selected = projectPartMaterialIds(project, products, stock).includes(parsed.data.materialId)
         }
         if (!selected) return conflict('Select this material in the project Materials tab before creating or editing a Part.')
         const result = id === undefined ? await repositories.parts.create(parsed.data) : await repositories.parts.update(id, parsed.data)

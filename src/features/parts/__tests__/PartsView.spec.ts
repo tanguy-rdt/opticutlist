@@ -12,13 +12,15 @@ import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { projectIdKey, projectServiceKey } from '../../projects/project-service'
 import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../suppliers/catalog-repositories'
 import type { PersistenceResult, Repository } from '../../../application/persistence/repositories'
-import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { materialSchema } from '../../../domain/model/material'
 import { partSchema } from '../../../domain/model/part'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
 import { materialRepositoryKey } from '../../materials/material-repository'
 import MaterialSelector from '../../materials/MaterialSelector.vue'
 import PartsView from '../PartsView.vue'
+import { stockRepositoryKey } from '../../inventory/stock-repository'
+import { stockItemSchema, type StockItem } from '../../../domain/model/stock-item'
 import { partRepositoryKey } from '../part-repository'
 
 const projectId = cuttingProjectIdSchema.parse('parts-project')
@@ -41,12 +43,13 @@ function fakeRepository<Entity extends { id: string }>(record: Entity, records: 
 function setup() {
   return { parts: fakeRepository(part), materials: fakeRepository(material, [material]), projects: fakeRepository(project), products: fakeRepository(supplierProductSchema.parse(validSupplierProductInput)) }
 }
-function render(repositories: { parts: Repository<typeof part>; materials: Repository<typeof material>; projects?: Repository<typeof project>; products?: Repository<ReturnType<typeof supplierProductSchema.parse>> }) {
+function render(repositories: { parts: Repository<typeof part>; materials: Repository<typeof material>; projects?: Repository<typeof project>; products?: Repository<ReturnType<typeof supplierProductSchema.parse>>; stock?: Repository<StockItem> }) {
   const wrapper = mount(PartsView, {
     attachTo: document.body,
     global: {
       plugins: [createAppRouter(createMemoryHistory())],
       provide: {
+        ...(repositories.stock ? { [stockRepositoryKey]: repositories.stock } : {}),
         [partRepositoryKey]: repositories.parts, [materialRepositoryKey]: repositories.materials,
         [projectIdKey]: projectId,
         [projectServiceKey]: { projects: repositories.projects ?? fakeRepository(project) },
@@ -491,6 +494,39 @@ describe('PartsView', () => {
     expect(repositories.materials.create).not.toHaveBeenCalled()
     expect(repositories.projects.update).not.toHaveBeenCalled()
     expect(wrapper.findComponent(MaterialSelector).props('allowCustomCreation')).toBe(false)
+  })
+
+  it.each([
+    { name: 'catalogue only', catalog: true, stockCount: 0, origin: 'manual', expected: true },
+    { name: 'stock only', catalog: false, stockCount: 1, origin: 'manual', expected: true },
+    { name: 'both sources', catalog: true, stockCount: 1, origin: 'manual', expected: true },
+    { name: 'another project offcut', catalog: false, stockCount: 1, origin: 'other-project', expected: true },
+    { name: 'several stock sources for one material', catalog: false, stockCount: 2, origin: 'manual', expected: true },
+    { name: 'no selected panels', catalog: false, stockCount: 0, origin: 'manual', expected: false },
+    { name: 'own project offcut', catalog: false, stockCount: 1, origin: projectId, expected: false },
+  ])('derives Parts material eligibility for $name', async ({ catalog, stockCount, origin, expected }) => {
+    const repositories = setup()
+    const stock = Array.from({ length: stockCount }, (_, index) => stockItemSchema.parse({ ...validStockItemInput, id: `selected-stock-${String(index)}`, provenance: origin === 'manual' ? { source: 'manual' } : { source: 'cutting', projectId: origin, savedPlanId: 'origin-plan', supplierProductId: validSupplierProductInput.id, panelIndex: 0, wasteIndex: index } }))
+    const selected = cuttingProjectSchema.parse({ ...project, materialIds: [], supplierProductIds: catalog ? [validSupplierProductInput.id] : [], stockItemIds: stock.map(item => item.id) })
+    repositories.projects.get.mockResolvedValue({ ok: true, value: selected })
+    repositories.products.list.mockResolvedValue({ ok: true, value: [supplierProductSchema.parse(validSupplierProductInput)] })
+    const inventory = fakeRepository(stockItemSchema.parse(validStockItemInput), stock)
+    for (let pass = 0; pass < 2; pass++) {
+      const wrapper = render({ ...repositories, stock: inventory })
+      await flushPromises()
+      expect(button(wrapper, 'New part').attributes('disabled') === undefined).toBe(expected)
+      if (expected) {
+        await fill(wrapper)
+        await wrapper.get('#part-material').trigger('click')
+        expect(wrapper.findAll('[role="option"]').map(option => option.attributes('data-value'))).toEqual([material.id])
+        await wrapper.get('input[role="combobox"]').trigger('keydown', { key: 'Escape' })
+        await submit(wrapper)
+        expect(repositories.parts.create).toHaveBeenCalledWith(expect.objectContaining({ materialId: material.id, thicknessMm: part.thicknessMm }))
+      } else expect(wrapper.text()).toContain('Select materials')
+      wrapper.unmount()
+    }
+    expect(inventory.update).not.toHaveBeenCalled()
+    expect(repositories.projects.update).not.toHaveBeenCalled()
   })
 
   it('rechecks project selections and retains a draft after a material is deselected', async () => {

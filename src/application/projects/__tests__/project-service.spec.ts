@@ -6,6 +6,7 @@ import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import { cuttingProjectIdSchema } from '../../../domain/model/ids'
 import { materialSchema } from '../../../domain/model/material'
 import { partSchema } from '../../../domain/model/part'
+import { stockItemSchema } from '../../../domain/model/stock-item'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { createProjectService } from '../project-service'
@@ -218,6 +219,33 @@ describe('Project ownership and selections', () => {
     expect(value(await service.projects.get(first.id)).materialIds).toEqual([])
     expect(value(await persistence.supplierProducts.get(product.id))).toEqual(product)
   })
+  it('creates and edits Parts from stock-only material selections after reopening without changing inventory', async () => {
+    const stock = stockItemSchema.parse({ ...validStockItemInput, provenance: { source: 'cutting', projectId: second.id, savedPlanId: 'other-origin', supplierProductId: product.id, panelIndex: 0, wasteIndex: 0 } })
+    value(await persistence.stockItems.create(stock))
+    value(await persistence.stockItems.create({ ...stock, id: 'another-stock-panel', thicknessMm: 30, provenance: { source: 'manual' } }))
+    value(await service.projects.update(first.id, { ...first, stockItemIds: [stock.id, stockItemSchema.shape.id.parse('another-stock-panel')] }))
+    const inventory = value(await persistence.stockItems.list())
+    const reopened = createProjectService(connect())
+    expect(value(await reopened.parts(first.id).create(part))).toEqual(part)
+    expect(value(await reopened.parts(first.id).update(part.id, { ...part, name: 'Updated stock part' })).name).toBe('Updated stock part')
+    expect(value(await reopened.projects.get(first.id))).toMatchObject({ materialIds: [], supplierProductIds: [], stockItemIds: [stock.id, 'another-stock-panel'], partIds: [part.id] })
+    expect(value(await persistence.stockItems.list())).toEqual(inventory)
+    // Saved choices are reread atomically, so a stale form cannot retain eligibility after deselection.
+    const owner = value(await reopened.projects.get(first.id))
+    value(await service.projects.update(first.id, { ...owner, stockItemIds: [] }))
+    expect(await reopened.parts(first.id).create({ ...part, id: 'stale-stock-part' })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(value(await reopened.parts(first.id).list())).toHaveLength(1)
+  })
+  it('rejects own-project offcuts as Parts material sources while preserving existing circular selections', async () => {
+    const stock = stockItemSchema.parse({ ...validStockItemInput, provenance: { source: 'cutting', projectId: first.id, savedPlanId: 'own-origin', supplierProductId: product.id, panelIndex: 0, wasteIndex: 0 } })
+    value(await persistence.stockItems.create(stock))
+    value(await persistence.projects.update(first.id, { ...first, stockItemIds: [stock.id] }))
+    expect(await service.parts(first.id).create(part)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(value(await persistence.projects.get(first.id)).stockItemIds).toEqual([stock.id])
+    expect(value(await persistence.stockItems.get(stock.id))).toEqual(stock)
+    expect(value(await persistence.parts.list())).toEqual([])
+  })
+
   it('rejects another project’s material choices and same-name material identities', async () => {
     await selectMaterial()
     expect(await service.parts(second.id).create({ ...part, id: 'second-part' })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
