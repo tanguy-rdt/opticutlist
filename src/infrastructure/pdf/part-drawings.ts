@@ -9,7 +9,7 @@ import { wrapPdfText } from './pdf-text'
 const ink = rgb(0.12, 0.12, 0.12)
 const muted = rgb(0.35, 0.35, 0.35)
 /** One cell per Part definition, not per requested copy. Reuses physical scaling and dimension geometry. */
-export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFont, parts: readonly Part[], paper: PdfPageSize, orientation: PdfOrientation, materialName: (part: Part) => string, frame: (page: PDFPage) => void): void {
+export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFont, parts: readonly Part[], paper: PdfPageSize, orientation: PdfOrientation, materialName: (part: Part) => string, frame: (page: PDFPage, scales: readonly string[]) => void): void {
   const size = pdfPageSize(paper, orientation)
   function recordFor(part: Part, index: number, cellWidth: number) {
     const name = wrapPdfText(part.name, bold, 8, cellWidth - 20)
@@ -24,7 +24,7 @@ export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFon
     const minimumHeight = Math.max(170, ...candidates.map(record => record.headerHeight + record.footerHeight + 92))
     const cells = partDrawingCells(size, minimumHeight, records.length - offset)
     const page = pdf.addPage([size.width, size.height])
-    frame(page)
+    const scales: string[] = []
     page.drawText('Individual part drawings', { x: 36, y: size.height - 42, font: bold, size: 13, color: ink })
     for (const [index, cell] of cells.entries()) {
       const record = records[offset + index]
@@ -44,11 +44,13 @@ export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFon
         const y = inside ? box.y + box.height / 2 + (name.length - 1) * 5 - 3 : cell.y + cell.height - 30 - lineIndex * 10
         page.drawText(line, { x: x - bold.widthOfTextAtSize(line, 8) / 2, y: inside ? y - lineIndex * 10 : y, font: bold, size: 8, color: ink })
       })
+      scales.push(scaleLabel(transform))
       const footer = [...material, ...metadata, `Scale ${scaleLabel(transform)}${scaleSuffix}`]
       footer.forEach((line, lineIndex) => {
         page.drawText(line, { x: cell.x + cell.width / 2 - font.widthOfTextAtSize(line, 8) / 2, y: cell.y + footerHeight - 12 - lineIndex * 10, font, size: 8, color: muted })
       })
     }
+    frame(page, scales)
     offset += cells.length
   }
 }

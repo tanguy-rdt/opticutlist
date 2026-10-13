@@ -238,7 +238,8 @@ it.each(['A4', 'A3'] as const)('keeps a compact hierarchical instance table and 
     const labels = texts.mock.calls.map(([label]) => label)
     expect(labels).toContain('Panel / Part')
     expect(labels).toContain('Dimensions (mm)')
-    expect(labels).toContain('Qty')
+    expect(labels).not.toContain('Qty')
+    expect(labels).toContain('SCALE'); expect(labels).toContain('SHEET')
     expect(labels.some(label => /Project:|Generated:|Units:|Print:/u.test(label))).toBe(false)
   }
 })
@@ -253,4 +254,20 @@ it('lists repeated definitions as distinct drawing references with quantity one 
     { ref: 'P1.10', name: placed.part.name, dimensions: `${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.thicknessMm)}`, quantity: 1 },
     { ref: 'P1.11', name: placed.part.name, dimensions: `${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.thicknessMm)}`, quantity: 1 },
   ])
+})
+
+
+it.each(['A4', 'A3'] as const)('preserves the existing %s panel drawing reservation while removing redundant borders', async pageSize => {
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    const { document, page, font, bold } = await fixture({ ...pdfRequest, pageSize, orientation })
+    const line = vi.spyOn(page, 'drawLine')
+    const layout = drawPanelSheet(page, font, bold, document, 'Panel 1')
+    // Existing fixture: 62pt reservation (material + two parameters), independent of orientation.
+    expect(layout.titleBlock.top).toBe(98)
+    expect(layout.available.y).toBe(152)
+    expect(layout.transform.scale).toBe(1)
+    expect(layout.titleBlock.metadata.some(value => value.includes(document.materialName))).toBe(false)
+    const lines = line.mock.calls.map(([value]) => value).filter(value => value.start.y < 98 && value.end.y < 98)
+    expect(lines.filter(value => value.start.y === value.end.y && value.end.x === layout.titleBlock.x + layout.titleBlock.tableWidth)).toHaveLength(2) // header and parent only
+  }
 })

@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 import type { CuttingPlanPdfDocument, ProjectCuttingPdfDocument } from '../../application/export/cutting-plan-pdf-service'
 import type { Part } from '../../domain/model/part'
 import { pdfPageSize } from './pdf-layout'
+import { drawScaleSheetCells } from './scale-sheet-cells'
 import { drawPanelSheet } from './panel-drawing'
 
 const ink = rgb(0.12, 0.15, 0.17)
@@ -43,13 +44,13 @@ function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, do
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const page = pdf.addPage([size.width, size.height])
   const drawing = drawPanelSheet(page, font, bold, document, heading)
-  const sheets = [{ page, position: drawing.titleBlock.sheetPosition }]
+  const sheets: NumberedSheet[] = [{ page, position: drawing.titleBlock.sheetPosition }]
   if (drawing.titleBlock.continued.length) {
     const tables = createPdfTables(pdf, font, bold, size, continuation => {
       continuation.drawRectangle({ x: 28, y: 36, width: size.width - 56, height: size.height - 52, borderColor: muted, borderWidth: 0.5 })
-      sheets.push({ page: continuation, position: { x: size.width - 130, y: 48 } })
+      sheets.push({ page: continuation, position: { x: size.width - 130, y: 48, width: 0, fontSize: 8 } })
     })
-    tables.table(`${heading} / Parts continued`, [{ label: 'Panel / Part', weight: 3 }, { label: 'Dimensions (mm)', weight: 1, nowrap: true }, { label: 'Qty', weight: 0.5, numeric: true }], drawing.titleBlock.continued.map(row => ({ cells: [`${row.ref} / ${row.name}`, row.dimensions, '1'], kind: 'child' })))
+    tables.table(`${heading} / Parts continued`, [{ label: 'Panel / Part', weight: 3 }, { label: 'Dimensions (mm)', weight: 1, nowrap: true }], drawing.titleBlock.continued.map(row => ({ cells: [`${row.ref} / ${row.name}`, row.dimensions], kind: 'child' })))
   }
   return sheets
 }
@@ -57,7 +58,7 @@ function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, do
 function materialName(document: ProjectCuttingPdfDocument, part: Part): string {
   return document.panels.find(panel => panel.panel.materialId === part.materialId)?.materialName ?? 'N/A'
 }
-function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: ProjectCuttingPdfDocument, date: string): void {
+function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFont, document: ProjectCuttingPdfDocument, date: string, drawingSheets: NumberedSheet[]): void {
   const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
   const tables = createPdfTables(pdf, font, bold, size, page => { sheetFrame(page, font, document.title, 'Fabrication schedules', 'N/A', date) })
   const columns = [{ label: 'Ref', weight: 1, nowrap: true }, { label: 'Part name', weight: 2.4 }, { label: 'Material', weight: 2 }, { label: 'Dimensions (mm)', weight: 1.8, nowrap: true }, { label: 'Qty', weight: 1, numeric: true }]
@@ -91,10 +92,25 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
       return [partCode(document.parts, missing.partId), part?.name ?? 'N/A', part ? materialName(document, part) : 'N/A', part ? dimensions(part) : 'N/A', String(missing.count), reasons[missing.reason]]
     }))
   }
-  appendPartDrawings(pdf, font, bold, document.parts, document.pageSize ?? 'A4', document.orientation, part => materialName(document, part), page => { sheetFrame(page, font, document.title, 'Individual part drawings', 'Per drawing', date) })
+  appendPartDrawings(pdf, font, bold, document.parts, document.pageSize ?? 'A4', document.orientation, part => materialName(document, part), (page, scales) => {
+    page.drawRectangle({ x: 28, y: 36, width: size.width - 56, height: size.height - 52, borderColor: muted, borderWidth: 0.5 })
+    const scale = new Set(scales).size === 1 ? scales[0] ?? 'PER DRAWING' : 'PER DRAWING'
+    const position = drawScaleSheetCells(page, font, bold, { x: size.width - 208, y: 36, width: 180, height: 29 }, scale, 9)
+    drawingSheets.push({ page, position })
+  })
 }
-async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage, panelSheets: readonly { page: PDFPage; position: { x: number; y: number } }[] = []): Promise<Uint8Array<ArrayBuffer>> {
-  for (const [index, current] of pdf.getPages().entries()) if (current !== cover) current.drawText(`Sheet ${String(index + 1)} / ${String(pdf.getPageCount())}`, { ...(panelSheets.find(sheet => sheet.page === current)?.position ?? { x: current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2, y: 67 }), size: panelSheets.some(sheet => sheet.page === current) ? 8 : 9, font, color: ink })
+type NumberedSheet = { page: PDFPage; position: { x: number; y: number; width: number; fontSize: number } }
+async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage, technicalSheets: readonly NumberedSheet[] = []): Promise<Uint8Array<ArrayBuffer>> {
+  for (const [index, current] of pdf.getPages().entries()) {
+    if (current === cover) continue
+    const position = technicalSheets.find(sheet => sheet.page === current)?.position
+    const numbers = `${String(index + 1)} / ${String(pdf.getPageCount())}`
+    const value = position?.width ? numbers : `Sheet ${numbers}`
+    const size = position?.fontSize ?? 9
+    if (position?.width && font.widthOfTextAtSize(value, size) > position.width - 8) throw new Error('Sheet numbering does not fit the technical footer.')
+    const x = position ? position.x + (position.width ? (position.width - font.widthOfTextAtSize(value, size)) / 2 : 0) : current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2
+    current.drawText(value, { x, y: position?.y ?? 67, size, font, color: ink })
+  }
   pdf.setTitle('OptiCutList cutting plan')
   pdf.setProducer('OptiCutList / pdf-lib')
   return new Uint8Array(await pdf.save())
@@ -120,9 +136,10 @@ export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocum
     const glyphHeight = bold.heightAtSize(titleSize, { descender: false })
     const firstBaseline = size.height / 2 + (lines.length - 1) * titleLineHeight / 2 - glyphHeight / 2
     for (const [index, text] of lines.entries()) cover.drawText(text, { x: size.width / 2 - bold.widthOfTextAtSize(text, titleSize) / 2, y: firstBaseline - index * titleLineHeight, font: bold, size: titleSize, color: ink })
-    appendFabricationSections(pdf, font, bold, document, date)
+    const drawingSheets: NumberedSheet[] = []
+    appendFabricationSections(pdf, font, bold, document, date, drawingSheets)
     const sheets = document.panels.flatMap((panel, index) => appendCuttingPlanPdf(pdf, font, bold, panel, `Panel ${String(index + 1)}`))
-    return finishPdf(pdf, font, cover, sheets)
+    return finishPdf(pdf, font, cover, [...drawingSheets, ...sheets])
   })
 }
 async function withFontErrors(work: () => Promise<Uint8Array<ArrayBuffer>>): Promise<Uint8Array<ArrayBuffer>> {
