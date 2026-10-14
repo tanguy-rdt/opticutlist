@@ -432,7 +432,7 @@ describe('Home and application navigation', () => {
     await vi.waitFor(() => { expect(router.currentRoute.value.path).toBe(`/projects/${second.id}/materials`) })
     await router.push('/projects')
     await vi.waitFor(() => { expect(wrapper.find('ul[aria-label="Projects"]').exists()).toBe(true) })
-    expect(wrapper.get('a[href="/projects/resume-first/parts"]').text()).toContain('Open project')
+    expect(wrapper.get('a[href="/projects/resume-first/parts"]').attributes('aria-label')).toBe('Open project First')
   })
   it('preserves completed cutting editor selection, accepted edits and zoom when resuming from global pages', async () => {
     const { wrapper, router, service, persistence, postMessage } = await mountAt('/')

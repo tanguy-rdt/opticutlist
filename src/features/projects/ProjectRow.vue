@@ -31,25 +31,22 @@ watch(() => props.disabled, value => { if (value) close() })
 onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
 </script>
 <template>
-  <li class="flex items-center gap-3 px-4 py-5 sm:gap-5 sm:px-5">
-    <div class="min-w-0 flex-1">
+  <li class="relative flex items-center gap-3 rounded-lg px-4 py-5 transition-colors hover:bg-subtle sm:gap-5 sm:px-5 motion-reduce:transition-none">
+    <RouterLink
+      :to="navigation?.tabs.get(project.id) ?? { name: 'project-materials', params: { projectId: project.id } }"
+      :aria-label="`Open project ${project.name}`"
+      class="min-w-0 flex-1 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-accent"
+    >
       <h2 class="text-lg font-semibold leading-snug [overflow-wrap:anywhere]">
         {{ project.name }}
       </h2>
       <p class="mt-1 text-sm text-muted">
         {{ project.partIds.length }} part references · {{ project.materialIds.length }} selected materials
       </p>
-    </div>
-    <RouterLink
-      :to="navigation?.tabs.get(project.id) ?? { name: 'project-materials', params: { projectId: project.id } }"
-      :aria-label="`Open project ${project.name}`"
-      class="button shrink-0 text-accent"
-    >
-      Open<span class="sr-only"> project</span>
     </RouterLink>
     <div
       ref="root"
-      class="relative shrink-0"
+      class="relative z-10 shrink-0"
       @focusout="focusOut"
     >
       <button
