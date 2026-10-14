@@ -302,55 +302,87 @@ onMounted(load)
     </div>
     <CatalogFormDialog
       v-if="deleting"
-      title="Delete project"
+      class="project-delete-dialog"
+      :title="`Delete &quot;${deleting.name}&quot;?`"
+      close-label="Close deletion dialog"
+      aria-describedby="project-delete-description"
       :busy="busy"
       @close="closeDeletion"
     >
       <form
-        class="space-y-4"
+        class="space-y-3"
         @submit.prevent="confirmDeletion"
       >
-        <p>Delete <strong>{{ deleting.name }}</strong> and its parts, optimizations, cutting plans and project selections? This cannot be undone.</p>
+        <p
+          id="project-delete-description"
+          class="text-sm leading-relaxed text-muted"
+        >
+          This will permanently delete the project and its cutting plans.
+        </p>
         <fieldset
-          class="space-y-3"
+          class="space-y-1"
           :disabled="busy || deletionLoading"
         >
-          <legend class="mb-2 font-semibold">
-            Physical stock
+          <legend class="mb-2 text-sm font-medium">
+            What should happen to physical stock?
           </legend>
-          <label class="flex items-start gap-3 rounded-lg border border-line p-3">
+          <label
+            class="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent"
+            :class="stockHandling === 'keep' ? 'bg-subtle' : 'hover:bg-quiet-surface'"
+          >
             <input
               v-model="stockHandling"
+              class="mt-1 shrink-0 accent-accent"
               type="radio"
               name="stock-handling"
               value="keep"
+              aria-describedby="keep-stock-description"
             >
-            <span><strong>Keep current stock</strong><span class="block text-sm text-muted">Leave quantities unchanged. Keep retained offcuts and stock history; do not restore consumed panels.</span></span>
+            <span class="min-w-0 text-sm">
+              <span class="flex flex-wrap items-baseline gap-x-2"><strong class="font-medium">Keep current stock</strong><span class="text-xs text-accent">Recommended</span></span>
+              <span
+                id="keep-stock-description"
+                class="mt-0.5 block leading-relaxed text-muted"
+              >Keep consumed panels and saved offcuts as they are.</span>
+            </span>
           </label>
-          <label class="flex items-start gap-3 rounded-lg border border-line p-3">
+          <label
+            class="flex items-start gap-3 rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent"
+            :class="[stockHandling === 'restore' ? 'bg-subtle' : 'hover:bg-quiet-surface', restorationIssues.length ? 'cursor-not-allowed opacity-60' : 'cursor-pointer']"
+          >
             <input
               v-model="stockHandling"
+              class="mt-1 shrink-0 accent-accent"
               type="radio"
               name="stock-handling"
               value="restore"
+              :aria-describedby="restorationIssues.length ? 'restore-stock-description stock-restoration-conflicts' : 'restore-stock-description'"
               :disabled="restorationIssues.length > 0"
             >
-            <span><strong>Restore initial stock</strong><span class="block text-sm text-muted">Restore recorded consumed panels and remove unchanged, unused generated offcuts. No partial restoration.</span></span>
+            <span class="min-w-0 text-sm">
+              <strong class="font-medium">Restore initial stock</strong>
+              <span
+                id="restore-stock-description"
+                class="mt-0.5 block leading-relaxed text-muted"
+              >Undo this project's stock changes, if possible.</span>
+            </span>
           </label>
         </fieldset>
         <p
           v-if="deletionLoading"
           role="status"
+          class="text-sm text-muted"
         >
           Checking stock dependencies…
         </p>
         <div
           v-if="restorationIssues.length"
+          id="stock-restoration-conflicts"
           class="text-sm text-danger"
           role="status"
         >
           <p>Restoration is unavailable. You can keep current stock.</p>
-          <ul class="list-disc pl-5">
+          <ul class="mt-1 list-disc pl-5">
             <li
               v-for="issue in restorationIssues"
               :key="issue"
@@ -362,14 +394,17 @@ onMounted(load)
         <p
           v-if="deletionError"
           role="alert"
-          class="text-danger"
+          class="text-sm text-danger"
         >
           {{ deletionError }}
         </p>
-        <div class="flex justify-end gap-2">
+        <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
+          <p class="mr-auto text-xs text-muted">
+            This cannot be undone.
+          </p>
           <button
             type="button"
-            class="button"
+            class="button min-h-9 px-3 py-1.5 text-sm"
             :disabled="busy"
             @click="closeDeletion"
           >
@@ -377,7 +412,7 @@ onMounted(load)
           </button>
           <button
             type="submit"
-            class="button button-danger"
+            class="button button-danger min-h-9 px-3 py-1.5 text-sm"
             :disabled="busy || deletionLoading"
           >
             {{ busy ? 'Deleting…' : 'Delete project' }}
@@ -438,3 +473,31 @@ onMounted(load)
     </CatalogFormDialog>
   </section>
 </template>
+
+<style scoped>
+.project-delete-dialog {
+  width: min(520px, calc(100vw - 2rem));
+  padding: 1.25rem;
+}
+.project-delete-dialog :deep(> div:first-child) {
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+.project-delete-dialog :deep(#catalog-dialog-title) {
+  padding-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+.project-delete-dialog :deep(button[aria-label='Close deletion dialog']) {
+  min-height: 2rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.375rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-muted);
+}
+.project-delete-dialog :deep(button[aria-label='Close deletion dialog']:hover) {
+  background: var(--color-subtle);
+  color: var(--color-ink);
+}
+</style>
