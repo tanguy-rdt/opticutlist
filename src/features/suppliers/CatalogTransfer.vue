@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, shallowRef, toRaw } from 'vue'
+import { watch, onBeforeUnmount, ref, shallowRef, toRaw } from 'vue'
 import type { CatalogImportPreview } from '../../application/catalog/catalog-transfer-service'
 import type { PersistenceError } from '../../application/persistence/repositories'
 import { useCatalogTransferService } from './catalog-transfer-service'
@@ -7,14 +7,15 @@ import { downloadJson } from '../../shared/ui/download-json'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import FormField from '../../shared/ui/FormField.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
-const props = defineProps<{ disabled: boolean }>()
-const emit = defineEmits<{ imported: []; busy: [value: boolean] }>()
+const props = defineProps<{ disabled: boolean; compact?: boolean }>()
+const emit = defineEmits<{ imported: []; busy: [value: boolean]; previewPending: [value: boolean] }>()
 const service = useCatalogTransferService()
 const preview = shallowRef<CatalogImportPreview | null>(null)
 const busy = ref(false)
 const showImport = ref(false)
 const error = ref('')
 const feedback = ref('')
+watch(preview, value => { emit('previewPending', value !== null) })
 let generation = 0
 onBeforeUnmount(() => { generation++ })
 function message(failure: PersistenceError): string {
@@ -70,30 +71,37 @@ async function importCatalog(): Promise<void> {
     v-if="service"
     class="space-y-3"
   >
-    <div class="flex flex-wrap justify-end gap-2">
-      <button
-        type="button"
-        class="button catalog-action"
-        :disabled="disabled || busy"
-        @click="exportCatalog"
-      >
-        <AppIcon name="export" />Export Catalog
-      </button>
-      <button
-        type="button"
-        class="button catalog-action"
-        :disabled="disabled || busy"
-        :aria-expanded="showImport"
-        aria-controls="catalog-import"
-        @click="showImport = !showImport"
-      >
-        <AppIcon name="import" />Import Catalog
-      </button>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <slot name="heading" />
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="button"
+          :class="compact ? 'button-compact' : 'catalog-action'"
+          :aria-label="compact ? 'Export Catalog' : undefined"
+          :disabled="disabled || busy"
+          @click="exportCatalog"
+        >
+          <AppIcon name="export" />{{ compact ? 'Export' : 'Export Catalog' }}
+        </button>
+        <button
+          type="button"
+          class="button"
+          :class="compact ? 'button-compact' : 'catalog-action'"
+          :aria-label="compact ? 'Import Catalog' : undefined"
+          :disabled="disabled || busy"
+          :aria-expanded="showImport"
+          aria-controls="catalog-import"
+          @click="showImport = !showImport"
+        >
+          <AppIcon name="import" />{{ compact ? 'Import' : 'Import Catalog' }}
+        </button>
+      </div>
     </div>
     <div
       v-if="showImport"
       id="catalog-import"
-      class="panel space-y-4 p-4"
+      class="space-y-4 pt-2"
     >
       <FormField
         id="catalog-import-file"
@@ -118,7 +126,7 @@ async function importCatalog(): Promise<void> {
       >
         <h2
           id="catalog-preview-title"
-          class="text-lg font-semibold"
+          class="text-sm font-semibold"
         >
           Catalog import preview
         </h2>

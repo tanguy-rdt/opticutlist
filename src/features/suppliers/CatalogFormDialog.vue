@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-const props = withDefaults(defineProps<{ title: string; busy: boolean; closeLabel?: string; drawer?: boolean; open?: boolean }>(), { open: true, closeLabel: 'Close form', drawer: false })
+const props = withDefaults(defineProps<{ title: string; busy: boolean; closeLabel?: string; drawer?: boolean; open?: boolean; titleId?: string }>(), { titleId: 'catalog-dialog-title', open: true, closeLabel: 'Close form', drawer: false })
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 let previousFocus: HTMLElement | null = null
@@ -27,14 +27,14 @@ onBeforeUnmount(() => { if (typeof dialog.value?.close === 'function') dialog.va
 <template>
   <dialog
     ref="dialog"
-    aria-labelledby="catalog-dialog-title"
+    :aria-labelledby="titleId"
     class="panel overflow-y-auto p-4 text-ink backdrop:bg-canvas/80 sm:p-6"
     :class="drawer ? 'm-0 ml-auto h-dvh max-h-dvh w-full max-w-xl rounded-none sm:rounded-l-2xl' : 'm-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-3xl'"
     @cancel.prevent="close"
   >
     <div class="mb-4 flex items-center justify-between gap-3">
       <h2
-        id="catalog-dialog-title"
+        :id="titleId"
         class="text-lg font-semibold"
       >
         {{ title }}

@@ -39,7 +39,7 @@ onUnmounted(() => { media?.removeEventListener('change', systemChanged) })
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-2 text-sm">
+  <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 text-sm">
     <label
       for="theme-preference"
       class="text-muted"
@@ -47,7 +47,7 @@ onUnmounted(() => { media?.removeEventListener('change', systemChanged) })
     <select
       id="theme-preference"
       v-model="preference"
-      class="field w-auto py-2"
+      class="field min-h-9 w-auto py-1.5 text-sm"
       aria-describedby="theme-warning"
     >
       <option value="light">
@@ -61,9 +61,10 @@ onUnmounted(() => { media?.removeEventListener('change', systemChanged) })
       </option>
     </select>
     <span
+      v-show="storageWarning"
       id="theme-warning"
       role="status"
-      class="max-w-60 text-xs text-muted"
+      class="col-span-2 text-xs text-muted"
     >{{ storageWarning }}</span>
   </div>
 </template>
