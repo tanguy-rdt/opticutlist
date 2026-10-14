@@ -36,7 +36,7 @@ const grainFilter = ref('')
 const selectedId = ref('')
 let generation = 0
 let historyGeneration = 0
-onBeforeUnmount(() => { generation++; historyGeneration++ })
+onBeforeUnmount(() => { generation++; historyGeneration++; window.removeEventListener('focus', refreshOnFocus) })
 function materialName(id: string): string { return materials.value.find(material => material.id === id)?.name ?? 'Missing material' }
 const materialGroups = computed(() => [...new Set(stock.value.map(item => item.materialId))].map(id => ({ id, material: materials.value.find(material => material.id === id), name: materialName(id), items: stock.value.filter(item => item.materialId === id) })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)))
 const visible = computed(() => stock.value.filter(item => {
@@ -104,7 +104,8 @@ async function remove(item: StockItem): Promise<void> {
   if (result.ok) { detailsOpen.value = false; notice.value = 'Stock item deleted.'; await load() }
   else writeError.value = persistenceErrorMessage(result.error, 'Stock item')
 }
-onMounted(load)
+function refreshOnFocus(): void { if (!loading.value && !busy.value && !formOpen.value) void load() }
+onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() })
 </script>
 <template>
   <section class="space-y-5">
@@ -118,13 +119,6 @@ onMounted(load)
       </div>
       <div class="flex gap-2">
         <button
-          type="button"
-          class="button button-compact"
-          :disabled="loading || busy || formOpen"
-          @click="load"
-        >
-          Refresh stock
-        </button><button
           type="button"
           class="button button-primary"
           :disabled="!writer || loading || !!error || busy"
@@ -161,6 +155,13 @@ onMounted(load)
       class="panel p-5 text-danger"
     >
       {{ error }}
+      <button
+        type="button"
+        class="button ml-3"
+        @click="load"
+      >
+        Retry
+      </button>
     </p>
     <template v-else>
       <dl

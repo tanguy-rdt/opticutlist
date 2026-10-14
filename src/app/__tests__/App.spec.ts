@@ -1,3 +1,7 @@
+import { createStockRepository } from '../../application/inventory/stock-repository'
+import { stockRepositoryKey } from '../../features/inventory/stock-repository'
+import { createProjectStockService } from '../../application/inventory/project-stock-service'
+import { projectStockServiceKey } from '../../features/projects/project-stock-service'
 import { projectPdfRequest } from '../../application/export/__tests__/pdf-fixtures'
 import CuttingConfirmation from '../../features/inventory/CuttingConfirmation.vue'
 import { createCurrentResultService } from '../../application/plans/current-result-service'
@@ -7,6 +11,7 @@ import { projectJson } from '../../infrastructure/projects/project-json'
 import { projectTransferServiceKey } from '../../features/projects/project-transfer-service'
 import { optimizeProject } from '../../domain/optimizer/optimize-project'
 import { panelSnapshotSchema } from '../../domain/model/saved-cutting-plan'
+import { materialSchema } from '../../domain/model/material'
 import { partSchema } from '../../domain/model/part'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 import { createSavedPlanService } from '../../application/plans/saved-plan-service'
@@ -34,7 +39,7 @@ import { catalogStockRepositoryKey, supplierRepositoryKey, supplierProductReposi
 import { createCatalogRepositories } from '../../application/catalog/catalog-repositories'
 import { validMaterialInput, validPartInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../domain/model/__tests__/fixtures'
 
-vi.mock('../../features/optimization/viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
+vi.mock('../../features/optimization/viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), setKeptWaste: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
 
 const wrappers: VueWrapper[] = []
 const connections: ReturnType<typeof createLocalPersistence>[] = []
@@ -74,6 +79,8 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
         [materialRepositoryKey]: catalog.materials,
         [projectServiceKey]: service,
         [catalogStockRepositoryKey]: persistence.stockItems,
+        [stockRepositoryKey]: createStockRepository(persistence),
+        [projectStockServiceKey]: createProjectStockService(persistence),
         [supplierRepositoryKey]: catalog.suppliers,
         [supplierProductRepositoryKey]: catalog.supplierProducts,
       },
@@ -476,6 +483,42 @@ describe('Home and application navigation', () => {
     await router.push('/stock')
     await wrapper.get('nav[aria-label="Main navigation"]').findAll('a').find(link => link.text() === 'Projects')?.trigger('click')
     await vi.waitFor(() => { expect(router.currentRoute.value.path).toBe(`/projects/${project.id}/parts`) })
+  })
+  it('refreshes cached Materials after catalog/stock changes and shows project offcuts in global Stock without refresh controls', async () => {
+    const { wrapper, router, service, persistence } = await mountAt('/')
+    await persistence.materials.create(validMaterialInput)
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.supplierProducts.create(validSupplierProductInput)
+    const project = cuttingProjectSchema.parse({ id: 'fresh-materials', name: 'Fresh', partIds: [], materialIds: [validMaterialInput.id], supplierProductIds: [validSupplierProductInput.id] })
+    await service.projects.create(project)
+    await router.push(`/projects/${project.id}/materials`)
+    await vi.waitFor(() => { expect(wrapper.find('input[type="checkbox"]').exists()).toBe(true) })
+    expect(wrapper.findAll('button').some(button => button.text() === 'Refresh')).toBe(false)
+    expect(wrapper.text()).not.toContain('Export Project')
+    await router.push('/catalog')
+    const added = materialSchema.parse({ ...validMaterialInput, id: 'new-catalog-material', name: 'New catalog wood' })
+    await persistence.materials.create(added)
+    await persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'new-catalog-panel', materialId: added.id })
+    await persistence.stockItems.create(validStockItemInput)
+    await wrapper.get('nav[aria-label="Main navigation"]').findAll('a').find(link => link.text() === 'Projects')?.trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use ${added.name}"]`).exists()).toBe(true) })
+    expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${validMaterialInput.name}"]`).element.checked).toBe(true)
+    const owner = await service.projects.get(project.id)
+    expect(owner).toEqual({ ok: true, value: project })
+    await router.push('/stock')
+    await vi.waitFor(() => { expect(wrapper.find('table').exists()).toBe(true) })
+    expect(wrapper.text()).not.toContain('Refresh stock')
+    await router.push('/catalog')
+    const ownOffcut = stockItemSchema.parse({ ...validStockItemInput, id: 'project-generated-offcut', provenance: { source: 'cutting', projectId: project.id, savedPlanId: 'origin', supplierProductId: validSupplierProductInput.id, panelIndex: 0, wasteIndex: 0 } })
+    await persistence.stockItems.create(ownOffcut)
+    await persistence.stockItems.update(stockItemSchema.shape.id.parse(validStockItemInput.id), { ...validStockItemInput, quantity: 5 })
+    await router.push('/stock')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain(ownOffcut.id) })
+    expect(wrapper.get('[aria-label="Stock summary"]').findAll('dd')[1]?.text()).toBe('6')
+    await wrapper.get('nav[aria-label="Main navigation"]').findAll('a').find(link => link.text() === 'Projects')?.trigger('click')
+    await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use stock ${validStockItemInput.id}"]`).exists()).toBe(true) })
+    expect(wrapper.find(`input[aria-label="Use stock ${ownOffcut.id}"]`).exists()).toBe(false)
+    expect(await service.projects.get(project.id)).toEqual(owner)
   })
   it('falls back to the overview when the active project was deleted', async () => {
     const { wrapper, router, service } = await mountAt('/')

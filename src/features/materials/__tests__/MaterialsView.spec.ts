@@ -96,7 +96,7 @@ describe('MaterialsView', () => {
     repository.list.mockReturnValue(new Promise((resolve) => { resolveList = resolve }))
     const wrapper = render(repository)
     expect(wrapper.text()).toContain('Loading materials')
-    expect(button(wrapper, 'Refresh').attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('button').some(item => item.text() === 'Refresh')).toBe(false)
     resolveList?.({ ok: true, value: [] })
     await flushPromises()
     expect(wrapper.text()).toContain('No panel sources available')
@@ -380,7 +380,7 @@ describe('MaterialsView', () => {
     }
     const wrapper = render(repository, service)
     await flushPromises()
-    await button(wrapper, 'Refresh').trigger('click')
+    window.dispatchEvent(new Event('focus'))
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
     expect(wrapper.text()).not.toContain('Remove missing selections')
@@ -388,6 +388,27 @@ describe('MaterialsView', () => {
     expect((await projects.get(project.id))).toMatchObject({ ok: true, value: { materialIds: [material.id] } })
   })
 
+  it('updates sources on focus without discarding or resaving a failed selection draft', async () => {
+    const persistence = createLocalPersistence('refresh-material-draft', { indexedDB: new IDBFactory(), IDBKeyRange })
+    try {
+      await persistence.materials.create(material); await persistence.suppliers.create(validSupplierInput); await persistence.supplierProducts.create(validSupplierProductInput)
+      const service = createProjectService(persistence)
+      await service.projects.create(project)
+      const update = vi.spyOn(service.projects, 'update').mockResolvedValueOnce(storageFailure)
+      const wrapper = render(persistence.materials, service, persistence)
+      await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(true) })
+      await wrapper.get(`input[aria-label="Use ${material.name}"]`).setValue(true)
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Save failed') })
+      await persistence.materials.update(material.id, updated)
+      window.dispatchEvent(new Event('focus')); await flushPromises()
+      await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use ${updated.name}"]`).exists()).toBe(true) })
+      expect(wrapper.get<HTMLInputElement>(`input[aria-label="Use ${updated.name}"]`).element.checked).toBe(true)
+      expect(update).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain('Save failed')
+      await button(wrapper, 'Retry').trigger('click'); await autosaved(wrapper)
+      expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { materialIds: [material.id] } })
+    } finally { persistence.close() }
+  })
   it('views materials independently from saved material and panel selections, preserving checks across switches', async () => {
     const persistence = createLocalPersistence('three-column-view-ui', { indexedDB: new IDBFactory(), IDBKeyRange })
     try {
@@ -577,7 +598,7 @@ describe('MaterialsView', () => {
       const wrapper = render(persistence.materials, service, persistence)
       await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(true) })
       await createStockRepository(persistence).delete(stock.id)
-      await button(wrapper, 'Refresh').trigger('click')
+      window.dispatchEvent(new Event('focus'))
       await vi.waitFor(() => { expect(wrapper.get('.material-library').text()).toContain('No panel sources available') })
       expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(false)
       expect(wrapper.get('aside').text()).toContain('material selection retained')

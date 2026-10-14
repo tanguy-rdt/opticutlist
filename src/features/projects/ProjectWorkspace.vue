@@ -7,7 +7,6 @@ import { persistenceErrorMessage } from '../../shared/ui/persistence-error-messa
 import { partRepositoryKey } from '../parts/part-repository'
 import { projectIdKey, useProjectService } from './project-service'
 import { useProjectNavigation } from './project-navigation'
-import ProjectExport from './ProjectExport.vue'
 import { cuttingWorkspaceStateKey } from './cutting-workspace-state'
 import { useCurrentResultService } from '../optimization/current-result-service'
 
@@ -146,7 +145,6 @@ onMounted(load)
             Stock
           </RouterLink>
         </nav>
-        <ProjectExport :project-id="project.id" />
       </div>
       <RouterView :route="workspaceRoute" />
     </template>

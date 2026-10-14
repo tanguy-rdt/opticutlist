@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, inject, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { isStockEligibleForProject } from '../../application/inventory/stock-eligibility'
 import type { Material } from '../../domain/model/material'
@@ -67,14 +67,18 @@ function removeMissing(): void {
   selectedIds.value = selectedIds.value.filter(id => materials.value.some(material => material.id === id))
   selectedProductIds.value = selectedProductIds.value.filter(id => products.value.some(product => product.id === id))
 }
+let discardDraft = false
 async function canDiscard(): Promise<boolean> {
   await save()
-  return !dirty.value || window.confirm('Selections could not be saved. Discard unsaved project material selections?')
+  if (!dirty.value) return true
+  const confirmed = window.confirm('Selections could not be saved. Discard unsaved project material selections?')
+  if (confirmed) discardDraft = true
+  return confirmed
 }
-async function refresh(): Promise<void> { if (await canDiscard()) await load() }
+function refreshSources(): void { if (active && !loading.value && !busy.value) void load() }
 function beforeUnload(event: BeforeUnloadEvent): void { if (dirty.value || busy.value) { event.preventDefault() } }
 if (inject(matchedRouteKey, undefined)) { onBeforeRouteLeave(canDiscard); onBeforeRouteUpdate(canDiscard) }
-onBeforeUnmount(() => { disposed = true; window.removeEventListener('beforeunload', beforeUnload) })
+onBeforeUnmount(() => { disposed = true; active = false; loadRevision++; window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('focus', refreshSources) })
 const missingSelections = computed(() => [
   ...selectedIds.value.filter(id => !materials.value.some(material => material.id === id)),
   ...selectedStockIds.value.filter(id => !stock.value.some(item => item.id === id)),
@@ -84,21 +88,31 @@ const loading = ref(true)
 const busy = ref(false)
 const loadError = ref('')
 const saveError = ref('')
+let loadRevision = 0
+let active = true
+let wasDeactivated = false
 async function load(): Promise<void> {
+  const revision = ++loadRevision
+  const preserveDraft = dirty.value && !discardDraft
   loading.value = true
   loadError.value = ''
   const [result, project, productResult, supplierResult, stockResult] = await Promise.all([
     repository.list(), service.projects.get(projectId), catalog.supplierProducts.list(), catalog.suppliers.list(), stockRepository?.list() ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
+  if (disposed || !active || revision !== loadRevision) return
   if (result.ok && project.ok && productResult.ok && supplierResult.ok && stockResult.ok) {
     stock.value = stockResult.value
-    selectedStockIds.value = project.value.stockItemIds ?? []
-    savedStockIds.value = project.value.stockItemIds ?? []
     materials.value = result.value
-    selectedIds.value = project.value.materialIds
-    selectedProductIds.value = project.value.supplierProductIds
-    savedMaterialIds.value = project.value.materialIds
-    savedProductIds.value = project.value.supplierProductIds
+    if (!preserveDraft) {
+      selectedStockIds.value = project.value.stockItemIds ?? []
+      savedStockIds.value = project.value.stockItemIds ?? []
+      selectedIds.value = project.value.materialIds
+      selectedProductIds.value = project.value.supplierProductIds
+      savedMaterialIds.value = project.value.materialIds
+      savedProductIds.value = project.value.supplierProductIds
+      discardDraft = false
+      saveError.value = ''
+    }
     products.value = productResult.value
     suppliers.value = supplierResult.value
   } else {
@@ -158,7 +172,14 @@ async function persistSelections(): Promise<void> {
   }
 }
 watch([selectedIds, selectedProductIds, selectedStockIds], () => { if (!loading.value) void save() })
-onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
+onMounted(() => { window.addEventListener('beforeunload', beforeUnload); window.addEventListener('focus', refreshSources); void load() })
+onDeactivated(() => { active = false; wasDeactivated = true; loadRevision++; window.removeEventListener('focus', refreshSources); window.removeEventListener('beforeunload', beforeUnload) })
+onActivated(() => {
+  if (!wasDeactivated) return
+  active = true; wasDeactivated = false
+  window.addEventListener('beforeunload', beforeUnload); window.addEventListener('focus', refreshSources)
+  void load()
+})
 </script>
 
 <template>
@@ -190,15 +211,6 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
             >
               Material library <span class="ml-2 text-sm font-normal text-muted">{{ availableMaterials.length }}</span>
             </h2>
-            <button
-              type="button"
-              class="button button-compact px-2"
-              title="Refresh catalog"
-              :disabled="loading || busy"
-              @click="refresh"
-            >
-              <span>Refresh</span>
-            </button>
           </div>
           <div class="mt-3 grid gap-2">
             <label class="flex items-center gap-2 rounded-lg border border-control-line bg-surface px-3 focus-within:ring-2 focus-within:ring-accent">
@@ -254,7 +266,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           <button
             type="button"
             class="button"
-            @click="refresh"
+            @click="load"
           >
             Try again
           </button>
