@@ -9,16 +9,16 @@ const router = useRouter()
 const projects = useProjectService()
 const projectNavigation = createProjectNavigation()
 provide(projectNavigationKey, projectNavigation)
-const projectDestination = computed(() => projectNavigation.activeId ? projectNavigation.tabs.get(projectNavigation.activeId) ?? `/projects/${projectNavigation.activeId}/materials` : '/projects')
+const projectDestination = computed(() => projectNavigation.destination === 'workspace' && projectNavigation.activeId ? projectNavigation.tabs.get(projectNavigation.activeId) ?? `/projects/${projectNavigation.activeId}/materials` : '/projects')
 async function resume(event: MouseEvent, to: string): Promise<void> {
   if (to !== '/projects' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
   event.preventDefault()
-  const id = projectNavigation.activeId
+  const id = projectNavigation.destination === 'workspace' ? projectNavigation.activeId : null
   if (id) {
     const project = await projects.projects.get(id)
-    if (projectNavigation.activeId !== id) return
+    if (projectNavigation.activeId !== id || projectNavigation.destination !== 'workspace') return
     if (project.ok) { await router.push(projectDestination.value); return }
-    if (project.error.kind === 'notFound') { projectNavigation.activeId = null; projectNavigation.tabs.delete(id) }
+    if (project.error.kind === 'notFound') { projectNavigation.activeId = null; projectNavigation.destination = 'overview'; projectNavigation.tabs.delete(id) }
   }
   await router.push('/projects')
 }
@@ -33,7 +33,7 @@ const navigation = [
 function active(to: string): boolean {
   return to === '/' ? route.path === '/' : to === '/catalog' ? route.name === 'suppliers' : to === '/projects' ? route.path.startsWith('/projects') || route.path === '/import' : route.path === to
 }
-watch(() => route.fullPath, () => { expanded.value = false })
+watch(() => route.fullPath, () => { expanded.value = false; if (route.name === 'projects') projectNavigation.destination = 'overview' })
 function closeNavigation(): void { if (expanded.value) { expanded.value = false; toggle.value?.focus() } }
 function focusContent(): void { document.getElementById('main-content')?.focus() }
 </script>

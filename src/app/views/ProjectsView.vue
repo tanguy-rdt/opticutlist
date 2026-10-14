@@ -9,7 +9,6 @@ import { persistenceErrorMessage } from '../../shared/ui/persistence-error-messa
 import ProjectCreationDialog from '../../features/projects/ProjectCreationDialog.vue'
 import ProjectList from '../../features/projects/ProjectList.vue'
 import ProjectStartTiles from '../../features/projects/ProjectStartTiles.vue'
-import ProjectExport from '../../features/projects/ProjectExport.vue'
 import CatalogFormDialog from '../../features/suppliers/CatalogFormDialog.vue'
 import { useProjectNavigation } from '../../features/projects/project-navigation'
 import { useProjectService } from '../../features/projects/project-service'
@@ -19,8 +18,6 @@ const navigation = useProjectNavigation()
 const projects = shallowRef<readonly CuttingProject[]>([])
 const loading = ref(true)
 const search = ref('')
-const selectedId = ref('')
-const selected = computed(() => projects.value.find(project => project.id === selectedId.value))
 const visible = computed(() => projects.value.filter(project => project.name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())))
 const name = ref('')
 const nameError = ref('')
@@ -47,7 +44,6 @@ async function load(): Promise<void> {
   loading.value = false
   if (!result.ok) { error.value = persistenceErrorMessage(result.error, 'Project'); return }
   projects.value = result.value
-  if (!projects.value.some(project => project.id === selectedId.value)) selectedId.value = projects.value[0]?.id ?? ''
 }
 async function openForm(project: CuttingProject | null = null): Promise<void> {
   if (busy.value || loading.value || error.value) return
@@ -70,7 +66,7 @@ async function save(): Promise<void> {
   if (current !== generation) return
   busy.value = false
   if (!result.ok) { formError.value = persistenceErrorMessage(result.error, 'Project'); return }
-  closeForm(); selectedId.value = result.value.id
+  closeForm()
   notice.value = 'Project renamed.'; await load()
 }
 async function remove(project: CuttingProject): Promise<void> {
@@ -99,7 +95,7 @@ async function confirmDeletion(): Promise<void> {
 onMounted(load)
 </script>
 <template>
-  <section class="space-y-5">
+  <section class="mx-auto max-w-5xl space-y-5">
     <header class="flex flex-wrap items-center justify-between gap-4">
       <div>
         <h1 class="text-[28px] font-semibold tracking-tight">
@@ -175,115 +171,53 @@ onMounted(load)
         />
       </div>
     </div>
-    <div
-      v-else-if="!loading && projects.length"
-      class="grid items-start gap-5 md:grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)]"
+    <section
+      v-else-if="!loading && !error && projects.length"
+      class="space-y-4"
+      aria-label="Project manager"
     >
-      <aside
-        class="panel space-y-4 p-4"
-        aria-label="Project selection"
-      >
-        <div class="flex items-center justify-between">
-          <h2 class="font-semibold">
-            Your projects
-          </h2><span class="rounded-full bg-subtle px-2 py-1 text-xs text-muted">{{ projects.length }}</span>
-        </div>
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <label
           for="project-search"
           class="sr-only"
-        >Search projects</label><input
+        >Search projects</label>
+        <input
           id="project-search"
           v-model="search"
           type="search"
-          class="field"
+          class="field w-full sm:max-w-sm"
           placeholder="Search projects…"
           :disabled="busy"
         >
-        <ProjectList
-          :projects="visible"
-          :selected-id="selectedId"
-          :disabled="busy || !!formMode"
-          @select="selectedId = $event.id"
-        />
-        <p
-          v-if="!visible.length"
-          role="status"
-          class="py-4 text-sm text-muted"
-        >
-          No matching projects.
-        </p>
-      </aside>
-      <article
-        v-if="selected"
-        class="panel overflow-hidden"
-        aria-label="Selected project details"
+        <span class="text-sm text-muted">{{ visible.length }} of {{ projects.length }} projects</span>
+      </div>
+      <ProjectList
+        v-if="visible.length"
+        :projects="visible"
+        :disabled="busy || !!formMode || !!deleting"
+        @rename="openForm"
+        @delete="remove"
+      />
+      <div
+        v-else
+        role="status"
+        class="py-10 text-center"
       >
-        <div class="space-y-5 p-5">
-          <header class="flex flex-wrap items-start justify-between gap-3">
-            <h2 class="min-w-0 text-2xl font-semibold [overflow-wrap:anywhere]">
-              {{ selected.name }}
-            </h2>
-            <RouterLink
-              :to="navigation?.tabs.get(selected.id) ?? { name: 'project-materials', params: { projectId: selected.id } }"
-              class="button button-primary"
-            >
-              <AppIcon name="layers" />Open project
-            </RouterLink>
-          </header>
-          <dl
-            class="grid grid-cols-3 gap-3 border-y border-line py-4"
-            aria-label="Project metrics"
-          >
-            <div class="min-w-0">
-              <dt class="text-xs text-muted">
-                Part references
-              </dt><dd class="mt-1 text-lg font-semibold">
-                {{ selected.partIds.length }}
-              </dd>
-            </div>
-            <div class="min-w-0">
-              <dt class="text-xs text-muted">
-                Selected materials
-              </dt><dd class="mt-1 text-lg font-semibold">
-                {{ selected.materialIds.length }}
-              </dd>
-            </div>
-            <div class="min-w-0">
-              <dt class="text-xs text-muted">
-                Panel references
-              </dt><dd class="mt-1 text-lg font-semibold">
-                {{ selected.supplierProductIds.length + (selected.stockItemIds?.length ?? 0) }}
-              </dd>
-            </div>
-          </dl>
-          <div
-            class="flex flex-wrap items-start gap-2"
-            aria-label="Project actions"
-          >
-            <button
-              type="button"
-              class="button"
-              :disabled="busy"
-              @click="openForm(selected)"
-            >
-              <AppIcon name="edit" />Rename project
-            </button>
-            <ProjectExport
-              :key="selected.id"
-              :project-id="selected.id"
-            />
-            <button
-              type="button"
-              class="button button-danger"
-              :disabled="busy"
-              @click="remove(selected)"
-            >
-              <AppIcon name="delete" />Delete project
-            </button>
-          </div>
-        </div>
-      </article>
-    </div>
+        <h2 class="font-semibold">
+          No matching projects
+        </h2>
+        <p class="mt-1 text-sm text-muted">
+          Try another name or clear your search.
+        </p>
+        <button
+          type="button"
+          class="button mt-3"
+          @click="search = ''"
+        >
+          Clear search
+        </button>
+      </div>
+    </section>
     <CatalogFormDialog
       v-if="deleting"
       class="project-delete-dialog"

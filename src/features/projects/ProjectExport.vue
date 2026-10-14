@@ -3,7 +3,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import type { CuttingProjectId } from '../../domain/model/ids'
 import { downloadProject, useProjectTransferService } from './project-transfer-service'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
-const props = defineProps<{ projectId: CuttingProjectId }>()
+const props = defineProps<{ projectId: CuttingProjectId; menuItem?: boolean }>()
 const service = useProjectTransferService()
 const busy = ref(false)
 const error = ref('')
@@ -26,13 +26,14 @@ async function exportProject(): Promise<void> {
 <template>
   <div class="space-y-2">
     <button
-      class="button"
+      :class="menuItem ? 'flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left text-sm hover:bg-subtle' : 'button'"
+      :role="menuItem ? 'menuitem' : undefined"
       type="button"
       :disabled="!service || busy"
       :aria-busy="busy"
       @click="exportProject"
     >
-      {{ busy ? 'Exporting…' : 'Export Project' }}
+      {{ busy ? 'Exporting…' : menuItem ? 'Export project' : 'Export Project' }}
     </button>
     <p
       v-if="error"

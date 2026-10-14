@@ -20,7 +20,7 @@ const workspaceRoute = shallowRef({ ...route })
 function remember(): void {
   if (route.params.projectId !== props.projectId || !project.value) return
   workspaceRoute.value = { ...route }
-  if (navigation) { navigation.activeId = project.value.id; navigation.tabs.set(project.value.id, route.fullPath) }
+  if (navigation) { navigation.activeId = project.value.id; navigation.destination = 'workspace'; navigation.tabs.set(project.value.id, route.fullPath) }
 }
 watch(() => route.fullPath, remember)
 const parsedId = cuttingProjectIdSchema.safeParse(props.projectId)
