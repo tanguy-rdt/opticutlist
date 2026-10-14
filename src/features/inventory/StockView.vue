@@ -302,7 +302,7 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
             class="panel min-w-0 overflow-hidden"
           >
             <header class="flex items-center gap-3 border-b border-line bg-quiet-surface p-4">
-              <MaterialThumbnail :preset-id="group.material?.libraryPresetId" /><div>
+              <div>
                 <h2 class="text-sm font-semibold">
                   {{ group.name }}
                 </h2><p class="mt-1 text-xs text-muted">

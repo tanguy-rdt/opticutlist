@@ -13,18 +13,19 @@ function imageError(event: Event): void {
 <template>
   <span
     class="inline-flex shrink-0 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg bg-subtle text-muted"
-    :class="variant === 'preview' ? 'aspect-[3/2] w-full' : 'h-8 w-12 border border-line'"
+    :class="variant === 'preview' ? 'aspect-[3/2] w-full' : 'h-10 w-12'"
   >
     <img
       v-if="source && !failed"
       :key="source"
       :src="source"
       alt=""
-      :width="variant === 'preview' ? 768 : 96"
-      :height="variant === 'preview' ? 512 : 64"
+      :width="variant === 'preview' ? 768 : 320"
+      :height="variant === 'preview' ? 512 : 280"
       decoding="async"
       loading="lazy"
-      class="size-full object-cover"
+      class="size-full"
+      :class="variant === 'preview' ? 'object-cover' : 'object-contain'"
       @error="imageError"
     >
     <template v-else>

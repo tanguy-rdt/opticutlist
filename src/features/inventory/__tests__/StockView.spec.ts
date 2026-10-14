@@ -137,7 +137,17 @@ describe('editable physical inventory workspace', () => {
     await submitStock(wrapper)
     expect(await persistence.materials.list()).toMatchObject({ ok: true, value: [{ name: 'Pin', libraryPresetId: 'pin' }] })
     expect(await persistence.supplierProducts.list()).toEqual({ ok: true, value: [] })
-    expect(wrapper.get('[aria-label="Stock item details"] img').attributes('src')).toContain('/materials/previews/pin.webp')
+    expect(wrapper.get('[aria-label="Stock item details"] image').attributes('href')).toContain('/materials/textures/pin.webp')
+  })
+  it('uses perspective samples only in material navigation, not inventory group headers', async () => {
+    const textured = materialSchema.parse({ ...material, libraryPresetId: 'chene' })
+    const { wrapper } = await editable([item], [textured])
+    const sample = wrapper.get('[aria-label="Stock materials"] img')
+    expect(sample.attributes('src')).toContain('/previews/chene.webp')
+    expect(sample.classes()).toContain('object-contain')
+    const table = wrapper.get('table').element
+    expect(table.closest('section')?.querySelector('header img')).toBeNull()
+    expect(wrapper.get('[aria-label="Stock item details"] image').attributes('href')).toContain('/textures/chene.webp')
   })
   it('requires confirmation before deletion and preserves the item on refusal', async () => {
     const { wrapper, persistence } = await editable([item])
@@ -161,7 +171,7 @@ describe('editable physical inventory workspace', () => {
     await materialButton.trigger('click'); await flushPromises()
     expect(wrapper.findAll('table')).toHaveLength(1)
     expect(wrapper.get('table').text()).toContain('oak-panels')
-    expect(wrapper.get('[aria-label="Stock item details"] img').attributes('src')).toContain('previews/chene.webp')
+    expect(wrapper.get('[aria-label="Stock item details"] image').attributes('href')).toContain('textures/chene.webp')
     await wrapper.get('#stock-type-filter').setValue('offcut')
     expect(wrapper.text()).toContain('No stock matches these filters.')
     await button(wrapper, 'All materials6').trigger('click')

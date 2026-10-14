@@ -24,7 +24,7 @@ describe('searchable Material selector', () => {
     expect(wrapper.findAll('[role="option"]')).toHaveLength(22)
     expect(wrapper.get('[data-value="custom-pine"]').attributes('aria-selected')).toBe('true')
     expect(wrapper.get('[data-value="scratch"]').find('img').exists()).toBe(false)
-    expect(wrapper.get('[data-value="preset:pin"] img').attributes('src')).toContain('/materials/textures/pin.webp')
+    expect(wrapper.get('[data-value="preset:pin"] img').attributes('src')).toContain('/materials/previews/pin.webp')
     expect(document.activeElement).toBe(wrapper.get('[role="combobox"]').element)
   })
   it('searches case-insensitively and selects without an extra material creation step', async () => {

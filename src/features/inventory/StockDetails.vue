@@ -2,7 +2,7 @@
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
-import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
+import StockPanelPreview from './StockPanelPreview.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 
 defineProps<{ item: StockItem; material: Material | undefined; history: readonly CuttingConfirmation[]; historyLoading: boolean; historyError: string; writable: boolean; busy: boolean }>()
@@ -13,10 +13,6 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
     class="space-y-5"
     aria-label="Stock item details"
   >
-    <MaterialThumbnail
-      :preset-id="material?.libraryPresetId"
-      variant="preview"
-    />
     <header>
       <h3 class="text-lg font-semibold">
         {{ material?.name ?? 'Missing material' }}
@@ -24,10 +20,14 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
         {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}
       </p>
     </header>
-    <div class="rounded-lg bg-subtle p-3">
+    <StockPanelPreview
+      :item="item"
+      :preset-id="material?.libraryPresetId"
+    />
+    <div class="space-y-1">
       <p class="font-semibold tabular-nums">
         {{ item.lengthMm }} × {{ item.widthMm }} × {{ item.thicknessMm }} mm
-      </p><p class="mt-2 text-sm">
+      </p><p class="text-sm text-muted">
         {{ item.quantity }} physically owned
       </p>
     </div>
@@ -49,30 +49,33 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
         </dt><dd class="text-right">
           {{ item.grainDirection === 'none' ? 'No constraint' : `Along ${item.grainDirection}` }}
         </dd>
-        <dt class="text-muted">
-          Source
-        </dt><dd class="text-right capitalize">
-          {{ item.provenance.source }}
-        </dd>
       </dl>
-      <p class="break-all text-xs text-muted">
-        Stock reference: {{ item.id }}
+    </section>
+    <section
+      aria-label="Stock provenance"
+      class="space-y-2 text-sm"
+    >
+      <h4 class="text-sm font-semibold">
+        Provenance
+      </h4>
+      <p
+        v-if="item.provenance.source === 'manual'"
+        class="text-muted"
+      >
+        Manually recorded
       </p>
       <p
-        v-if="item.provenance.source === 'purchase'"
-        class="break-all text-xs text-muted"
+        v-else-if="item.provenance.source === 'purchase'"
+        class="text-muted"
       >
-        Catalog reference: {{ item.provenance.supplierProductId }}
+        Purchased catalog panel
       </p>
       <div
-        v-if="item.provenance.source === 'cutting'"
-        class="space-y-1 break-all text-xs text-muted"
+        v-else
+        class="space-y-1 text-muted"
       >
-        <p>Project: {{ item.provenance.projectId }}</p><p>Cutting result: {{ item.provenance.savedPlanId }}</p><p v-if="item.provenance.sourceStockItemId">
-          Source stock: {{ item.provenance.sourceStockItemId }}
-        </p><p v-else>
-          External catalogue panel: {{ item.provenance.supplierProductId }}
-        </p><p>Panel {{ item.provenance.panelIndex + 1 }}, offcut {{ item.provenance.wasteIndex + 1 }}</p>
+        <p>Retained from cutting · Panel {{ item.provenance.panelIndex + 1 }}, offcut {{ item.provenance.wasteIndex + 1 }}</p>
+        <p>{{ item.provenance.sourceStockItemId ? 'From owned stock' : 'From a catalog panel' }}</p>
       </div>
     </section>
     <section
@@ -123,9 +126,6 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
           </p>
           <p v-if="receipt.offcuts.some(offcut => offcut.id === item.id)">
             Retained after cutting
-          </p>
-          <p class="break-all text-xs text-muted">
-            Project {{ receipt.projectId }} · Result {{ receipt.id }}
           </p>
         </li>
       </ul>

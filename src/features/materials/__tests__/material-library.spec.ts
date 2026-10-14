@@ -14,15 +14,26 @@ describe('supplied local material library', () => {
       expect(preset.thumbnail).not.toMatch(/^https?:/)
       expect(materialThumbnail(preset.id)).toBe(preset.thumbnail)
       expect(materialPreview(preset.id)).toBe(preset.preview)
-      for (const [folder, width, height] of [['textures', 96, 64], ['previews', 768, 512]] as const) {
+      for (const [folder, width, height] of [['previews', 320, 280], ['textures', 768, 512]] as const) {
         const bytes = readFileSync(`${process.cwd()}/public/materials/${folder}/${preset.id}.webp`)
         expect(bytes.toString('ascii', 0, 4)).toBe('RIFF')
-        expect(bytes.toString('ascii', 8, 16)).toBe('WEBPVP8 ')
-        expect(bytes.readUInt16LE(26) & 0x3fff).toBe(width)
-        expect(bytes.readUInt16LE(28) & 0x3fff).toBe(height)
-        expect(folder === 'textures' ? preset.thumbnail : preset.preview).toBe(`${import.meta.env.BASE_URL}materials/${folder}/${preset.id}.webp`)
+        expect(bytes.toString('ascii', 8, 12)).toBe('WEBP')
+        const extended = bytes.toString('ascii', 12, 16) === 'VP8X'
+        expect(extended ? bytes.readUIntLE(24, 3) + 1 : bytes.readUInt16LE(26) & 0x3fff).toBe(width)
+        expect(extended ? bytes.readUIntLE(27, 3) + 1 : bytes.readUInt16LE(28) & 0x3fff).toBe(height)
+        expect(folder === 'previews' ? preset.thumbnail : preset.preview).toBe(`${import.meta.env.BASE_URL}materials/${folder}/${preset.id}.webp`)
       }
     }
+  })
+  it('contains perspective samples without cropping or distorting their intrinsic ratio', () => {
+    const wrapper = mount(MaterialThumbnail, { props: { presetId: 'chene' } })
+    const image = wrapper.get('img')
+    expect(image.attributes('src')).toBe(materialThumbnail('chene'))
+    expect(image.attributes('width')).toBe('320')
+    expect(image.attributes('height')).toBe('280')
+    expect(image.classes()).toContain('object-contain')
+    expect(image.classes()).not.toContain('object-cover')
+    wrapper.unmount()
   })
   it('uses separate full-size previews and intrinsic dimensions, never an enlarged thumbnail', () => {
     const wrapper = mount(MaterialThumbnail, { props: { presetId: 'pin', variant: 'preview' } })

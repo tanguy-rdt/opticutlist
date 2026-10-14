@@ -288,7 +288,7 @@ describe('MaterialsView', () => {
       await wrapper.get('input[aria-label="Search materials"]').setValue('')
       expect(wrapper.get('[aria-labelledby="library-title"]').text()).toContain('Hardwoods')
       expect(wrapper.find(`input[aria-label="Use ${material.name}"]`).exists()).toBe(false)
-      expect(wrapper.get('img').attributes('src')).toContain('/textures/')
+      expect(wrapper.get('img').attributes('src')).toContain('/previews/')
       await autosaved(wrapper)
       expect((await service.projects.get(project.id))).toMatchObject({ ok: true, value: { materialIds: [oak.id], supplierProductIds: [] } })
     } finally { persistence.close() }
