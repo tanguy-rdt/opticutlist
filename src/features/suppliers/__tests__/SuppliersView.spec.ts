@@ -472,13 +472,13 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories); await flushPromises()
     expect(wrapper.get('nav[aria-label="Catalog suppliers"] img').attributes('src')).toBe('https://timber.example.com/favicon.ico')
     expect(wrapper.get('.catalog-supplier-header img').attributes('src')).toBe('https://timber.example.com/favicon.ico')
-    expect(wrapper.find('#product-details figure img').exists()).toBe(true)
+    expect(wrapper.find('#product-details figure image').exists()).toBe(true)
     const rows = wrapper.findAll('button[aria-label="View product ' + product.name + '"]')
     await rows[1]?.trigger('click')
-    expect(wrapper.find('#product-details figure img').exists()).toBe(false)
-    expect(wrapper.get('#product-details figure').text()).toContain('No texture available')
+    expect(wrapper.find('#product-details figure image').exists()).toBe(false)
+    expect(wrapper.find('#product-details [data-panel-outline]').exists()).toBe(true)
     await rows[0]?.trigger('click')
-    expect(wrapper.find('#product-details figure img').exists()).toBe(true)
+    expect(wrapper.find('#product-details figure image').exists()).toBe(true)
   })
 
   it('offers the local presets without creating records, keeps a renamed thumbnail and the product draft', async () => {

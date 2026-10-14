@@ -5,7 +5,8 @@ import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { StockItem } from '../../domain/model/stock-item'
-import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
+import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
+import { materialPreview } from '../materials/material-library'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 const props = defineProps<{ product: SupplierProduct | undefined; materials: readonly Material[]; suppliers: readonly Supplier[]; stock: readonly StockItem[]; stockAvailable: boolean; stockError: string; disabled: boolean }>()
 const emit = defineEmits<{ edit: [product: SupplierProduct]; delete: [product: SupplierProduct] }>()
@@ -29,18 +30,15 @@ function availability(product: SupplierProduct): string { return product.availab
       Product details
     </h2>
     <template v-if="product">
-      <figure
+      <PanelDimensionPreview
         class="mb-4"
-        aria-label="Material preview"
-      >
-        <MaterialThumbnail
-          :preset-id="material?.libraryPresetId"
-          variant="preview"
-        />
-        <figcaption class="sr-only">
-          {{ materialName }} · Material preview
-        </figcaption>
-      </figure>
+        :length-mm="product.lengthMm"
+        :width-mm="product.widthMm"
+        :texture-url="materialPreview(material?.libraryPresetId)"
+        :grain-direction="product.grainDirection"
+        size="small"
+        label="Catalog panel preview"
+      />
       <header class="catalog-product-header">
         <h3 class="text-lg font-semibold leading-snug [overflow-wrap:anywhere]">
           {{ product.name }}

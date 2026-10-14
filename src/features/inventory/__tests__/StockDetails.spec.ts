@@ -16,6 +16,8 @@ describe('stock details hierarchy', () => {
     expect(wrapper.get('section').element.firstElementChild?.tagName).toBe('HEADER')
     expect(wrapper.get('h3').text()).toBe('Pine Douglas')
     expect(wrapper.get('image').attributes('href')).toBe(materialPreview('pin'))
+    expect(wrapper.get('svg').attributes('aria-label')).toContain('800 × 400.5 mm')
+    expect(wrapper.findAll('[data-dimension-arrow]')).toHaveLength(4)
     expect(wrapper.text()).toContain('800 × 400.5 × 18 mm')
     expect(wrapper.text()).toContain('1 physically owned')
     expect(wrapper.text()).not.toContain(stock.id)

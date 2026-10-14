@@ -13,7 +13,8 @@ import { useProjectId, useProjectService } from '../projects/project-service'
 import AppDialog from '../../shared/ui/AppDialog.vue'
 import { useCatalogRepositories } from '../suppliers/catalog-repositories'
 import PartsJsonTransfer from './PartsJsonTransfer.vue'
-import PartDiagram from './PartDiagram.vue'
+import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
+import { materialPreview } from '../materials/material-library'
 import PartForm from './PartForm.vue'
 import { usePartRepository } from './part-repository'
 
@@ -434,11 +435,6 @@ onMounted(load)
       >
         <template v-if="selected">
           <div class="mx-auto w-full max-w-[300px] space-y-4">
-            <MaterialThumbnail
-              :preset-id="materialFor(selected)?.libraryPresetId"
-              variant="preview"
-              class="max-h-36"
-            />
             <div>
               <p class="eyebrow">
                 Part details
@@ -448,7 +444,14 @@ onMounted(load)
                 {{ materialName(selected) }}
               </p>
             </div>
-            <PartDiagram :part="selected" />
+            <PanelDimensionPreview
+              :length-mm="selected.lengthMm"
+              :width-mm="selected.widthMm"
+              :texture-url="materialPreview(materialFor(selected)?.libraryPresetId)"
+              :grain-direction="selected.grainDirection"
+              size="small"
+              label="Part dimension preview"
+            />
           </div>
           <div class="space-y-5">
             <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
