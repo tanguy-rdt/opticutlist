@@ -12,6 +12,7 @@ import { useMaterialRepository } from '../materials/material-repository'
 import { useProjectId, useProjectService } from '../projects/project-service'
 import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
 import { useCatalogRepositories } from '../suppliers/catalog-repositories'
+import PartsJsonTransfer from './PartsJsonTransfer.vue'
 import PartDiagram from './PartDiagram.vue'
 import PartForm from './PartForm.vue'
 import { usePartRepository } from './part-repository'
@@ -138,17 +139,23 @@ onMounted(load)
           Finished dimensions, production quantities and cutting constraints for this project.
         </p>
       </div>
-      <button
-        type="button"
-        class="button button-primary"
-        :disabled="busy || loading || Boolean(loadError) || Boolean(materialError) || availableMaterials.length === 0"
-        @click="edit(null)"
-      >
-        <AppIcon
-          name="plus"
-          class="size-4"
-        /> New part
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <PartsJsonTransfer
+          :disabled="busy || loading || Boolean(loadError) || formOpen"
+          @imported="load"
+        />
+        <button
+          type="button"
+          class="button button-primary"
+          :disabled="busy || loading || Boolean(loadError) || Boolean(materialError) || availableMaterials.length === 0"
+          @click="edit(null)"
+        >
+          <AppIcon
+            name="plus"
+            class="size-4"
+          /> New part
+        </button>
+      </div>
     </header>
     <p
       v-if="notice"

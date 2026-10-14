@@ -11,11 +11,14 @@ import type { LocalPersistence, PersistenceResult, Repositories, Repository } fr
 const conflict = (message: string): Extract<PersistenceResult<never>, { ok: false }> => ({ ok: false, error: { kind: 'referenceConflict', message } })
 const missing = (id: string): Extract<PersistenceResult<never>, { ok: false }> => ({ ok: false, error: { kind: 'notFound', id } })
 
+export interface ProjectPartsRepository extends Repository<Part> {
+  createMany(records: readonly unknown[]): Promise<PersistenceResult<readonly Part[]>>
+}
 export interface ProjectService {
   readonly projects: Repository<CuttingProject>
   readonly deletionPreview: (id: CuttingProjectId) => Promise<PersistenceResult<ProjectDeletionPreview>>
   readonly deleteProject: (id: CuttingProjectId, handling: ProjectStockHandling) => Promise<PersistenceResult<void>>
-  parts(projectId: CuttingProjectId): Repository<Part>
+  parts(projectId: CuttingProjectId): ProjectPartsRepository
   listLegacyParts(): Promise<PersistenceResult<readonly Part[]>>
   adoptLegacyParts(projectId: CuttingProjectId, ids: readonly PartId[]): Promise<PersistenceResult<void>>
 }
@@ -77,7 +80,7 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
     return !result.ok && result.error.kind === 'notFound' && selectionFailure ? selectionFailure : result
   }
 
-  function parts(projectId: CuttingProjectId): Repository<Part> {
+  function parts(projectId: CuttingProjectId): ProjectPartsRepository {
     async function withProject<T>(work: (repositories: Repositories, project: CuttingProject) => Promise<PersistenceResult<T>>): Promise<PersistenceResult<T>> {
       return persistence.transaction(async repositories => {
         const project = await repositories.projects.get(projectId)
@@ -90,43 +93,55 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
         return work(repositories, project.value)
       })
     }
-    async function save(record: unknown, id?: PartId): Promise<PersistenceResult<Part>> {
+    async function saveInProject(repositories: Repositories, project: CuttingProject, record: unknown, id?: PartId): Promise<PersistenceResult<Part>> {
       const parsed = partSchema.safeParse(record)
       if (!parsed.success) return { ok: false, error: { kind: 'invalidRecord', issues: parsed.error.issues } }
-      return withProject(async (repositories, project) => {
-        if (id !== undefined && !project.partIds.includes(id)) return missing(id)
-        const material = await repositories.materials.get(parsed.data.materialId)
-        if (!material.ok) return material
-        // Read saved selections inside the same transaction as the Part/ownership write.
-        // Panel selections make their associated material available without requiring a
-        // separate material checkbox; a direct material choice needs no supplier product.
-        const products: SupplierProduct[] = []
-        const stock: StockItem[] = []
-        let selected = projectPartMaterialIds(project, products, stock).includes(parsed.data.materialId)
-        if (!selected) {
-          for (const productId of project.supplierProductIds) {
-            const product = await repositories.supplierProducts.get(productId)
-            if (!product.ok) return product
-            products.push(product.value)
-          }
-          for (const stockId of project.stockItemIds ?? []) {
-            const item = await repositories.stockItems.get(stockId)
-            if (!item.ok) return item
-            stock.push(item.value)
-          }
-          selected = projectPartMaterialIds(project, products, stock).includes(parsed.data.materialId)
+      if (id !== undefined && !project.partIds.includes(id)) return missing(id)
+      const material = await repositories.materials.get(parsed.data.materialId)
+      if (!material.ok) return material
+      // Read saved selections inside the same transaction as the Part/ownership write.
+      // Panel selections make their associated material available without requiring a
+      // separate material checkbox; a direct material choice needs no supplier product.
+      const products: SupplierProduct[] = []
+      const stock: StockItem[] = []
+      let selected = projectPartMaterialIds(project, products, stock).includes(parsed.data.materialId)
+      if (!selected) {
+        for (const productId of project.supplierProductIds) {
+          const product = await repositories.supplierProducts.get(productId)
+          if (!product.ok) return product
+          products.push(product.value)
         }
-        if (!selected) return conflict('Select this material in the project Materials tab before creating or editing a Part.')
-        const result = id === undefined ? await repositories.parts.create(parsed.data) : await repositories.parts.update(id, parsed.data)
-        if (!result.ok) return result
-        if (id === undefined) {
-          const owner = await repositories.projects.update(projectId, { ...project, partIds: [...project.partIds, result.value.id] })
-          if (!owner.ok) return owner
+        for (const stockId of project.stockItemIds ?? []) {
+          const item = await repositories.stockItems.get(stockId)
+          if (!item.ok) return item
+          stock.push(item.value)
         }
-        return result
-      })
+        selected = projectPartMaterialIds(project, products, stock).includes(parsed.data.materialId)
+      }
+      if (!selected) return conflict('Select this material in the project Materials tab before creating or editing a Part.')
+      const result = id === undefined ? await repositories.parts.create(parsed.data) : await repositories.parts.update(id, parsed.data)
+      if (!result.ok) return result
+      if (id === undefined) {
+        const owner = await repositories.projects.update(projectId, { ...project, partIds: [...project.partIds, result.value.id] })
+        if (!owner.ok) return owner
+      }
+      return result
+    }
+    async function save(record: unknown, id?: PartId): Promise<PersistenceResult<Part>> {
+      return withProject((repositories, project) => saveInProject(repositories, project, record, id))
     }
     return {
+      createMany: records => withProject(async (repositories, project) => {
+        const created: Part[] = []
+        let owner = project
+        for (const record of records) {
+          const result = await saveInProject(repositories, owner, record)
+          if (!result.ok) return result
+          created.push(result.value)
+          owner = { ...owner, partIds: [...owner.partIds, result.value.id] }
+        }
+        return { ok: true, value: created }
+      }),
       create: record => save(record),
       update: (id, record) => save(record, id),
       get: id => withProject((repositories, project) => project.partIds.includes(id) ? repositories.parts.get(id) : Promise.resolve(missing(id))),

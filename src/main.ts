@@ -1,3 +1,5 @@
+import { createPartsTransferService } from './application/projects/parts-transfer-service'
+import { partsTransferServiceKey } from './features/parts/parts-transfer-service'
 import { createProjectStockService } from './application/inventory/project-stock-service'
 import { projectStockServiceKey } from './features/projects/project-stock-service'
 import { createStockRepository } from './application/inventory/stock-repository'
@@ -44,6 +46,7 @@ app.provide(catalogTransferServiceKey, createCatalogTransferService(persistence,
 app.provide(projectTransferServiceKey, createProjectTransferService(persistence, projectJson))
 app.provide(cuttingConfirmationServiceKey, createCuttingConfirmationService(persistence))
 app.provide(projectServiceKey, createProjectService(persistence))
+app.provide(partsTransferServiceKey, createPartsTransferService(persistence, projectJson))
 app.provide(optimizationServiceFactoryKey, () => createOptimizationService(createOptimizationWorker))
 app.provide(cuttingPlanPdfServiceKey, createCuttingPlanPdfService({ generate: async document => {
   const { generateCuttingPlanPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')

@@ -1,4 +1,4 @@
-export function downloadJson(text: string, name: string, extension: 'pocl' | 'cocl'): void {
+export function downloadJson(text: string, name: string, extension: 'pocl' | 'cocl' | 'json'): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }))
   const link = document.createElement('a')
   try {
