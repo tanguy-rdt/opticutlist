@@ -226,6 +226,26 @@ describe('Home and application navigation', () => {
     await vi.waitFor(() => { expect(wrapper.find(`button[aria-label="Select supplier ${validSupplierInput.name}"]`).exists()).toBe(true) })
     expect(wrapper.find(`button[aria-label="Select supplier ${validSupplierInput.name}"]`).exists()).toBe(true)
     expect(router.currentRoute.value.path).toBe('/catalog')
+    expect(wrapper.get('#main-content').text()).not.toContain('Refresh catalog')
+  })
+
+  it('rereads Catalog data and owned stock on return from another section without a refresh action', async () => {
+    const { wrapper, router, persistence } = await mountAt('/')
+    await persistence.materials.create(validMaterialInput)
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.supplierProducts.create(validSupplierProductInput)
+    await router.push('/catalog')
+    await vi.waitFor(() => { expect(wrapper.find(`button[aria-label="View product ${validSupplierProductInput.name}"]`).exists()).toBe(true) })
+    expect(wrapper.get('[aria-label="Catalog summary"]').findAll('dd')[3]?.text()).toBe('0')
+    await router.push('/stock')
+    const changed = supplierProductSchema.parse({ ...validSupplierProductInput, name: 'Updated catalog panel' })
+    await persistence.supplierProducts.update(changed.id, changed)
+    await persistence.stockItems.create({ ...validStockItemInput, kind: 'fullPanel', quantity: 3, provenance: { source: 'purchase', supplierProductId: changed.id } })
+    await router.push('/catalog')
+    await vi.waitFor(() => { expect(wrapper.find(`button[aria-label="View product ${changed.name}"]`).exists()).toBe(true) })
+    await vi.waitFor(() => { expect(wrapper.get('[aria-label="Catalog summary"]').findAll('dd')[3]?.text()).toBe('3') })
+    expect(wrapper.get('#main-content').text()).not.toContain('Refresh catalog')
+    expect(wrapper.get('#product-details h3').text()).toBe(changed.name)
   })
 
   it.each(['/stock', '/projects/stock-import-project/materials'])('refreshes %s after a Settings Stock import without changing selections or navigation', async path => {

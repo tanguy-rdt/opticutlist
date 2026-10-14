@@ -184,7 +184,7 @@ async function saveProduct(product: SupplierProduct, presetId?: string): Promise
     productVersion.value++
     await load()
   } else operationError.value = result.error.kind === 'notFound'
-    ? 'The product, selected supplier, or material no longer exists. Refresh the catalog and check your selections.'
+    ? 'The product, selected supplier, or material no longer exists. Check the supplier and material selections before trying again.'
     : persistenceErrorMessage(result.error, 'Product')
   busy.value = false
   await nextTick()
@@ -436,14 +436,6 @@ onMounted(load)
                 @click="editProduct(null, selectedSupplierId)"
               >
                 <AppIcon name="plus" /><span><span class="sr-only">+ </span>Add Product</span>
-              </button>
-              <button
-                type="button"
-                class="button button-compact button-ghost"
-                :disabled="disabled"
-                @click="load"
-              >
-                Refresh catalog
               </button>
             </div>
           </div>

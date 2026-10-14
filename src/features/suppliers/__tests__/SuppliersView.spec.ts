@@ -1,3 +1,5 @@
+import { ref } from 'vue'
+import { dataImportRevisionKey } from '../../../app/settings/data-import-revision'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -219,17 +221,43 @@ describe('SuppliersView', () => {
     expect(wrapper.find('button[aria-pressed="true"][aria-controls="product-details"]').exists()).toBe(false)
   })
 
-  it('integrates refresh into the supplier toolbar and rereads existing stock and catalog snapshots', async () => {
-    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+  it('refreshes imported catalog/stock snapshots without a manual action or resetting filters and selection', async () => {
+    const repositories = setup()
+    const second = supplierProductSchema.parse({ ...product, id: 'second-reference', name: `${product.name} second` })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product, second] })
     const inventory = { list: vi.fn().mockResolvedValue({ ok: true, value: [] }) }
-    const wrapper = render(repositories, { [catalogStockRepositoryKey]: inventory }); await flushPromises()
-    const toolbar = wrapper.get('[aria-labelledby="supplier-content-title"] > div')
-    expect(toolbar.text()).toContain('Refresh catalog')
-    expect(wrapper.findAll('button').some(action => action.text() === 'Refresh')).toBe(false)
-    expect(wrapper.find('a').text()).toContain(supplier.websiteUrl)
-    await button(wrapper, 'Refresh catalog').trigger('click'); await flushPromises()
+    const revision = ref(0)
+    const wrapper = render(repositories, { [catalogStockRepositoryKey]: inventory, [dataImportRevisionKey]: revision }); await flushPromises()
+    expect(wrapper.text()).not.toContain('Refresh catalog')
+    await wrapper.get('#catalog-search').setValue(product.name)
+    await wrapper.get('#catalog-category').setValue(material.category)
+    await wrapper.get('#catalog-material').setValue(material.id)
+    await wrapper.get('#catalog-availability').setValue(product.availability)
+    await wrapper.get(`button[aria-label="View product ${second.name}"]`).trigger('click')
+    expect(repositories.suppliers.list).toHaveBeenCalledTimes(1)
+    const stock = stockItemSchema.parse({ ...validStockItemInput, kind: 'fullPanel', quantity: 4, provenance: { source: 'purchase', supplierProductId: second.id } })
+    inventory.list.mockResolvedValue({ ok: true, value: [stock] })
+    revision.value++; await flushPromises()
     expect(inventory.list).toHaveBeenCalledTimes(2)
     expect(repositories.suppliers.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('#product-details h3').text()).toBe(second.name)
+    expect(wrapper.get<HTMLInputElement>('#catalog-search').element.value).toBe(product.name)
+    expect(wrapper.get<HTMLSelectElement>('#catalog-category').element.value).toBe(material.category)
+    expect(wrapper.get<HTMLSelectElement>('#catalog-material').element.value).toBe(material.id)
+    expect(wrapper.get<HTMLSelectElement>('#catalog-availability').element.value).toBe(product.availability)
+    expect(wrapper.get('[aria-label="Catalog summary"]').findAll('dd')[3]?.text()).toBe('4')
+  })
+  it('defers import refresh while a product draft is open and reloads once the user closes it', async () => {
+    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    const revision = ref(0)
+    const wrapper = render(repositories, { [dataImportRevisionKey]: revision }); await flushPromises()
+    await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    await wrapper.get('#product-name').setValue('Pending draft')
+    revision.value++; revision.value++; await flushPromises()
+    expect(repositories.supplierProducts.list).toHaveBeenCalledTimes(1)
+    expect(wrapper.get<HTMLInputElement>('#product-name').element.value).toBe('Pending draft')
+    await wrapper.get('button[aria-label="Close form"]').trigger('click'); await flushPromises()
+    expect(repositories.supplierProducts.list).toHaveBeenCalledTimes(2)
     expect(wrapper.get('#product-details h3').text()).toBe(product.name)
   })
 
