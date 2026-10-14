@@ -34,7 +34,7 @@ describe('Parts JSON exchange', () => {
     expect(preview.materialIds).toEqual([material.id, material.id])
     expect(value(await service.import(project.id, preview.file, preview.materialIds, true))).toBe(2)
     const exported = value(await service.export(project.id))
-    expect(exported.name).toBe('Cabinet-parts')
+    expect(exported.name).toBe('Cabinet')
     const parsed = partsTransferSchema.parse(projectJson.parse(exported.text))
     expect(parsed.parts.slice(1)).toEqual(file.parts)
     expect(exported.text).toContain('\n  "format"')

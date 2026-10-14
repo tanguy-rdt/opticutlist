@@ -29,9 +29,15 @@ async function choose(wrapper: VueWrapper, text: string | Promise<string> = JSON
   await flushPromises()
 }
 describe('project import and export controls', () => {
+  it.each(['project.oclproject.json', 'project.pocl', 'project.json'])('validates file contents for new and legacy %s filenames', async filename => {
+    const { wrapper, port } = await setup()
+    await choose(wrapper, JSON.stringify(file), filename)
+    expect(port.preview).toHaveBeenCalledWith(JSON.stringify(file))
+    expect(port.import).not.toHaveBeenCalled()
+  })
   it('reads a JSON file, previews counts/conflicts, requires explicit consent and links to the imported project', async () => {
     const { wrapper, port, router } = await setup()
-    expect(wrapper.get('input[type=file]').attributes('accept')).toBe('.pocl,.json,application/json')
+    expect(wrapper.get('input[type=file]').attributes('accept')).toBe('.oclproject.json,.pocl,.json,application/json')
     await choose(wrapper)
     expect(port.preview).toHaveBeenCalledWith(JSON.stringify(file)); expect(port.import).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Import preview: Workshop')
@@ -87,7 +93,7 @@ describe('project import and export controls', () => {
     const wrapper = mount(ProjectExport, { props: { projectId: file.project.id }, global: { provide: { [projectTransferServiceKey]: port } } }); wrappers.push(wrapper)
     vi.useFakeTimers()
     await wrapper.get('button').trigger('click'); await flushPromises()
-    expect(port.export).toHaveBeenCalledWith(file.project.id); expect(click).toHaveBeenCalledOnce(); expect(filename).toBe('Workshop.pocl')
+    expect(port.export).toHaveBeenCalledWith(file.project.id); expect(click).toHaveBeenCalledOnce(); expect(filename).toBe('workshop.oclproject.json')
     const blob: unknown = create.mock.calls[0]?.[0]
     expect(blob).toBeInstanceOf(Blob)
     if (!(blob instanceof Blob)) throw new Error('Blob')

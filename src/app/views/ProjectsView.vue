@@ -11,9 +11,11 @@ import ProjectList from '../../features/projects/ProjectList.vue'
 import ProjectStartTiles from '../../features/projects/ProjectStartTiles.vue'
 import ProjectExport from '../../features/projects/ProjectExport.vue'
 import CatalogFormDialog from '../../features/suppliers/CatalogFormDialog.vue'
+import { useProjectNavigation } from '../../features/projects/project-navigation'
 import { useProjectService } from '../../features/projects/project-service'
 
 const service = useProjectService()
+const navigation = useProjectNavigation()
 const projects = shallowRef<readonly CuttingProject[]>([])
 const loading = ref(true)
 const search = ref('')
@@ -91,7 +93,7 @@ async function confirmDeletion(): Promise<void> {
   if (current !== generation) return
   busy.value = false
   if (!result.ok) deletionError.value = persistenceErrorMessage(result.error, 'Project')
-  else { closeDeletion(); notice.value = 'Project deleted.'; await load() }
+  else { if (navigation?.activeId === project.id) navigation.activeId = null; if (navigation) navigation.tabs.delete(project.id); closeDeletion(); notice.value = 'Project deleted.'; await load() }
 }
 
 onMounted(load)
@@ -105,6 +107,22 @@ onMounted(load)
         </h1><p class="mt-1 text-sm text-muted">
           Your builds, ready for the next workshop session.
         </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="button button-primary"
+          :disabled="loading || busy || !!error"
+          @click="openForm()"
+        >
+          <AppIcon name="plus" />New project
+        </button>
+        <RouterLink
+          to="/import?from=projects"
+          class="button"
+        >
+          <AppIcon name="import" />Import project
+        </RouterLink>
       </div>
     </header>
     <p
@@ -159,7 +177,7 @@ onMounted(load)
     </div>
     <div
       v-else-if="!loading && projects.length"
-      class="grid items-start gap-5 md:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.5fr)] xl:grid-cols-[340px_minmax(0,1fr)]"
+      class="grid items-start gap-5 md:grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)]"
     >
       <aside
         class="panel space-y-4 p-4"
@@ -170,27 +188,6 @@ onMounted(load)
             Your projects
           </h2><span class="rounded-full bg-subtle px-2 py-1 text-xs text-muted">{{ projects.length }}</span>
         </div>
-        <div class="flex flex-wrap gap-2">
-          <RouterLink
-            to="/import?from=projects"
-            class="button button-compact"
-          >
-            <AppIcon name="import" />Import Project
-          </RouterLink>
-          <button
-            type="button"
-            class="button button-primary button-compact"
-            :disabled="loading || busy || !!error"
-            @click="openForm()"
-          >
-            <AppIcon name="plus" />New Project
-          </button>
-        </div>
-        <ProjectExport
-          v-if="selected"
-          :key="selected.id"
-          :project-id="selected.id"
-        />
         <label
           for="project-search"
           class="sr-only"
@@ -221,61 +218,48 @@ onMounted(load)
         class="panel overflow-hidden"
         aria-label="Selected project details"
       >
-        <div
-          class="flex aspect-[3/1] max-h-56 w-full items-center justify-center bg-subtle"
-          aria-label="Project cover placeholder"
-        >
-          <AppIcon
-            name="layers"
-            class="size-16 text-accent opacity-30"
-          />
-        </div>
-        <div class="space-y-6 p-5 md:p-6">
-          <header>
-            <p class="eyebrow text-accent">
-              Project workspace
-            </p><h2 class="mt-2 text-2xl font-semibold [overflow-wrap:anywhere]">
+        <div class="space-y-5 p-5">
+          <header class="flex flex-wrap items-start justify-between gap-3">
+            <h2 class="min-w-0 text-2xl font-semibold [overflow-wrap:anywhere]">
               {{ selected.name }}
-            </h2><p class="mt-2 break-all text-xs text-muted">
-              Reference: {{ selected.id }}
-            </p>
-          </header>
-          <dl
-            class="grid grid-cols-3 gap-3"
-            aria-label="Project metrics"
-          >
-            <div class="rounded-xl bg-subtle p-3">
-              <dt class="text-xs text-muted">
-                Part references
-              </dt><dd class="mt-1 text-2xl font-semibold">
-                {{ selected.partIds.length }}
-              </dd>
-            </div>
-            <div class="rounded-xl bg-subtle p-3">
-              <dt class="text-xs text-muted">
-                Selected materials
-              </dt><dd class="mt-1 text-2xl font-semibold">
-                {{ selected.materialIds.length }}
-              </dd>
-            </div>
-            <div class="rounded-xl bg-subtle p-3">
-              <dt class="text-xs text-muted">
-                Panel references
-              </dt><dd class="mt-1 text-2xl font-semibold">
-                {{ selected.supplierProductIds.length }}
-              </dd>
-            </div>
-          </dl>
-          <div
-            class="flex flex-wrap items-start gap-2 border-t border-line pt-5"
-            aria-label="Project actions"
-          >
+            </h2>
             <RouterLink
-              :to="{ name: 'project-materials', params: { projectId: selected.id } }"
+              :to="navigation?.tabs.get(selected.id) ?? { name: 'project-materials', params: { projectId: selected.id } }"
               class="button button-primary"
             >
               <AppIcon name="layers" />Open project
             </RouterLink>
+          </header>
+          <dl
+            class="grid grid-cols-3 gap-3 border-y border-line py-4"
+            aria-label="Project metrics"
+          >
+            <div class="min-w-0">
+              <dt class="text-xs text-muted">
+                Part references
+              </dt><dd class="mt-1 text-lg font-semibold">
+                {{ selected.partIds.length }}
+              </dd>
+            </div>
+            <div class="min-w-0">
+              <dt class="text-xs text-muted">
+                Selected materials
+              </dt><dd class="mt-1 text-lg font-semibold">
+                {{ selected.materialIds.length }}
+              </dd>
+            </div>
+            <div class="min-w-0">
+              <dt class="text-xs text-muted">
+                Panel references
+              </dt><dd class="mt-1 text-lg font-semibold">
+                {{ selected.supplierProductIds.length + (selected.stockItemIds?.length ?? 0) }}
+              </dd>
+            </div>
+          </dl>
+          <div
+            class="flex flex-wrap items-start gap-2"
+            aria-label="Project actions"
+          >
             <button
               type="button"
               class="button"

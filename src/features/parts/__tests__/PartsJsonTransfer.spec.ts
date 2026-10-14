@@ -19,7 +19,7 @@ function setup() {
   const service = {
     preview: vi.fn<PartsTransferService['preview']>().mockResolvedValue({ ok: true, value: { file, materials: [material], materialIds: [material.id] } }),
     import: vi.fn<PartsTransferService['import']>().mockResolvedValue({ ok: true, value: 1 }),
-    export: vi.fn<PartsTransferService['export']>().mockResolvedValue({ ok: true, value: { text: JSON.stringify(file, null, 2), name: 'Cabinet-parts' } }),
+    export: vi.fn<PartsTransferService['export']>().mockResolvedValue({ ok: true, value: { text: JSON.stringify(file, null, 2), name: 'Cabinet' } }),
   }
   const wrapper = mount(PartsJsonTransfer, { props: { disabled: false }, attachTo: document.body, global: { plugins: [createAppRouter(createMemoryHistory())], provide: { [partsTransferServiceKey]: service, [projectIdKey]: projectId } } }); wrappers.push(wrapper)
   return { wrapper, service }
@@ -73,7 +73,7 @@ describe('Parts JSON actions', () => {
     const { wrapper, service } = setup()
     const revoke = vi.fn(); const create = vi.fn().mockReturnValue('blob:parts')
     vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke })
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function(this: HTMLAnchorElement) { expect(this.download).toBe('Cabinet-parts.json') })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function(this: HTMLAnchorElement) { expect(this.download).toBe('cabinet.oclparts.json') })
     vi.useFakeTimers({ toFake: ['setTimeout'] })
     await button(wrapper, 'Export JSON').trigger('click'); await flushPromises()
     expect(service.export).toHaveBeenCalledWith(projectId)

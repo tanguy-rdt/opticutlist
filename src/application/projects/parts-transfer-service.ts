@@ -32,7 +32,7 @@ export function createPartsTransferService(persistence: LocalPersistence, json: 
           parts.push({ name: part.name, material: material.value.name, length: part.lengthMm, width: part.widthMm, thickness: part.thicknessMm, quantity: part.quantity, grainDirection: part.grainDirection, rotation: part.rotation })
         }
         const validated = validatePartsTransfer({ format: 'opticutlist-parts', version: 1, parts }); if (!validated.ok) return validated
-        try { return { ok: true, value: { text: json.stringify(validated.value), name: `${project.value.name}-parts` } } }
+        try { return { ok: true, value: { text: json.stringify(validated.value), name: project.value.name } } }
         catch { return invalidTransfer('Parts could not be serialized.') }
       })
     },

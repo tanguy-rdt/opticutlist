@@ -64,7 +64,7 @@ async function exportParts(): Promise<void> {
     const result = await service.export(projectId)
     if (current !== generation) return
     if (!result.ok) { error.value = message(result.error); return }
-    downloadJson(result.value.text, result.value.name, 'json')
+    downloadJson(result.value.text, result.value.name, 'oclparts.json')
     notice.value = 'Parts JSON download started.'
   } catch { if (current === generation) error.value = 'Could not export Parts JSON.' }
   finally { if (current === generation) busy.value = false }
@@ -111,11 +111,11 @@ async function exportParts(): Promise<void> {
         <label
           class="block text-sm font-medium"
           for="parts-json-file"
-        >Parts file (.json)</label>
+        >Parts file (.oclparts.json or .json)</label>
         <input
           id="parts-json-file"
           type="file"
-          accept=".json,application/json"
+          accept=".oclparts.json,.json,application/json"
           class="field"
           :disabled="busy"
           @change="select"

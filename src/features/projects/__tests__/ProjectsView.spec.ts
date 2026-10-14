@@ -124,6 +124,15 @@ describe('Project manager', () => {
     await open.trigger('click'); await flushPromises()
     expect(router.currentRoute.value.path).toBe('/projects/second-project/materials')
   })
+  it('keeps creation/import in the header and a single export with compact selected-project details', async () => {
+    const { wrapper } = setup([project]); await flushPromises()
+    expect(wrapper.get('header').text()).toContain('New project')
+    expect(wrapper.get('header').text()).toContain('Import project')
+    expect(wrapper.findAll('button').filter(item => item.text() === 'Export Project')).toHaveLength(1)
+    expect(wrapper.find('[aria-label="Project cover placeholder"]').exists()).toBe(false)
+    expect(wrapper.get('[aria-label="Selected project details"]').text()).not.toContain(project.id)
+    expect(wrapper.findAll('div').some(item => item.classes().includes('md:grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)]'))).toBe(true)
+  })
   it('searches without discarding the selected project and retains accessible actions on small screens', async () => {
     const second = cuttingProjectSchema.parse({ ...project, id: 'desk', name: 'Desk' })
     const { wrapper } = setup([project, second]); await flushPromises()
@@ -228,7 +237,7 @@ describe('Project manager', () => {
     expect(transfer.export).toHaveBeenCalledExactlyOnceWith(second.id)
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
   })
-  it('downloads the selected project through the unchanged .pocl workflow', async () => {
+  it('downloads the selected project through the unchanged project format with the new extension', async () => {
     const second = cuttingProjectSchema.parse({ ...project, id: 'second', name: 'Desk' })
     const { wrapper, transfer } = setup([project, second]); await flushPromises()
     await wrapper.get('ul[aria-label="Projects"]').findAll('button')[1]?.trigger('click')
@@ -239,7 +248,7 @@ describe('Project manager', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { filename = this.download })
     await button(wrapper, 'Export Project').trigger('click'); await flushPromises()
     expect(transfer.export).toHaveBeenCalledExactlyOnceWith(second.id)
-    expect(click).toHaveBeenCalledOnce(); expect(filename).toBe('Desk.pocl')
+    expect(click).toHaveBeenCalledOnce(); expect(filename).toBe('desk.oclproject.json')
     expect(wrapper.text()).toContain('Project JSON download started')
   })
   it('shows storage read errors and retries without presenting an empty inventory', async () => {

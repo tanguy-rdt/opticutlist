@@ -1,17 +1,28 @@
 <script setup lang="ts">
-import { onMounted, provide, ref, shallowRef } from 'vue'
-import { RouterLink, RouterView } from 'vue-router'
+import { onActivated, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { cuttingProjectIdSchema } from '../../domain/model/ids'
 import type { CuttingProject } from '../../domain/model/cutting-project'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { partRepositoryKey } from '../parts/part-repository'
 import { projectIdKey, useProjectService } from './project-service'
+import { useProjectNavigation } from './project-navigation'
 import ProjectExport from './ProjectExport.vue'
 import { cuttingWorkspaceStateKey } from './cutting-workspace-state'
 import { useCurrentResultService } from '../optimization/current-result-service'
 
+defineOptions({ name: 'ProjectWorkspace' })
 const props = defineProps<{ projectId: string }>()
 const service = useProjectService()
+const navigation = useProjectNavigation()
+const route = useRoute()
+const workspaceRoute = shallowRef({ ...route })
+function remember(): void {
+  if (route.params.projectId !== props.projectId || !project.value) return
+  workspaceRoute.value = { ...route }
+  if (navigation) { navigation.activeId = project.value.id; navigation.tabs.set(project.value.id, route.fullPath) }
+}
+watch(() => route.fullPath, remember)
 const parsedId = cuttingProjectIdSchema.safeParse(props.projectId)
 const project = shallowRef<CuttingProject | null>(null)
 const loading = ref(true)
@@ -32,6 +43,7 @@ async function load(): Promise<void> {
     const result = await service.projects.get(parsedId.data)
     if (result.ok) {
       project.value = result.value
+      remember()
       const current = await currentResults?.forProject(parsedId.data).load()
       cuttingState.available.value = current?.ok === true && current.value.result !== null
     }
@@ -39,6 +51,14 @@ async function load(): Promise<void> {
   }
   loading.value = false
 }
+let activated = false
+onActivated(async () => {
+  if (!activated) { activated = true; return }
+  if (!parsedId.success) return
+  const latest = await service.projects.get(parsedId.data)
+  if (latest.ok) { project.value = latest.value; remember() }
+  else { project.value = null; error.value = persistenceErrorMessage(latest.error, 'Project') }
+})
 onMounted(load)
 </script>
 <template>
@@ -74,9 +94,12 @@ onMounted(load)
     <template v-else-if="project">
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
         <div>
-          <p class="eyebrow">
-            Open project
-          </p>
+          <RouterLink
+            to="/projects"
+            class="mb-1 inline-block text-sm text-muted hover:text-accent"
+          >
+            ← All projects
+          </RouterLink>
           <p class="text-xl font-semibold [overflow-wrap:anywhere]">
             {{ project.name }}
           </p>
@@ -125,7 +148,7 @@ onMounted(load)
         </nav>
         <ProjectExport :project-id="project.id" />
       </div>
-      <RouterView />
+      <RouterView :route="workspaceRoute" />
     </template>
   </section>
 </template>

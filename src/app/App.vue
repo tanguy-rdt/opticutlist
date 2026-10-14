@@ -1,8 +1,27 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { computed, provide, ref, watch } from 'vue'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { createProjectNavigation, projectNavigationKey } from '../features/projects/project-navigation'
+import { useProjectService } from '../features/projects/project-service'
 import ThemeSelector from './theme/ThemeSelector.vue'
 const route = useRoute()
+const router = useRouter()
+const projects = useProjectService()
+const projectNavigation = createProjectNavigation()
+provide(projectNavigationKey, projectNavigation)
+const projectDestination = computed(() => projectNavigation.activeId ? projectNavigation.tabs.get(projectNavigation.activeId) ?? `/projects/${projectNavigation.activeId}/materials` : '/projects')
+async function resume(event: MouseEvent, to: string): Promise<void> {
+  if (to !== '/projects' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
+  event.preventDefault()
+  const id = projectNavigation.activeId
+  if (id) {
+    const project = await projects.projects.get(id)
+    if (projectNavigation.activeId !== id) return
+    if (project.ok) { await router.push(projectDestination.value); return }
+    if (project.error.kind === 'notFound') { projectNavigation.activeId = null; projectNavigation.tabs.delete(id) }
+  }
+  await router.push('/projects')
+}
 const expanded = ref(false)
 const toggle = ref<HTMLButtonElement | null>(null)
 const navigation = [
@@ -89,19 +108,27 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
           <RouterLink
             v-for="item in navigation"
             :key="item.to"
-            :to="item.to"
-            class="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium"
-            :class="active(item.to) ? 'bg-subtle text-accent' : 'text-muted hover:bg-subtle hover:text-ink'"
-            :aria-current="active(item.to) ? 'page' : undefined"
+            v-slot="{ href, navigate }"
+
+            :to="item.to === '/projects' ? projectDestination : item.to"
+            custom
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
-              class="h-5 w-5 shrink-0"
-              aria-hidden="true"
-            ><path :d="item.icon" /></svg>{{ item.label }}
+            <a
+              :href="href"
+              class="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium"
+              :class="active(item.to) ? 'bg-subtle text-accent' : 'text-muted hover:bg-subtle hover:text-ink'"
+              :aria-current="active(item.to) ? 'page' : undefined"
+              @click="item.to === '/projects' ? resume($event, item.to) : navigate($event)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                class="h-5 w-5 shrink-0"
+                aria-hidden="true"
+              ><path :d="item.icon" /></svg>{{ item.label }}
+            </a>
           </RouterLink>
         </nav>
         <div class="mt-auto space-y-4 border-t border-line px-1 pt-4">
@@ -122,7 +149,17 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
         class="mx-auto w-full flex-1 px-4 pt-4 pb-5 sm:px-6 lg:px-4"
         :class="$route.name === 'suppliers' || $route.name === 'stock' || $route.name === 'project-parts' || $route.name === 'project-materials' || $route.name === 'project-optimization' || $route.name === 'project-cutting-plans' ? 'max-w-none' : 'max-w-7xl'"
       >
-        <RouterView :key="String($route.params.projectId ?? '')" />
+        <RouterView v-slot="{ Component }">
+          <KeepAlive
+            include="ProjectWorkspace"
+            :max="10"
+          >
+            <component
+              :is="Component"
+              :key="String($route.params.projectId ?? $route.name)"
+            />
+          </KeepAlive>
+        </RouterView>
       </main>
     </div>
   </div>

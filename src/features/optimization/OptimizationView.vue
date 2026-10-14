@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, inject, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { copyLabel } from './viewer/copy-label'
 import { stockPanel } from '../../domain/optimizer/panel-source'
@@ -97,13 +97,20 @@ function panelPlan(index: number): PanelCuttingPlan | undefined { return editedP
 function selectCopy(index: number, key: string): void { panelIndex.value = index; selectedCopies.value[index] = key }
 const cuttingPlansAvailable = computed(() => !!result.value && !planBusy.value && !planError.value && fingerprint.value === savedFingerprint.value)
 watch(cuttingPlansAvailable, available => { if (cuttingState) cuttingState.available.value = available }, { flush: 'sync' })
+let discardedOnLeave = false
 async function leaveWorkspace(to: { name?: unknown }): Promise<boolean> {
   if (to.name === 'project-cutting-plans') {
     if (!result.value) return true
     await persistenceQueue
     if (!cuttingPlansAvailable.value) { planError.value ||= 'The current result is not ready for Cutting Plans. Optimize again or resolve the persistence error.'; return false }
   }
-  return canDiscard()
+  const allowed = canDiscard()
+  if (allowed && unsavedManualChanges.value) {
+    persistenceController.abort()
+    generation += 1
+    discardedOnLeave = true
+  }
+  return allowed
 }
 
 function invalidate(markStale = true): void {
@@ -323,6 +330,8 @@ if (inject(matchedRouteKey, undefined) !== undefined) {
   onBeforeRouteUpdate(leaveWorkspace)
 }
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
+onDeactivated(() => { window.removeEventListener('beforeunload', beforeUnload); if (state.value === 'running') cancel() })
+onActivated(() => { window.addEventListener('beforeunload', beforeUnload); if (discardedOnLeave) { discardedOnLeave = false; invalidate(false); void load() } })
 onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload); generation += 1; persistenceController.abort(); optimizer.dispose() })
 </script>
 
