@@ -535,14 +535,14 @@ onBeforeUnmount(() => {
 .tool-group + .tool-group { border-left: 1px solid var(--line); padding-left: .5rem; }
 .swap-options { position: absolute; z-index: 5; right: 0; top: calc(100% + .5rem); display: flex; gap: .35rem; padding: .5rem; background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 12%, transparent); }
 .panel-context { margin-right: auto; }
-.tool { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border: 1px solid var(--line); border-radius: .4rem; background: var(--surface); }
-.tool:hover:not(:disabled) { background: var(--success-surface); color: var(--accent); }
-.tool:disabled { opacity: .4; }
+.tool { display: inline-flex; align-items: center; justify-content: center; width: var(--control-height-small); height: var(--control-height-small); border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); }
+.tool:hover:not(:disabled) { background: var(--quiet-surface); color: var(--ink); }
+.tool:disabled { opacity: .6; }
 .tool :deep(svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .copy-picker { width: 12rem; max-width: 60vw; }
 .graph-paper { background-color: var(--canvas); background-image: linear-gradient(color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px); background-size: 20px 20px; }
 .cutting-canvas-host { height: 400px; min-height: 240px; }
 .editing-tools { position: relative; display: flex; align-items: center; gap: .25rem; }
-.cutting-viewer :deep(.field) { min-height: 2rem; padding-block: .375rem; font-size: .875rem; }
+.cutting-viewer :deep(.field) { height: var(--control-height-small); min-height: var(--control-height-small); }
 @media (max-width: 640px) { .canvas-tools { flex-wrap: wrap; margin-left: 0; } .selected-strip { flex-basis: 100%; } }
 </style>

@@ -10,7 +10,7 @@ withDefaults(defineProps<{
 </script>
 
 <template>
-  <div :class="requiredIndicator === 'asterisk' ? 'grid content-start gap-2' : 'space-y-2'">
+  <div class="grid content-start gap-1.5">
     <label
       :for="id"
       class="block text-sm font-semibold"
@@ -44,7 +44,7 @@ withDefaults(defineProps<{
       :id="`${id}-error`"
       :role="error ? 'alert' : undefined"
       class="text-sm text-danger"
-      :class="{ hidden: !error && requiredIndicator === 'asterisk' }"
+      :class="{ hidden: !error }"
     >
       {{ error }}
     </p>

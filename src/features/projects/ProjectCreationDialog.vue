@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import FormField from '../../shared/ui/FormField.vue'
-import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { useProjectService } from './project-service'
 
@@ -32,8 +33,9 @@ async function create(): Promise<void> {
 }
 </script>
 <template>
-  <CatalogFormDialog
+  <AppDialog
     title="New Project"
+    size="small"
     :busy="busy"
     @close="close"
   >
@@ -67,15 +69,16 @@ async function create(): Promise<void> {
       >
         {{ error }}
       </p>
-      <div class="flex justify-end">
-        <button
+      <div class="dialog-actions">
+        <AppButton
           type="submit"
-          class="button button-primary"
+          variant="primary"
+          :loading="busy"
           :disabled="busy"
         >
           {{ busy ? 'Saving…' : 'Create project' }}
-        </button>
+        </AppButton>
       </div>
     </form>
-  </CatalogFormDialog>
+  </AppDialog>
 </template>

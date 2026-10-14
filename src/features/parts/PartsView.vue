@@ -10,7 +10,7 @@ import { persistenceErrorMessage } from '../../shared/ui/persistence-error-messa
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import { useMaterialRepository } from '../materials/material-repository'
 import { useProjectId, useProjectService } from '../projects/project-service'
-import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 import { useCatalogRepositories } from '../suppliers/catalog-repositories'
 import PartsJsonTransfer from './PartsJsonTransfer.vue'
 import PartDiagram from './PartDiagram.vue'
@@ -213,7 +213,7 @@ onMounted(load)
         :aria-busy="loading"
       >
         <div class="flex items-center gap-3 border-b border-line p-4">
-          <div class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-subtle px-3 focus-within:ring-2 focus-within:ring-accent">
+          <div class="field flex min-w-0 flex-1 items-center gap-2 focus-within:ring-2 focus-within:ring-accent">
             <AppIcon
               name="search"
               class="size-4 shrink-0 text-muted"
@@ -222,7 +222,7 @@ onMounted(load)
               v-model="query"
               aria-label="Search parts by name"
               type="search"
-              class="h-10 w-full min-w-0 bg-transparent text-sm outline-none"
+              class="h-full w-full min-w-0 bg-transparent text-sm outline-none"
               placeholder="Search parts…"
             >
           </div>
@@ -301,7 +301,7 @@ onMounted(load)
             <caption class="sr-only">
               Project parts with finished dimensions in millimeters.
             </caption>
-            <thead class="bg-subtle text-xs text-muted">
+            <thead class="bg-quiet-surface text-xs text-muted">
               <tr>
                 <th
                   scope="col"
@@ -398,7 +398,7 @@ onMounted(load)
                   <div class="flex justify-end gap-1">
                     <button
                       type="button"
-                      class="button size-9 justify-center p-2"
+                      class="button button-compact button-icon button-ghost"
                       :disabled="busy || Boolean(materialError) || availableMaterials.length === 0"
                       :aria-label="`Edit ${part.name}`"
                       @click.stop="edit(part)"
@@ -410,7 +410,7 @@ onMounted(load)
                     </button>
                     <button
                       type="button"
-                      class="button size-9 justify-center p-2 text-danger"
+                      class="button button-compact button-icon button-danger"
                       :disabled="busy"
                       :aria-label="`Delete ${part.name}`"
                       @click.stop="remove(part)"
@@ -517,7 +517,7 @@ onMounted(load)
         </p>
       </aside>
     </div>
-    <CatalogFormDialog
+    <AppDialog
       v-if="formOpen"
       :title="editing ? 'Edit part' : 'New part'"
       :busy="busy"
@@ -548,6 +548,6 @@ onMounted(load)
         @save="save"
         @cancel="closeForm"
       />
-    </CatalogFormDialog>
+    </AppDialog>
   </section>
 </template>

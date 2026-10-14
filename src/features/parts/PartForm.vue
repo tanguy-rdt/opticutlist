@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { computed, nextTick, ref, shallowRef } from 'vue'
 
 import type { Material } from '../../domain/model/material'
@@ -280,22 +281,23 @@ async function submit(): Promise<void> {
         </FormField>
       </div>
     </section>
-    <div class="flex flex-wrap justify-end gap-2 border-t border-line pt-5">
-      <button
-        type="submit"
-        class="button button-primary"
-        :disabled="disabled || busy || materials.length === 0"
-      >
-        {{ busy ? 'Please wait…' : (part ? 'Save changes' : 'Create part') }}
-      </button>
-      <button
+    <div class="dialog-actions">
+      <AppButton
         type="button"
-        class="button"
+
         :disabled="disabled || busy"
         @click="emit('cancel')"
       >
         Cancel
-      </button>
+      </AppButton>
+      <AppButton
+        type="submit"
+        variant="primary"
+        :loading="busy"
+        :disabled="disabled || busy || materials.length === 0"
+      >
+        {{ busy ? 'Please wait…' : (part ? 'Save changes' : 'Create part') }}
+      </AppButton>
     </div>
   </form>
 </template>

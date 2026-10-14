@@ -93,7 +93,7 @@ describe('SuppliersView', () => {
   it('keeps required fields and linked errors accessible in the sectioned product editor', async () => {
     const repositories = setup()
     const wrapper = render(repositories); await flushPromises(); await openForm(wrapper, 'product')
-    expect(wrapper.get('#catalog-dialog-title').text()).toBe('New product')
+    expect(wrapper.get('dialog h2').text()).toBe('New product')
     const form = wrapper.get('form[aria-label="Product editor"]')
     expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing and availability', 'Additional information'])
     for (const field of ['name', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain', 'availability']) {
@@ -262,7 +262,7 @@ describe('SuppliersView', () => {
     const control = wrapper.get<HTMLButtonElement>(`button[aria-label="View product ${product.name}"]`)
     expect(control.attributes('type')).toBe('button'); expect(control.attributes('aria-controls')).toBe('product-details')
     await control.trigger('click')
-    expect(wrapper.get('dialog').attributes('aria-labelledby')).toBe('catalog-dialog-title')
+    expect(wrapper.get('dialog').attributes('aria-labelledby')).toBe(wrapper.get('dialog h2').attributes('id'))
     expect(document.activeElement).toBe(wrapper.get('#product-details-title').element)
     expect(control.attributes('aria-pressed')).toBe('true')
     await button(wrapper, 'Close details').trigger('click')
@@ -313,7 +313,7 @@ describe('SuppliersView', () => {
     expect(wrapper.findAll('form')).toHaveLength(0)
     const opener = button(wrapper, '+ Add Supplier'); opener.element.focus(); await opener.trigger('click')
     const dialog = wrapper.get('dialog')
-    expect(dialog.attributes('aria-labelledby')).toBe('catalog-dialog-title')
+    expect(dialog.attributes('aria-labelledby')).toBe(dialog.get('h2').attributes('id'))
     expect(document.activeElement).toBe(wrapper.get('#supplier-name').element)
     await dialog.trigger('cancel'); expect(wrapper.find('dialog').exists()).toBe(false); expect(document.activeElement).toBe(opener.element)
     await fillSupplier(wrapper)

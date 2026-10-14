@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { watch, onBeforeUnmount, ref, shallowRef, toRaw } from 'vue'
 import type { StockImportPreview } from '../../application/inventory/stock-transfer-service'
 import type { PersistenceError } from '../../application/persistence/repositories'
@@ -74,20 +75,18 @@ async function importStock(): Promise<void> {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <slot name="heading" />
       <div class="flex gap-2">
-        <button
+        <AppButton
           type="button"
-          class="button"
-          :class="compact ? 'button-compact' : 'catalog-action'"
+          size="small"
           :aria-label="compact ? 'Export Stock' : undefined"
           :disabled="disabled || busy"
           @click="exportStock"
         >
           <AppIcon name="export" />{{ compact ? 'Export' : 'Export Stock' }}
-        </button>
-        <button
+        </AppButton>
+        <AppButton
           type="button"
-          class="button"
-          :class="compact ? 'button-compact' : 'catalog-action'"
+          size="small"
           :aria-label="compact ? 'Import Stock' : undefined"
           :disabled="disabled || busy"
           :aria-expanded="showImport"
@@ -95,7 +94,7 @@ async function importStock(): Promise<void> {
           @click="showImport = !showImport"
         >
           <AppIcon name="import" />{{ compact ? 'Import' : 'Import Stock' }}
-        </button>
+        </AppButton>
       </div>
     </div>
     <div
@@ -135,14 +134,14 @@ async function importStock(): Promise<void> {
         <p class="text-muted">
           Adds new stock only. Existing quantities are never merged or overwritten. Materials, project-generated offcuts and inventory history are not recreated. Dependencies are checked again when importing.
         </p>
-        <button
+        <AppButton
           type="button"
-          class="button button-primary"
+          variant="primary"
           :disabled="disabled || busy"
           @click="importStock"
         >
           Confirm Stock Import
-        </button>
+        </AppButton>
       </section>
     </div>
     <p

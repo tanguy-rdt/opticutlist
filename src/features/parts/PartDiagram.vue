@@ -10,7 +10,7 @@ const rect = computed(() => {
 </script>
 <template>
   <figure
-    class="rounded-xl bg-subtle p-2"
+    class="rounded-xl bg-quiet-surface p-2"
     aria-label="Part dimension preview"
   >
     <svg

@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { RouterLink } from 'vue-router'
 import { materialIdSchema, type MaterialId } from '../../domain/model/ids'
 import type { PartsImportPreview } from '../../application/projects/parts-transfer-service'
 import { useProjectId } from '../projects/project-service'
 import { usePartsTransferService } from './parts-transfer-service'
-import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 import MaterialSelector from '../materials/MaterialSelector.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { downloadJson } from '../../shared/ui/download-json'
@@ -72,22 +73,22 @@ async function exportParts(): Promise<void> {
 </script>
 <template>
   <div class="flex flex-wrap items-center gap-2">
-    <button
+    <AppButton
       type="button"
-      class="button"
+      variant="secondary"
       :disabled="disabled || busy || !service"
       @click="start"
     >
       Import JSON
-    </button>
-    <button
+    </AppButton>
+    <AppButton
       type="button"
-      class="button"
+      variant="secondary"
       :disabled="disabled || busy || !service"
       @click="exportParts"
     >
       Export JSON
-    </button>
+    </AppButton>
     <span
       v-if="notice"
       role="status"
@@ -98,7 +99,7 @@ async function exportParts(): Promise<void> {
       role="alert"
       class="text-sm text-danger"
     >{{ error }}</span>
-    <CatalogFormDialog
+    <AppDialog
       v-if="open"
       title="Import Parts JSON"
       :busy="busy"
@@ -188,23 +189,23 @@ async function exportParts(): Promise<void> {
           </ul>
         </section>
         <div class="flex justify-end gap-2">
-          <button
+          <AppButton
             type="button"
-            class="button"
+            variant="secondary"
             :disabled="busy"
             @click="close"
           >
             Cancel
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             type="submit"
-            class="button button-primary"
+            variant="primary"
             :disabled="busy || disabled || !preview || materialIds.some(id => id === null)"
           >
             Import parts
-          </button>
+          </AppButton>
         </div>
       </form>
-    </CatalogFormDialog>
+    </AppDialog>
   </div>
 </template>

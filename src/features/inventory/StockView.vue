@@ -10,7 +10,7 @@ import { useStockRepository } from './stock-repository'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
-import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 import StockForm from './StockForm.vue'
 import StockDetails from './StockDetails.vue'
 
@@ -415,7 +415,7 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
         </aside>
       </div>
     </template>
-    <CatalogFormDialog
+    <AppDialog
       v-if="detailsOpen && selected"
       title="Stock details"
       close-label="Close details"
@@ -433,8 +433,8 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
         @edit="openForm(selected)"
         @delete="remove(selected)"
       />
-    </CatalogFormDialog>
-    <CatalogFormDialog
+    </AppDialog>
+    <AppDialog
       v-if="formOpen"
       :title="editing ? 'Edit stock item' : 'Add to stock'"
       :busy="busy"
@@ -452,6 +452,6 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
       >
         {{ writeError }}
       </p>
-    </CatalogFormDialog>
+    </AppDialog>
   </section>
 </template>

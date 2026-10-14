@@ -12,7 +12,7 @@ function imageError(event: Event): void {
 </script>
 <template>
   <span
-    class="inline-flex shrink-0 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg bg-subtle text-muted"
+    class="inline-flex shrink-0 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg bg-quiet-surface text-muted"
     :class="variant === 'preview' ? 'aspect-[3/2] w-full' : 'h-10 w-12'"
   >
     <img

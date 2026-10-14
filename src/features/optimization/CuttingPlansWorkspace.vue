@@ -307,7 +307,7 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
 .setting { margin-top: 1.25rem; min-width: 0; }
 .setting legend, .setting-label { margin-bottom: .5rem; font-size: .75rem; color: var(--muted); font-weight: 600; }
 .options { display: flex; gap: .25rem; padding: .2rem; background: var(--canvas); border-radius: .45rem; }
-.options button { flex: 1; min-height: 2.25rem; padding: .3rem .5rem; border-radius: .3rem; font-size: .8125rem; }
+.options button { flex: 1; height: var(--control-height-small); min-height: var(--control-height-small); padding: .3rem .5rem; border-radius: var(--control-radius); font-size: .8125rem; }
 .options button[aria-pressed='true'] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
 .options button:hover { color: var(--accent); }
 .document-action { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }

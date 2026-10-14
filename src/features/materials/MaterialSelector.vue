@@ -80,7 +80,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside); })
       ref="trigger"
       v-bind="$attrs"
       type="button"
-      class="field flex min-h-12 items-center gap-3 text-left"
+      class="field flex items-center gap-3 text-left"
       :value="modelValue"
       :disabled="disabled"
       aria-haspopup="listbox"
@@ -90,6 +90,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside); })
     >
       <MaterialThumbnail
         v-if="selected"
+        class="max-h-7 max-w-8"
         :preset-id="selected.presetId"
       />
       <span class="min-w-0 flex-1 truncate">{{ selected?.name ?? (modelValue ? 'Missing material — choose another' : 'Select a material') }}</span>
@@ -104,7 +105,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside); })
       class="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
     >
       <div class="border-b border-line px-2 py-1.5">
-        <div class="flex h-8 items-center gap-2 rounded-md bg-subtle px-2 focus-within:ring-2 focus-within:ring-accent">
+        <div class="flex h-9 items-center gap-2 rounded-lg bg-quiet-surface px-2 focus-within:ring-2 focus-within:ring-accent">
           <AppIcon
             name="search"
             class="size-3.5 shrink-0 text-muted"

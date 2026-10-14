@@ -42,7 +42,7 @@ describe('searchable Material selector', () => {
     const wrapper = render()
     await wrapper.get('#material').trigger('click')
     const search = wrapper.get('[role="combobox"]')
-    expect(search.element.parentElement?.classList.contains('h-8')).toBe(true)
+    expect(search.element.parentElement?.classList.contains('h-9')).toBe(true)
     expect(search.element.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
     expect(search.attributes('class')).not.toContain('field')
     expect(search.element.compareDocumentPosition(wrapper.get('[role="listbox"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

@@ -4,8 +4,8 @@
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-subtle: var(--subtle);
-  --color-quiet-surface: color-mix(in srgb, var(--surface) 96%, var(--ink));
-  --color-icon-surface: var(--success-surface);
+  --color-quiet-surface: var(--quiet-surface);
+  --color-icon-surface: var(--quiet-surface);
   --color-selection-line: color-mix(in srgb, var(--surface) 70%, var(--accent));
   --color-ink: var(--ink);
   --color-muted: var(--muted);
@@ -22,6 +22,11 @@
 
 :root {
   color-scheme: light;
+  --quiet-surface: color-mix(in srgb, var(--surface) 96%, var(--ink));
+  --control-height: 2.75rem;
+  --control-height-small: 2.25rem;
+  --control-radius: 0.5rem;
+  --dialog-backdrop: color-mix(in srgb, var(--ink) 30%, transparent);
   --cutting-selection: #24563d;
   --cutting-panel: #e8d1ae;
   --cutting-part: #f1dfc5;
@@ -29,20 +34,20 @@
   --cutting-ink: #302c25;
   --cutting-line: #87745c;
   --cutting-kerf: #795a3c;
-  --canvas: #f5f3ee;
+  --canvas: #f6f5f1;
   --surface: #ffffff;
-  --subtle: #eaf0e9;
-  --ink: #1e2925;
-  --muted: #526059;
+  --subtle: #e9f0ea;
+  --ink: #25312b;
+  --muted: #526057;
   --line: #dddeda;
   --control-line: #7c8b80;
-  --accent: #24563d;
-  --accent-hover: #1e4e37;
+  --accent: #285b43;
+  --accent-hover: #204d37;
   --on-accent: #ffffff;
   --danger: #a12727;
   --danger-surface: #fff0ef;
   --success: #246044;
-  --success-surface: #e8f4ea;
+  --success-surface: #e9f0ea;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -54,12 +59,13 @@
     --cutting-line: #5f513d;
     --cutting-kerf: #654b34;
     color-scheme: dark;
-    --canvas: #141c19;
-    --surface: #1d2823;
-    --subtle: #2b3931;
+    --dialog-backdrop: color-mix(in srgb, var(--canvas) 75%, transparent);
+    --canvas: #171d19;
+    --surface: #222a24;
+    --subtle: #2c3b32;
     --ink: #edf3ee;
     --muted: #b7c6bb;
-    --line: #4a5d50;
+    --line: #49584d;
     --control-line: #7d9787;
     --accent: #9cd6ac;
     --accent-hover: #b5e6c0;
@@ -79,12 +85,13 @@
   --cutting-line: #5f513d;
   --cutting-kerf: #654b34;
   color-scheme: dark;
-  --canvas: #141c19;
-  --surface: #1d2823;
-  --subtle: #2b3931;
+  --dialog-backdrop: color-mix(in srgb, var(--canvas) 75%, transparent);
+  --canvas: #171d19;
+  --surface: #222a24;
+  --subtle: #2c3b32;
   --ink: #edf3ee;
   --muted: #b7c6bb;
-  --line: #4a5d50;
+  --line: #49584d;
   --control-line: #7d9787;
   --accent: #9cd6ac;
   --accent-hover: #b5e6c0;
@@ -98,7 +105,8 @@
 @layer base {
   body { @apply m-0 bg-canvas text-ink antialiased; }
   button, select { @apply cursor-pointer; }
-  button:disabled { @apply cursor-not-allowed opacity-60; }
+  :is(button, input, select, textarea):disabled { @apply cursor-not-allowed opacity-60; }
+  input:is([type="checkbox"], [type="radio"]) { accent-color: var(--accent); }
   :where(a, button, input, select, textarea, [tabindex]):focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 3px;
@@ -111,12 +119,24 @@
   .home-card[aria-disabled='true'] { @apply cursor-not-allowed border-dashed; }
   .home-card:not([aria-disabled='true']):is(:hover, :focus-visible) { @apply shadow-md; }
   .home-icon { @apply inline-flex h-12 w-12 items-center justify-center rounded-xl bg-subtle text-accent; }
-  .button { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold transition-colors hover:bg-subtle; }
+  .button { @apply inline-flex shrink-0 items-center justify-center gap-2 border border-line bg-surface px-4 text-sm font-semibold transition-colors hover:bg-quiet-surface; height: var(--control-height); min-height: var(--control-height); border-radius: var(--control-radius); }
   .button-primary { @apply border-transparent bg-accent text-on-accent hover:bg-accent-hover; }
+  .button-ghost { @apply border-transparent bg-transparent text-muted hover:bg-quiet-surface hover:text-ink; }
   .button-danger { @apply text-danger hover:bg-danger-surface; }
-  .button-compact { @apply min-h-9 px-3 py-1.5 text-xs; }
-  .catalog-workspace .field { @apply min-h-9 py-1.5 text-sm; }
-  .field { @apply block min-h-11 w-full rounded-lg border border-control-line bg-surface px-3 py-2 text-ink; }
+  .button-compact { @apply px-3 text-sm; height: var(--control-height-small); min-height: var(--control-height-small); }
+  .button-icon { width: var(--control-height); padding: 0; }
+  .button-icon.button-compact { width: var(--control-height-small); }
+  .button > svg, .button .app-icon { @apply size-4 shrink-0; }
+  .button-spinner { @apply size-4 shrink-0 rounded-full border-2 border-current border-r-transparent; animation: control-spin 0.8s linear infinite; }
+  .field { @apply block min-w-0 w-full border border-control-line bg-surface px-3 text-sm text-ink; height: var(--control-height); min-height: var(--control-height); border-radius: var(--control-radius); }
+  .field-small { height: var(--control-height-small); min-height: var(--control-height-small); }
+  textarea.field { height: auto; min-height: 6rem; padding-block: 0.625rem; }
+  .field[type="file"] { height: auto; padding-block: 0.5rem; }
+  .field::file-selector-button { margin-right: 0.5rem; border: 0; border-radius: var(--control-radius); background: var(--quiet-surface); color: var(--ink); padding: 0.25rem 0.5rem; font: inherit; }
+  .app-dialog::backdrop { background: var(--dialog-backdrop); }
+  .dialog-actions { @apply flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4; }
+  .action-menu { @apply rounded-xl border border-line bg-surface p-1.5 shadow-lg; }
+  .action-menu-item { @apply flex w-full items-center justify-start rounded-lg px-3 text-left text-sm hover:bg-quiet-surface; height: var(--control-height-small); }
   .field::placeholder { @apply text-muted opacity-100; }
   .field[aria-invalid='true'] { @apply border-danger; }
   .nav-link { @apply rounded-lg px-4 py-2.5 text-sm font-medium text-muted hover:bg-subtle hover:text-ink; }
@@ -135,8 +155,7 @@
 
 @layer components {
   .app-icon { @apply h-4 w-4; }
-  .catalog-page .panel { @apply rounded-[9px]; }
-  .catalog-action { @apply min-h-10 gap-2 px-3 py-2 text-xs font-medium; }
+  .catalog-action { @apply gap-2 px-3 text-sm font-semibold; height: var(--control-height-small); min-height: var(--control-height-small); }
   .catalog-summary-card { @apply grid min-h-[92px] grid-cols-[54px_minmax(0,1fr)] grid-rows-[auto_auto_auto] items-center gap-x-5 rounded-[9px] border border-line bg-surface px-4 py-3; }
   .catalog-summary-card .catalog-icon { @apply row-span-3; }
   .catalog-summary-card dt { @apply col-start-2 row-start-2 text-xs font-medium; }
@@ -169,4 +188,10 @@
   .catalog-summary-card { column-gap: 0.75rem; grid-template-columns: 36px minmax(0, 1fr); padding-inline: 0.75rem; }
   .catalog-summary-card .catalog-icon { height: 36px; width: 36px; }
   .catalog-summary-card .catalog-icon svg { height: 24px; width: 24px; }
+}
+
+@keyframes control-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .button { transition: none; }
+  .button-spinner { animation: none; }
 }

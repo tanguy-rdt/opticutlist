@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { ProjectStockHandling } from '../../application/projects/project-deletion'
@@ -9,7 +10,7 @@ import { persistenceErrorMessage } from '../../shared/ui/persistence-error-messa
 import ProjectCreationDialog from '../../features/projects/ProjectCreationDialog.vue'
 import ProjectList from '../../features/projects/ProjectList.vue'
 import ProjectStartTiles from '../../features/projects/ProjectStartTiles.vue'
-import CatalogFormDialog from '../../features/suppliers/CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 import { useProjectNavigation } from '../../features/projects/project-navigation'
 import { useProjectService } from '../../features/projects/project-service'
 
@@ -105,14 +106,14 @@ onMounted(load)
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button
+        <AppButton
           type="button"
-          class="button button-primary"
+          variant="primary"
           :disabled="loading || busy || !!error"
           @click="openForm()"
         >
           <AppIcon name="plus" />New project
-        </button>
+        </AppButton>
         <RouterLink
           to="/import?from=projects"
           class="button"
@@ -144,14 +145,14 @@ onMounted(load)
         class="text-danger"
       >
         {{ error }}
-      </p><button
+      </p><AppButton
         type="button"
-        class="button"
+        variant="secondary"
         :disabled="busy"
         @click="load"
       >
         Retry projects
-      </button>
+      </AppButton>
     </div>
     <div
       v-if="!loading && !error && projects.length === 0"
@@ -209,18 +210,19 @@ onMounted(load)
         <p class="mt-1 text-sm text-muted">
           Try another name or clear your search.
         </p>
-        <button
+        <AppButton
           type="button"
-          class="button mt-3"
+          variant="secondary"
+          class="mt-3"
           @click="search = ''"
         >
           Clear search
-        </button>
+        </AppButton>
       </div>
     </section>
-    <CatalogFormDialog
+    <AppDialog
       v-if="deleting"
-      class="project-delete-dialog"
+      size="small"
       :title="`Delete &quot;${deleting.name}&quot;?`"
       close-label="Close deletion dialog"
       aria-describedby="project-delete-description"
@@ -316,35 +318,38 @@ onMounted(load)
         >
           {{ deletionError }}
         </p>
-        <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
+        <div class="dialog-actions">
           <p class="mr-auto text-xs text-muted">
             This cannot be undone.
           </p>
-          <button
+          <AppButton
             type="button"
-            class="button min-h-9 px-3 py-1.5 text-sm"
+            variant="secondary"
+            size="small"
             :disabled="busy"
             @click="closeDeletion"
           >
             Cancel
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             type="submit"
-            class="button button-danger min-h-9 px-3 py-1.5 text-sm"
+            variant="destructive"
+            size="small"
             :disabled="busy || deletionLoading"
           >
             {{ busy ? 'Deleting…' : 'Delete project' }}
-          </button>
+          </AppButton>
         </div>
       </form>
-    </CatalogFormDialog>
+    </AppDialog>
     <ProjectCreationDialog
       v-if="formMode === 'create'"
       @close="closeForm"
     />
-    <CatalogFormDialog
+    <AppDialog
       v-if="formMode === 'rename'"
       title="Rename project"
+      size="small"
       :busy="busy"
       @close="closeForm"
     >
@@ -378,44 +383,16 @@ onMounted(load)
         >
           {{ formError }}
         </p>
-        <div class="flex justify-end">
-          <button
+        <div class="dialog-actions">
+          <AppButton
             type="submit"
-            class="button button-primary"
+            variant="primary"
             :disabled="busy"
           >
             {{ busy ? 'Saving…' : 'Save name' }}
-          </button>
+          </AppButton>
         </div>
       </form>
-    </CatalogFormDialog>
+    </AppDialog>
   </section>
 </template>
-
-<style scoped>
-.project-delete-dialog {
-  width: min(520px, calc(100vw - 2rem));
-  padding: 1.25rem;
-}
-.project-delete-dialog :deep(> div:first-child) {
-  align-items: flex-start;
-  margin-bottom: 0.5rem;
-}
-.project-delete-dialog :deep(#catalog-dialog-title) {
-  padding-top: 0.25rem;
-  overflow-wrap: anywhere;
-}
-.project-delete-dialog :deep(button[aria-label='Close deletion dialog']) {
-  min-height: 2rem;
-  width: 2rem;
-  height: 2rem;
-  padding: 0.375rem;
-  border-color: transparent;
-  background: transparent;
-  color: var(--color-muted);
-}
-.project-delete-dialog :deep(button[aria-label='Close deletion dialog']:hover) {
-  background: var(--color-subtle);
-  color: var(--color-ink);
-}
-</style>

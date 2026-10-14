@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
@@ -131,22 +132,22 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
       </ul>
     </section>
     <div class="grid gap-2 border-t border-line pt-4">
-      <button
+      <AppButton
         type="button"
-        class="button"
+        variant="secondary"
         :disabled="!writable || busy"
         @click="emit('edit')"
       >
         <AppIcon name="edit" />Edit stock item
-      </button>
-      <button
+      </AppButton>
+      <AppButton
         type="button"
-        class="button button-danger"
+        variant="destructive"
         :disabled="!writable || busy"
         @click="emit('delete')"
       >
         <AppIcon name="delete" />Delete stock item
-      </button>
+      </AppButton>
     </div>
   </section>
 </template>

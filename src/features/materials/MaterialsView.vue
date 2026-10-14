@@ -232,7 +232,7 @@ onActivated(() => {
             <select
               v-model="categoryFilter"
               aria-label="Filter material category"
-              class="field min-h-10 py-1.5 text-sm"
+              class="field field-small py-1.5 text-sm"
               :disabled="loading"
             >
               <option value="">

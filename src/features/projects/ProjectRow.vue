@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { CuttingProject } from '../../domain/model/cutting-project'
@@ -9,7 +10,7 @@ const emit = defineEmits<{ rename: [project: CuttingProject]; delete: [project: 
 const navigation = useProjectNavigation()
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
-const trigger = ref<HTMLButtonElement | null>(null)
+const trigger = ref<{ focus(): void } | null>(null)
 const menu = ref<HTMLElement | null>(null)
 function close(restoreFocus = false): void { open.value = false; if (restoreFocus) trigger.value?.focus() }
 async function show(): Promise<void> { if (props.disabled) return; open.value = true; await nextTick(); menu.value?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus() }
@@ -49,11 +50,13 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
       class="relative z-10 shrink-0"
       @focusout="focusOut"
     >
-      <button
+      <AppButton
         ref="trigger"
         type="button"
-        class="button size-9 justify-center border-transparent p-2 text-muted"
-        :aria-label="`Actions for ${project.name}`"
+        variant="ghost"
+        size="small"
+        icon-only
+        :label="`Actions for ${project.name}`"
         aria-haspopup="menu"
         :aria-expanded="open"
         :aria-controls="`project-actions-${project.id}`"
@@ -64,7 +67,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
       >
         <svg
           viewBox="0 0 24 24"
-          class="size-5"
+          class="size-4"
           fill="currentColor"
           aria-hidden="true"
         ><circle
@@ -80,20 +83,20 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
           cy="12"
           r="1.5"
         /></svg>
-      </button>
+      </AppButton>
       <div
         v-if="open"
         :id="`project-actions-${project.id}`"
         ref="menu"
         role="menu"
         :aria-label="`Actions for ${project.name}`"
-        class="panel absolute right-0 top-full z-20 mt-1 w-56 space-y-1 p-1.5 shadow-lg"
+        class="action-menu absolute right-0 top-full z-20 mt-1 w-56 space-y-1"
         @keydown="keyboard"
       >
         <button
           type="button"
           role="menuitem"
-          class="flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left text-sm hover:bg-subtle"
+          class="action-menu-item"
           @click="close(true); emit('rename', project)"
         >
           Rename project
@@ -105,7 +108,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
         <button
           type="button"
           role="menuitem"
-          class="flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left text-sm text-danger hover:bg-danger-surface"
+          class="action-menu-item text-danger hover:bg-danger-surface"
           @click="close(true); emit('delete', project)"
         >
           Delete project

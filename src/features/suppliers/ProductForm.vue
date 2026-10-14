@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { computed, nextTick, reactive, ref, shallowRef } from 'vue'
 import { materialSchema, type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
@@ -244,7 +245,7 @@ async function submit(): Promise<void> {
         <fieldset
           v-if="creatingMaterial"
           id="inline-material-fields"
-          class="space-y-4 rounded-lg border border-line bg-subtle p-4"
+          class="space-y-4 rounded-lg border border-line bg-quiet-surface p-4"
           :disabled="disabled || materialBusy"
         >
           <legend class="px-1 font-semibold">
@@ -489,29 +490,29 @@ async function submit(): Promise<void> {
         </template>
       </FormField>
     </section>
-    <div class="flex flex-wrap justify-end gap-3 border-t border-line pt-4">
-      <button
-        type="submit"
-        class="button button-primary"
-        :disabled="disabled || materialBusy || creatingMaterial || suppliers.length === 0"
-      >
-        {{ product ? 'Save product' : 'Create product' }}
-      </button>
-      <button
+    <div class="dialog-actions">
+      <AppButton
         v-if="product"
         type="button"
-        class="button"
+
         :disabled="disabled"
         @click="emit('cancel')"
       >
         Cancel
-      </button>
+      </AppButton>
+      <AppButton
+        type="submit"
+        variant="primary"
+        :disabled="disabled || materialBusy || creatingMaterial || suppliers.length === 0"
+      >
+        {{ product ? 'Save product' : 'Create product' }}
+      </AppButton>
     </div>
   </form>
 </template>
 <style scoped>
 .product-editor :deep(.field) {
-  height: 3rem;
+
   min-width: 0;
   font-size: 0.875rem;
 }

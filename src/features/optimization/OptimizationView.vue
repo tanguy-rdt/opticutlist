@@ -14,7 +14,7 @@ import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy'
 import { useCurrentResultService } from './current-result-service'
 import CuttingPlansWorkspace from './CuttingPlansWorkspace.vue'
-import CatalogFormDialog from '../suppliers/CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 import { useCuttingWorkspaceState } from '../projects/cutting-workspace-state'
 import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import FormField from '../../shared/ui/FormField.vue'
@@ -405,7 +405,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           Cutting settings
         </button>
       </form>
-      <CatalogFormDialog
+      <AppDialog
         :open="settingsOpen"
         title="Cutting settings"
         close-label="Close cutting settings"
@@ -506,7 +506,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             Optimize with these settings
           </button>
         </div>
-      </CatalogFormDialog>
+      </AppDialog>
       <p
         v-if="inputError"
         role="alert"
@@ -710,7 +710,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
   </section>
 </template>
 <style scoped>
-.optimization-workspace :deep(.field) { min-height: 2.25rem; padding-block: 0.375rem; font-size: 0.875rem; }
+.optimization-workspace :deep(.field) { height: var(--control-height-small); min-height: var(--control-height-small); }
 .cutting-workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1024px) {
   .cutting-workspace-grid { grid-template-columns: 200px minmax(0, 1fr); }

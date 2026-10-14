@@ -14,7 +14,7 @@ import { useDataImportRefresh } from '../../app/settings/use-data-import-refresh
 import ProductDetails from './ProductDetails.vue'
 import SupplierLogo from './SupplierLogo.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
-import CatalogFormDialog from './CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 
 const repositories = useCatalogRepositories()
 const stockRepository = useCatalogStockRepository()
@@ -341,7 +341,7 @@ onMounted(load)
           id="supplier-search"
           v-model="supplierSearch"
           type="search"
-          class="field"
+          class="field field-small"
           placeholder="Find a supplier…"
         >
         <nav
@@ -439,7 +439,7 @@ onMounted(load)
               </button>
               <button
                 type="button"
-                class="rounded px-2 py-1 text-xs font-medium text-muted hover:text-accent"
+                class="button button-compact button-ghost"
                 :disabled="disabled"
                 @click="load"
               >
@@ -462,7 +462,7 @@ onMounted(load)
                   id="catalog-search"
                   v-model="search"
                   type="search"
-                  class="field"
+                  class="field field-small"
                   placeholder="Search products…"
                   style="padding-left: 2.25rem"
                 >
@@ -475,7 +475,7 @@ onMounted(load)
               >Category</label><select
                 id="catalog-category"
                 v-model="categoryFilter"
-                class="field"
+                class="field field-small"
               >
                 <option value="">
                   All categories
@@ -495,7 +495,7 @@ onMounted(load)
               >Material</label><select
                 id="catalog-material"
                 v-model="materialFilter"
-                class="field"
+                class="field field-small"
               >
                 <option value="">
                   All materials
@@ -515,7 +515,7 @@ onMounted(load)
               >Availability</label><select
                 id="catalog-availability"
                 v-model="availabilityFilter"
-                class="field"
+                class="field field-small"
               >
                 <option value="">
                   Any availability
@@ -672,7 +672,7 @@ onMounted(load)
                   <td class="px-3 py-2.5">
                     <button
                       type="button"
-                      class="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-muted hover:bg-subtle"
+                      class="button button-compact"
                       :disabled="disabled"
                       :aria-label="`Edit panel ${product.name}`"
                       @click.stop="editProduct(product)"
@@ -699,7 +699,7 @@ onMounted(load)
         @delete="removeProduct"
       />
     </div>
-    <CatalogFormDialog
+    <AppDialog
       v-if="compactDetails && detailsOpen && selectedProduct"
       title="Product details"
       close-label="Close details"
@@ -717,8 +717,8 @@ onMounted(load)
         @edit="editProduct"
         @delete="removeProduct"
       />
-    </CatalogFormDialog>
-    <CatalogFormDialog
+    </AppDialog>
+    <AppDialog
       v-if="formMode"
       :title="formMode === 'supplier' ? 'Supplier information' : (editingProduct ? 'Edit product' : 'New product')"
       :busy="busy"
@@ -755,6 +755,6 @@ onMounted(load)
         @material-busy="busy = $event"
         @cancel="closeForm"
       />
-    </CatalogFormDialog>
+    </AppDialog>
   </section>
 </template>

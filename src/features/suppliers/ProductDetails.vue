@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { computed } from 'vue'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
@@ -49,7 +50,7 @@ function availability(product: SupplierProduct): string { return product.availab
         </p>
       </header>
       <dl
-        class="catalog-product-overview mt-4 space-y-3 rounded-lg bg-subtle p-3 text-sm"
+        class="catalog-product-overview mt-4 space-y-3 rounded-lg bg-quiet-surface p-3 text-sm"
         aria-label="Panel dimensions and price"
       >
         <div>
@@ -160,7 +161,7 @@ function availability(product: SupplierProduct): string { return product.availab
           Actions
         </h3>
         <div class="grid gap-2">
-          <button
+          <AppButton
             type="button"
             class="button w-full"
             :disabled="disabled"
@@ -168,8 +169,8 @@ function availability(product: SupplierProduct): string { return product.availab
             @click="emit('edit', product)"
           >
             <AppIcon name="edit" />Edit product
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             type="button"
             class="button button-danger w-full"
             :disabled="disabled"
@@ -177,7 +178,7 @@ function availability(product: SupplierProduct): string { return product.availab
             @click="emit('delete', product)"
           >
             <AppIcon name="delete" />Delete product
-          </button>
+          </AppButton>
         </div>
       </section>
     </template>

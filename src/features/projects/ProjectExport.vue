@@ -26,7 +26,7 @@ async function exportProject(): Promise<void> {
 <template>
   <div class="space-y-2">
     <button
-      :class="menuItem ? 'flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left text-sm hover:bg-subtle' : 'button'"
+      :class="menuItem ? 'action-menu-item' : 'button'"
       :role="menuItem ? 'menuitem' : undefined"
       type="button"
       :disabled="!service || busy"

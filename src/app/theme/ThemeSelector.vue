@@ -47,7 +47,7 @@ onUnmounted(() => { media?.removeEventListener('change', systemChanged) })
     <select
       id="theme-preference"
       v-model="preference"
-      class="field min-h-9 w-auto py-1.5 text-sm"
+      class="field field-small w-auto py-1.5 text-sm"
       aria-describedby="theme-warning"
     >
       <option value="light">

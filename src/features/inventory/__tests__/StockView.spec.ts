@@ -226,7 +226,7 @@ describe('editable physical inventory workspace', () => {
   it('supports the small-screen details dialog and keeps editing fields accessible', async () => {
     const { wrapper } = await editable([item])
     await button(wrapper, 'View stock details').trigger('click')
-    expect(wrapper.get('dialog').attributes('aria-labelledby')).toBe('catalog-dialog-title')
+    expect(wrapper.get('dialog').attributes('aria-labelledby')).toBe(wrapper.get('dialog h2').attributes('id'))
     await button(wrapper, 'Close details').trigger('click')
     expect(wrapper.find('dialog').exists()).toBe(false)
     await button(wrapper, 'Edit stock item').trigger('click')

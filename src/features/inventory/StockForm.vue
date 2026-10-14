@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { computed, nextTick, reactive, ref, shallowRef } from 'vue'
 import { stockItemSchema, type StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
@@ -174,14 +175,14 @@ async function submit(): Promise<void> {
     >
       Original source: {{ item.provenance.source }}. Past cutting records and provenance stay unchanged.
     </p>
-    <div class="flex justify-end border-t border-line pt-4">
-      <button
+    <div class="dialog-actions">
+      <AppButton
         type="submit"
-        class="button button-primary"
+        variant="primary"
         :disabled="disabled"
       >
         {{ disabled ? 'Saving stock…' : (item ? 'Save stock changes' : 'Add stock item') }}
-      </button>
+      </AppButton>
     </div>
   </form>
 </template>

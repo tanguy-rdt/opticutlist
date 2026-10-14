@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import StockTransfer from '../../features/inventory/StockTransfer.vue'
 import ThemeSelector from '../theme/ThemeSelector.vue'
-import CatalogFormDialog from '../../features/suppliers/CatalogFormDialog.vue'
+import AppDialog from '../../shared/ui/AppDialog.vue'
 import CatalogTransfer from '../../features/suppliers/CatalogTransfer.vue'
 
 defineProps<{ open: boolean }>()
@@ -21,13 +21,13 @@ function close(): void {
 }
 </script>
 <template>
-  <CatalogFormDialog
+  <AppDialog
     title="Settings"
     title-id="settings-dialog-title"
     close-label="Close Settings"
     :open="open"
     :busy="busy"
-    style="max-width: 32rem"
+    size="small"
     @close="close"
   >
     <div class="divide-y divide-line">
@@ -102,15 +102,5 @@ function close(): void {
         </h3>
       </section>
     </div>
-  </CatalogFormDialog>
+  </AppDialog>
 </template>
-<style scoped>
-:deep(button[aria-label='Close Settings']) {
-  min-height: 2rem;
-  width: 2rem;
-  height: 2rem;
-  padding: 0.375rem;
-  border-color: transparent;
-  background: transparent;
-}
-</style>

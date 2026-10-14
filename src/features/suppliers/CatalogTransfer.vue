@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { watch, onBeforeUnmount, ref, shallowRef, toRaw } from 'vue'
 import type { CatalogImportPreview } from '../../application/catalog/catalog-transfer-service'
 import type { PersistenceError } from '../../application/persistence/repositories'
@@ -74,20 +75,18 @@ async function importCatalog(): Promise<void> {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <slot name="heading" />
       <div class="flex gap-2">
-        <button
+        <AppButton
           type="button"
-          class="button"
-          :class="compact ? 'button-compact' : 'catalog-action'"
+          size="small"
           :aria-label="compact ? 'Export Catalog' : undefined"
           :disabled="disabled || busy"
           @click="exportCatalog"
         >
           <AppIcon name="export" />{{ compact ? 'Export' : 'Export Catalog' }}
-        </button>
-        <button
+        </AppButton>
+        <AppButton
           type="button"
-          class="button"
-          :class="compact ? 'button-compact' : 'catalog-action'"
+          size="small"
           :aria-label="compact ? 'Import Catalog' : undefined"
           :disabled="disabled || busy"
           :aria-expanded="showImport"
@@ -95,7 +94,7 @@ async function importCatalog(): Promise<void> {
           @click="showImport = !showImport"
         >
           <AppIcon name="import" />{{ compact ? 'Import' : 'Import Catalog' }}
-        </button>
+        </AppButton>
       </div>
     </div>
     <div
@@ -135,14 +134,14 @@ async function importCatalog(): Promise<void> {
         <p class="text-muted">
           Relationships are preserved. Conflicts are checked again during import. Projects and physical inventory are excluded.
         </p>
-        <button
+        <AppButton
           type="button"
-          class="button button-primary"
+          variant="primary"
           :disabled="disabled || busy"
           @click="importCatalog"
         >
           Confirm Catalog Import
-        </button>
+        </AppButton>
       </section>
     </div>
     <p

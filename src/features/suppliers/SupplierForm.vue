@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '../../shared/ui/AppButton.vue'
 import { nextTick, ref, shallowRef } from 'vue'
 import { supplierSchema, type Supplier } from '../../domain/model/supplier'
 import FormField from '../../shared/ui/FormField.vue'
@@ -72,23 +73,23 @@ async function submit(): Promise<void> {
           >
         </template>
       </FormField>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="submit"
-          class="button button-primary"
-          :disabled="disabled"
-        >
-          {{ supplier ? 'Save supplier' : 'Create supplier' }}
-        </button>
-        <button
+      <div class="dialog-actions">
+        <AppButton
           v-if="supplier"
           type="button"
-          class="button"
+
           :disabled="disabled"
           @click="emit('cancel')"
         >
           Cancel
-        </button>
+        </AppButton>
+        <AppButton
+          type="submit"
+          variant="primary"
+          :disabled="disabled"
+        >
+          {{ supplier ? 'Save supplier' : 'Create supplier' }}
+        </AppButton>
       </div>
     </form>
   </section>
