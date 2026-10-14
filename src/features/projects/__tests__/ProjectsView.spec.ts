@@ -21,6 +21,8 @@ function setup(records = [] as readonly typeof project[]) {
     delete: vi.fn<ProjectService['projects']['delete']>().mockResolvedValue({ ok: true, value: undefined }),
   }
   const service: ProjectService = {
+    deletionPreview: vi.fn<ProjectService['deletionPreview']>().mockResolvedValue({ ok: true, value: { restorationIssues: [] } }),
+    deleteProject: vi.fn<ProjectService['deleteProject']>().mockImplementation(id => projects.delete(id)),
     projects, parts: () => { throw new Error('Unused') },
     listLegacyParts: () => Promise.resolve({ ok: true, value: [] }),
     adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }),
@@ -29,7 +31,7 @@ function setup(records = [] as readonly typeof project[]) {
   const router = createAppRouter(createMemoryHistory())
   const wrapper = mount(ProjectsView, { global: { plugins: [router], provide: { [projectServiceKey]: service, [projectTransferServiceKey]: transfer } }, attachTo: document.body })
   wrappers.push(wrapper)
-  return { wrapper, projects, router, transfer }
+  return { wrapper, projects, router, transfer, service }
 }
 describe('Project creation', () => {
   it('validates the required name and focuses the field without writing', async () => {
@@ -155,22 +157,34 @@ describe('Project manager', () => {
     expect(wrapper.get<HTMLInputElement>('#project-name').element.value).toBe('New name')
     expect(projects.create).not.toHaveBeenCalled(); expect(projects.update).not.toHaveBeenCalled()
   })
-  it('requires deletion consent and preserves projects when existing dependency guards reject deletion', async () => {
-    const { wrapper, projects } = setup([project]); await flushPromises()
-    const consent = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    await button(wrapper, 'Delete project').trigger('click')
+  it('defaults deletion to keeping stock, supports Cancel and retains errors in the dialog', async () => {
+    const { wrapper, projects, service } = setup([project]); await flushPromises()
+    await button(wrapper, 'Delete project').trigger('click'); await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('input[value="keep"]').element.checked).toBe(true)
     expect(projects.delete).not.toHaveBeenCalled()
-    consent.mockReturnValue(true)
-    projects.delete.mockResolvedValueOnce({ ok: false, error: { kind: 'referenceConflict', message: 'Remove the project’s parts before deleting it.' } })
+    await button(wrapper, 'Cancel').trigger('click')
+    expect(wrapper.find('dialog').exists()).toBe(false)
     await button(wrapper, 'Delete project').trigger('click'); await flushPromises()
-    expect(projects.delete).toHaveBeenCalledWith(project.id)
-    expect(wrapper.get('[role="alert"]').text()).toContain('Remove the project’s parts')
-    expect(wrapper.get('[aria-label="Selected project details"]').text()).toContain(project.name)
-    await button(wrapper, 'Retry projects').trigger('click'); await flushPromises()
+    projects.delete.mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Disk full' } })
+    await wrapper.get('dialog form').trigger('submit'); await flushPromises()
+    expect(service.deleteProject).toHaveBeenCalledWith(project.id, 'keep')
+    expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
     projects.list.mockResolvedValue({ ok: true, value: [] })
-    await button(wrapper, 'Delete project').trigger('click'); await flushPromises()
+    await wrapper.get('dialog form').trigger('submit'); await flushPromises()
+    expect(wrapper.find('dialog').exists()).toBe(false)
     expect(wrapper.find('[aria-label="Selected project details"]').exists()).toBe(false)
-    expect(wrapper.findAll('.home-card')).toHaveLength(2)
+  })
+  it('offers restoration and disables it when dependencies prevent a full reversal', async () => {
+    const { wrapper, service } = setup([project]); await flushPromises()
+    await button(wrapper, 'Delete project').trigger('click'); await flushPromises()
+    await wrapper.get('input[value="restore"]').setValue()
+    await wrapper.get('dialog form').trigger('submit'); await flushPromises()
+    expect(service.deleteProject).toHaveBeenCalledWith(project.id, 'restore')
+    vi.spyOn(service, 'deletionPreview').mockResolvedValue({ ok: true, value: { restorationIssues: ['Offcut used by another project'] } })
+    await button(wrapper, 'Delete project').trigger('click'); await flushPromises()
+    expect(wrapper.get('input[value="restore"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Offcut used by another project')
+    expect(wrapper.get<HTMLInputElement>('input[value="keep"]').element.checked).toBe(true)
   })
   it('exports the selected stable ID with the existing transfer component and reports failures', async () => {
     const second = cuttingProjectSchema.parse({ ...project, id: 'second' })
@@ -199,6 +213,7 @@ describe('Project manager', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     projects.list.mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Unavailable' } })
     await button(wrapper, 'Delete project').trigger('click'); await flushPromises()
+    await wrapper.get('dialog form').trigger('submit'); await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
     expect(wrapper.findAll('.home-card')).toHaveLength(0)
     await button(wrapper, 'Retry projects').trigger('click'); await flushPromises()

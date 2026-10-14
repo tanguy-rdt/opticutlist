@@ -75,7 +75,6 @@ describe('Project ownership and selections', () => {
     for (const key of ['lengthMm', 'widthMm', 'thicknessMm', 'quantity']) {
       expect(await a.update(part.id, { ...part, [key]: 0 })).toMatchObject({ ok: false, error: { kind: 'invalidRecord' } })
     }
-    expect(await service.projects.delete(first.id)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
     value(await a.delete(part.id))
     expect(value(await service.projects.get(first.id)).partIds).toEqual([])
     expect(value(await persistence.parts.list())).toEqual([])

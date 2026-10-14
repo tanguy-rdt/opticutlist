@@ -1,3 +1,4 @@
+import { deleteProjectData, previewProjectDeletion, type ProjectDeletionPreview, type ProjectStockHandling } from './project-deletion'
 import { projectPartMaterialIds } from './part-materials'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { StockItem } from '../../domain/model/stock-item'
@@ -12,6 +13,8 @@ const missing = (id: string): Extract<PersistenceResult<never>, { ok: false }> =
 
 export interface ProjectService {
   readonly projects: Repository<CuttingProject>
+  readonly deletionPreview: (id: CuttingProjectId) => Promise<PersistenceResult<ProjectDeletionPreview>>
+  readonly deleteProject: (id: CuttingProjectId, handling: ProjectStockHandling) => Promise<PersistenceResult<void>>
   parts(projectId: CuttingProjectId): Repository<Part>
   listLegacyParts(): Promise<PersistenceResult<readonly Part[]>>
   adoptLegacyParts(projectId: CuttingProjectId, ids: readonly PartId[]): Promise<PersistenceResult<void>>
@@ -52,6 +55,9 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
     if (!parsed.success) return Promise.resolve({ ok: false, error: { kind: 'invalidRecord', issues: parsed.error.issues } })
     let selectionFailure: Extract<PersistenceResult<never>, { ok: false }> | undefined
     const result = await persistence.transaction(async repositories => {
+      const archive = await repositories.projectStock.find(parsed.data.id)
+      if (!archive.ok) return archive
+      if (archive.value?.deletedProject) return conflict('This project identity belongs to deleted-project stock history. Create a new project ID.')
       let previous: CuttingProject | undefined
       if (id !== undefined) {
         const result = await repositories.projects.get(id)
@@ -148,22 +154,10 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
       ...persistence.projects,
       create: record => saveProject(record),
       update: (id, record) => saveProject(record, id),
-      delete: id => persistence.transaction(async repositories => {
-        const project = await repositories.projects.get(id)
-        if (!project.ok) return project
-        if (project.value.partIds.length > 0) return conflict('Remove the project’s parts before deleting it.')
-        const current = await repositories.currentCuttingResults.find(id)
-        if (!current.ok) return current
-        if (current.value) return conflict('A project with a current cutting result cannot be deleted.')
-        const plans = await repositories.savedPlanSummaries.listForProject(id)
-        if (!plans.ok) return plans
-        if (plans.value.length > 0) return conflict('A project with preserved cutting plans cannot be deleted.')
-        const stock = await repositories.projectStock.find(id)
-        if (!stock.ok) return stock
-        if (stock.value && (stock.value.entries.length || stock.value.movements.length)) return conflict('Projects with offcut decisions or inventory history must be preserved.')
-        return repositories.projects.delete(id)
-      }),
+      delete: id => persistence.transaction(repositories => deleteProjectData(repositories, id, 'keep')),
     },
+    deletionPreview: id => persistence.transaction(repositories => previewProjectDeletion(repositories, id)),
+    deleteProject: (id, handling) => persistence.transaction(repositories => deleteProjectData(repositories, id, handling)),
     parts,
     listLegacyParts: () => persistence.transaction(async repositories => {
       const projects = await repositories.projects.list()

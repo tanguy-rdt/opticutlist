@@ -179,7 +179,7 @@ describe('project saved cutting plans', () => {
     const pdf = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf }).export({ plan: allocation.plan, panel: panelSnapshot, parts: opened.value.contents.parts, settings: opened.value.contents.settings, materialName: validMaterialInput.name, orientation: 'portrait', edited: false })
     expect(pdf.ok).toBe(true)
   })
-  it('rolls back metadata when a payload insert fails and blocks deleting a project with saved plans', async () => {
+  it('rolls back metadata when a payload insert fails and allows deleting a project with saved plans', async () => {
     const { plans, persistence } = await setup()
     const saved = await plans.save(metadata, input())
     if (!saved.ok) throw new Error('Fixture')
@@ -187,7 +187,8 @@ describe('project saved cutting plans', () => {
     expect(await plans.save(metadata, input())).toMatchObject({ ok: false, error: { kind: 'duplicateId' } })
     expect(await plans.list()).toEqual({ ok: true, value: [] })
     await persistence.savedPlanSummaries.create(metadata)
-    expect(await createProjectService(persistence).projects.delete(project.id)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(await createProjectService(persistence).projects.delete(project.id)).toEqual({ ok: true, value: undefined })
+    expect(await persistence.savedPlanContents.list()).toEqual({ ok: true, value: [] })
   })
   it('upgrades production version 2 additively without rewriting any existing records', async () => {
     const indexedDB = new IDBFactory()

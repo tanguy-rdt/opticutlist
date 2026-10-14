@@ -54,6 +54,7 @@ function render(repository: Repository<Material>, service?: ProjectService, cata
   }
   const source: ProjectService = service ?? {
     projects: projectRepository(), parts: () => { throw new Error('Not used') },
+    deletionPreview: () => Promise.resolve({ ok: true, value: { restorationIssues: [] } }), deleteProject: () => Promise.resolve({ ok: true, value: undefined }),
     listLegacyParts: () => Promise.resolve({ ok: true, value: [] }),
     adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }),
   }
@@ -328,7 +329,8 @@ describe('MaterialsView', () => {
       if (!original) throw new Error('Missing repository implementation')
       return original(id, record)
     })
-    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
+    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, deletionPreview: () => Promise.resolve({ ok: true, value: { restorationIssues: [] } }), deleteProject: () => Promise.resolve({ ok: true, value: undefined }),
+    listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
     const wrapper = render(repository, source)
     await flushPromises()
     expect(wrapper.text()).not.toContain('Selections up to date')
@@ -372,7 +374,8 @@ describe('MaterialsView', () => {
     await projects.update(project.id, { ...project, materialIds: [material.id] })
     const service: ProjectService = {
       projects, parts: () => { throw new Error('Not used') },
-      listLegacyParts: () => Promise.resolve({ ok: true, value: [] }),
+      deletionPreview: () => Promise.resolve({ ok: true, value: { restorationIssues: [] } }), deleteProject: () => Promise.resolve({ ok: true, value: undefined }),
+    listLegacyParts: () => Promise.resolve({ ok: true, value: [] }),
       adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }),
     }
     const wrapper = render(repository, service)
@@ -594,7 +597,8 @@ describe('MaterialsView', () => {
     const projects = projectRepository()
     projects.get.mockResolvedValue({ ok: true, value: { ...project, materialIds: [material.id] } })
     const empty = { create: vi.fn(), get: vi.fn(), update: vi.fn(), delete: vi.fn(), list: vi.fn().mockResolvedValue({ ok: true, value: [] }) }
-    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
+    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, deletionPreview: () => Promise.resolve({ ok: true, value: { restorationIssues: [] } }), deleteProject: () => Promise.resolve({ ok: true, value: undefined }),
+    listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
     const wrapper = render(repository, source, { suppliers: empty, supplierProducts: empty })
     await flushPromises()
     expect(wrapper.get('.material-library').text()).not.toContain(material.name)
@@ -647,7 +651,8 @@ describe('MaterialsView', () => {
       if (!original) throw new Error('Missing repository implementation')
       return original(id, record)
     })
-    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
+    const source: ProjectService = { projects, parts: () => { throw new Error('Not used') }, deletionPreview: () => Promise.resolve({ ok: true, value: { restorationIssues: [] } }), deleteProject: () => Promise.resolve({ ok: true, value: undefined }),
+    listLegacyParts: () => Promise.resolve({ ok: true, value: [] }), adoptLegacyParts: () => Promise.resolve({ ok: true, value: undefined }) }
     const wrapper = render(repository, source)
     await flushPromises()
     await wrapper.get(`input[aria-label="Use ${material.name}"]`).setValue(true)

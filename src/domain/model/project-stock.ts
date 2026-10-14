@@ -35,6 +35,7 @@ export type ProjectOffcut = z.infer<typeof projectOffcutSchema>
 export const projectStockSchema = z.strictObject({
   id: cuttingProjectIdSchema,
   entries: z.array(projectOffcutSchema),
+  deletedProject: z.strictObject({ name: nameSchema, deletedAt: z.iso.datetime(), stockHandling: z.enum(['keep', 'restore']) }).optional(),
   conflict: z.string().nullable().default(null),
   consumed: z.array(z.strictObject({ stock: stockItemSchema, quantity: z.number().int().positive() }).refine(movement => movement.quantity <= movement.stock.quantity, 'Movement quantity cannot exceed its source snapshot')).default([]),
   movements: z.array(z.strictObject({

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { RouterLink } from 'vue-router'
+import type { ProjectStockHandling } from '../../application/projects/project-deletion'
 import { cuttingProjectSchema, type CuttingProject } from '../../domain/model/cutting-project'
 import FormField from '../../shared/ui/FormField.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
@@ -25,9 +26,15 @@ const error = ref('')
 const formError = ref('')
 const notice = ref('')
 const busy = ref(false)
+const deleting = shallowRef<CuttingProject | null>(null)
+const stockHandling = ref<ProjectStockHandling>('keep')
+const restorationIssues = ref<readonly string[]>([])
+const deletionLoading = ref(false)
+const deletionError = ref('')
 const formMode = ref<'create' | 'rename' | null>(null)
 const editing = shallowRef<CuttingProject | null>(null)
 const nameInput = ref<HTMLInputElement | null>(null)
+let deletionGeneration = 0
 let generation = 0
 onBeforeUnmount(() => { generation++ })
 async function load(): Promise<void> {
@@ -65,15 +72,28 @@ async function save(): Promise<void> {
   notice.value = 'Project renamed.'; await load()
 }
 async function remove(project: CuttingProject): Promise<void> {
-  if (busy.value || !window.confirm(`Delete project “${project.name}”? Shared catalog and physical stock will not be deleted. Projects with parts or cutting results cannot be deleted.`)) return
-  busy.value = true; error.value = ''; notice.value = ''
+  if (busy.value) return
+  deleting.value = project; stockHandling.value = 'keep'; deletionError.value = ''; restorationIssues.value = []; deletionLoading.value = true
+  const current = ++deletionGeneration
+  const preview = await service.deletionPreview(project.id)
+  if (current !== deletionGeneration) return
+  deletionLoading.value = false
+  if (preview.ok) restorationIssues.value = preview.value.restorationIssues
+  else restorationIssues.value = [persistenceErrorMessage(preview.error, 'Project')]
+}
+function closeDeletion(): void { if (!busy.value) { deletionGeneration++; deleting.value = null; deletionLoading.value = false } }
+async function confirmDeletion(): Promise<void> {
+  const project = deleting.value
+  if (!project || busy.value || deletionLoading.value) return
+  busy.value = true; deletionError.value = ''; notice.value = ''
   const current = generation
-  const result = await service.projects.delete(project.id)
+  const result = await service.deleteProject(project.id, stockHandling.value)
   if (current !== generation) return
   busy.value = false
-  if (!result.ok) error.value = persistenceErrorMessage(result.error, 'Project')
-  else { notice.value = 'Project deleted.'; await load() }
+  if (!result.ok) deletionError.value = persistenceErrorMessage(result.error, 'Project')
+  else { closeDeletion(); notice.value = 'Project deleted.'; await load() }
 }
+
 onMounted(load)
 </script>
 <template>
@@ -277,12 +297,94 @@ onMounted(load)
               <AppIcon name="delete" />Delete project
             </button>
           </div>
-          <p class="text-xs text-muted">
-            Projects with parts or cutting results are protected from deletion.
-          </p>
         </div>
       </article>
     </div>
+    <CatalogFormDialog
+      v-if="deleting"
+      title="Delete project"
+      :busy="busy"
+      @close="closeDeletion"
+    >
+      <form
+        class="space-y-4"
+        @submit.prevent="confirmDeletion"
+      >
+        <p>Delete <strong>{{ deleting.name }}</strong> and its parts, optimizations, cutting plans and project selections? This cannot be undone.</p>
+        <fieldset
+          class="space-y-3"
+          :disabled="busy || deletionLoading"
+        >
+          <legend class="mb-2 font-semibold">
+            Physical stock
+          </legend>
+          <label class="flex items-start gap-3 rounded-lg border border-line p-3">
+            <input
+              v-model="stockHandling"
+              type="radio"
+              name="stock-handling"
+              value="keep"
+            >
+            <span><strong>Keep current stock</strong><span class="block text-sm text-muted">Leave quantities unchanged. Keep retained offcuts and stock history; do not restore consumed panels.</span></span>
+          </label>
+          <label class="flex items-start gap-3 rounded-lg border border-line p-3">
+            <input
+              v-model="stockHandling"
+              type="radio"
+              name="stock-handling"
+              value="restore"
+              :disabled="restorationIssues.length > 0"
+            >
+            <span><strong>Restore initial stock</strong><span class="block text-sm text-muted">Restore recorded consumed panels and remove unchanged, unused generated offcuts. No partial restoration.</span></span>
+          </label>
+        </fieldset>
+        <p
+          v-if="deletionLoading"
+          role="status"
+        >
+          Checking stock dependencies…
+        </p>
+        <div
+          v-if="restorationIssues.length"
+          class="text-sm text-danger"
+          role="status"
+        >
+          <p>Restoration is unavailable. You can keep current stock.</p>
+          <ul class="list-disc pl-5">
+            <li
+              v-for="issue in restorationIssues"
+              :key="issue"
+            >
+              {{ issue }}
+            </li>
+          </ul>
+        </div>
+        <p
+          v-if="deletionError"
+          role="alert"
+          class="text-danger"
+        >
+          {{ deletionError }}
+        </p>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="button"
+            :disabled="busy"
+            @click="closeDeletion"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="button button-danger"
+            :disabled="busy || deletionLoading"
+          >
+            {{ busy ? 'Deleting…' : 'Delete project' }}
+          </button>
+        </div>
+      </form>
+    </CatalogFormDialog>
     <ProjectCreationDialog
       v-if="formMode === 'create'"
       @close="closeForm"
