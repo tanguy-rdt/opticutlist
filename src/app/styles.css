@@ -165,9 +165,6 @@
   .catalog-icon svg { @apply h-8 w-8; }
   .catalog-supplier-symbol { @apply h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-line bg-quiet-surface text-accent; }
   .catalog-supplier-symbol svg { @apply h-9 w-9; }
-  .catalog-supplier-actions { @apply sm:max-w-[285px]; }
-  .catalog-supplier-actions > .button-primary { @apply order-3 sm:ml-auto; }
-  .catalog-supplier-actions > button:last-child { @apply order-2; }
   .catalog-material-symbol { @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-quiet-surface text-muted; }
   .catalog-material-symbol svg { @apply h-6 w-6; }
   .catalog-badge { @apply inline-flex rounded-md bg-quiet-surface px-2.5 py-1.5 text-xs font-medium; }

@@ -13,6 +13,8 @@ import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import { useDataImportRefresh } from '../../app/settings/use-data-import-refresh'
 import ProductDetails from './ProductDetails.vue'
 import SupplierLogo from './SupplierLogo.vue'
+import SupplierActions from './SupplierActions.vue'
+import AppButton from '../../shared/ui/AppButton.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import AppDialog from '../../shared/ui/AppDialog.vue'
 
@@ -384,7 +386,7 @@ onMounted(load)
         aria-labelledby="supplier-content-title"
       >
         <div class="panel catalog-supplier-header space-y-3 p-4">
-          <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
               <SupplierLogo
                 :website-url="selectedSupplier?.websiteUrl"
@@ -407,36 +409,23 @@ onMounted(load)
                 ><span>{{ selectedSupplier.websiteUrl }}</span><AppIcon name="external" /><span class="sr-only"> (opens in new tab)</span></a>
               </div>
             </div>
-            <div class="catalog-supplier-actions flex flex-wrap justify-end gap-x-2 gap-y-5">
-              <button
-                v-if="selectedSupplier"
-                type="button"
-                class="button catalog-action"
-                :disabled="disabled"
-                :aria-label="`Edit supplier ${selectedSupplier.name}`"
-                @click="editSupplier(selectedSupplier)"
-              >
-                <AppIcon name="edit" />Edit supplier
-              </button>
-              <button
-                v-if="selectedSupplier"
-                type="button"
-                class="button catalog-action button-danger"
-                :disabled="disabled"
-                :aria-label="`Delete supplier ${selectedSupplier.name}`"
-                @click="removeSupplier(selectedSupplier)"
-              >
-                <AppIcon name="delete" />Delete supplier
-              </button>
-              <button
-                type="button"
-                class="button catalog-action button-primary"
+            <div class="catalog-supplier-actions flex shrink-0 items-center gap-2">
+              <AppButton
+                variant="primary"
+                size="small"
                 :disabled="disabled || !selectedSupplier"
-                :aria-label="`Add product for ${selectedSupplier?.name ?? 'supplier'}`"
+                :label="`Add product for ${selectedSupplier?.name ?? 'supplier'}`"
                 @click="editProduct(null, selectedSupplierId)"
               >
                 <AppIcon name="plus" /><span><span class="sr-only">+ </span>Add Product</span>
-              </button>
+              </AppButton>
+              <SupplierActions
+                v-if="selectedSupplier"
+                :key="selectedSupplier.id"
+                :disabled="disabled"
+                @edit="editSupplier(selectedSupplier)"
+                @delete="removeSupplier(selectedSupplier)"
+              />
             </div>
           </div>
           <div class="catalog-filters grid grid-cols-2 gap-2 xl:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
