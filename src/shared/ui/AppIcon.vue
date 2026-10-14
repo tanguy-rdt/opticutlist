@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{ name: keyof typeof paths }>()
 const paths = {
+  settings: 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1ZM16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
   supplier: 'M4 21V3h10v18M2 21h20M14 9h6v12M7 6h1M10 6h1M7 10h1M10 10h1M8 21v-6h3v6M17 12h1M17 16h1',
   layers: 'm3 7 9-5 9 5-9 5ZM3 12l9 5 9-5M3 17l9 5 9-5',
   products: 'm2 6 6-3 6 3-6 3ZM2 6v7l6 3V9M14 6v4M8 16v5l6-3M8 13l6-3 6 3-6 3ZM14 16v5l6-3v-5',

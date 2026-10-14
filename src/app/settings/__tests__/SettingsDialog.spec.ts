@@ -1,3 +1,5 @@
+import { stockTransferServiceKey } from '../../../features/inventory/stock-transfer-service'
+import type { StockTransferService } from '../../../application/inventory/stock-transfer-service'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SettingsDialog from '../SettingsDialog.vue'
@@ -18,8 +20,14 @@ function setup() {
     import: vi.fn<CatalogTransferService['import']>().mockResolvedValue({ ok: true, value: file }),
     export: vi.fn<CatalogTransferService['export']>().mockResolvedValue({ ok: true, value: JSON.stringify(file) }),
   }
-  const wrapper = mount(SettingsDialog, { props: { open: true }, global: { provide: { [catalogTransferServiceKey]: service } }, attachTo: document.body })
-  wrappers.push(wrapper); return { wrapper, service }
+  const stockFile = { format: 'opticutlist-stock' as const, schemaVersion: 1 as const, materials: [], stockItems: [] }
+  const stockService = {
+    preview: vi.fn<StockTransferService['preview']>().mockResolvedValue({ ok: true, value: { file: stockFile, added: 0, reused: 0 } }),
+    import: vi.fn<StockTransferService['import']>().mockResolvedValue({ ok: true, value: stockFile }),
+    export: vi.fn<StockTransferService['export']>().mockResolvedValue({ ok: true, value: JSON.stringify(stockFile) }),
+  }
+  const wrapper = mount(SettingsDialog, { props: { open: true }, global: { provide: { [catalogTransferServiceKey]: service, [stockTransferServiceKey]: stockService } }, attachTo: document.body })
+  wrappers.push(wrapper); return { wrapper, service, stockService }
 }
 async function choose(wrapper: VueWrapper, text: Promise<string> = Promise.resolve(JSON.stringify(file))) {
   await wrapper.get('button[aria-controls="catalog-import"]').trigger('click')
@@ -30,21 +38,32 @@ async function choose(wrapper: VueWrapper, text: Promise<string> = Promise.resol
   await input.trigger('change'); await flushPromises()
 }
 describe('Settings dialog', () => {
-  it('aligns data sections and exposes disabled Stock actions with an explanation', () => {
-    const { wrapper, service } = setup()
+  it('groups real Catalog and Stock actions in aligned sections', () => {
+    const { wrapper, service, stockService } = setup()
     expect(wrapper.findAll('h3').map(heading => heading.text())).toEqual(['Appearance', 'Catalog', 'Stock'])
-    const catalog = wrapper.get('section[aria-labelledby="settings-catalog"]')
-    expect(catalog.findAll('button').map(button => button.text())).toEqual(['Export', 'Import'])
-    const stock = wrapper.get('section[aria-labelledby="settings-stock"]')
-    expect(stock.findAll('button').map(button => button.text())).toEqual(['Export', 'Import'])
-    for (const button of stock.findAll('button')) {
-      expect(button.attributes('disabled')).toBeDefined()
-      expect(button.attributes('aria-describedby')).toBe('settings-stock-unavailable')
+    for (const section of ['settings-catalog', 'settings-stock']) {
+      const actions = wrapper.get(`section[aria-labelledby="${section}"]`).findAll('button')
+      expect(actions.map(button => button.text())).toEqual(['Export', 'Import'])
+      expect(actions.every(button => button.attributes('disabled') === undefined)).toBe(true)
     }
-    expect(wrapper.get('#settings-stock-unavailable').text()).toBe('Stock transfers are not available yet.')
-    expect(wrapper.text()).not.toContain('not implemented in this installation')
+    expect(wrapper.text()).not.toContain('not available yet')
     expect(service.import).not.toHaveBeenCalled()
-    expect(service.export).not.toHaveBeenCalled()
+    expect(stockService.import).not.toHaveBeenCalled()
+  })
+  it('previews and confirms Stock import without nesting modals, then notifies the shell', async () => {
+    const { wrapper, stockService } = setup()
+    await wrapper.get('button[aria-controls="stock-import"]').trigger('click')
+    const input = wrapper.get('#stock-import-file')
+    const selected = new File([''], 'stock.oclstock.json')
+    Object.defineProperty(selected, 'text', { value: () => Promise.resolve('{}') })
+    Object.defineProperty(input.element, 'files', { value: [selected] })
+    await input.trigger('change'); await flushPromises()
+    expect(wrapper.findAll('dialog')).toHaveLength(1)
+    expect(wrapper.text()).toContain('0 new references')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await wrapper.get('button.button-primary').trigger('click'); await flushPromises()
+    expect(stockService.import).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('stockImported')).toHaveLength(1)
   })
   it('switches themes without closing and still dismisses through the close button', async () => {
     const { wrapper } = setup()

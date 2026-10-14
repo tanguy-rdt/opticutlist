@@ -3,7 +3,12 @@ import { computed, provide, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { createProjectNavigation, projectNavigationKey } from '../features/projects/project-navigation'
 import { useProjectService } from '../features/projects/project-service'
-import ThemeSelector from './theme/ThemeSelector.vue'
+import SettingsDialog from './settings/SettingsDialog.vue'
+import { dataImportRevisionKey } from './settings/data-import-revision'
+import AppIcon from '../shared/ui/AppIcon.vue'
+const settingsOpen = ref(false)
+const dataImportRevision = ref(0)
+provide(dataImportRevisionKey, dataImportRevision)
 const route = useRoute()
 const router = useRouter()
 const projects = useProjectService()
@@ -131,17 +136,24 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
             </a>
           </RouterLink>
         </nav>
-        <div class="mt-auto space-y-4 border-t border-line px-1 pt-4">
-          <ThemeSelector />
-          <p class="text-xs leading-relaxed text-muted">
-            Saved on this device.<br>Browser storage can be cleared.
-          </p>
-          <footer class="text-xs text-muted">
-            OptiCutList · Open source · GPL-3.0
-          </footer>
+        <div class="mt-auto border-t border-line pt-3">
+          <button
+            type="button"
+            class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-subtle hover:text-ink"
+            aria-haspopup="dialog"
+            @click="settingsOpen = true"
+          >
+            <AppIcon name="settings" />Settings
+          </button>
         </div>
       </div>
     </aside>
+    <SettingsDialog
+      :open="settingsOpen"
+      @close="settingsOpen = false"
+      @catalog-imported="dataImportRevision++"
+      @stock-imported="dataImportRevision++"
+    />
     <div class="flex min-w-0 flex-col">
       <main
         id="main-content"

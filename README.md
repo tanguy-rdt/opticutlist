@@ -56,3 +56,5 @@ The Vite `base` in `vite.config.ts` is `/opticutlist/`, matching the repository 
 [GPL-3.0](LICENSE)
 
 Parts JSON exchange for CAD exporters: see [the version 1 format and example](docs/parts-json.md).
+
+Physical Stock JSON exchange: see [the version 1 format, dependencies and restore limitations](docs/stock-json-format.md).

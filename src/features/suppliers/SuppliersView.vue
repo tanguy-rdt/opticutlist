@@ -10,7 +10,7 @@ import { useCatalogRepositories, useCatalogStockRepository } from './catalog-rep
 import SupplierForm from './SupplierForm.vue'
 import ProductForm from './ProductForm.vue'
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
-import CatalogTransfer from './CatalogTransfer.vue'
+import { useDataImportRefresh } from '../../app/settings/use-data-import-refresh'
 import ProductDetails from './ProductDetails.vue'
 import SupplierLogo from './SupplierLogo.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
@@ -44,7 +44,6 @@ const products = shallowRef<readonly SupplierProduct[]>([])
 const materials = shallowRef<readonly Material[]>([])
 const loading = ref(true)
 const busy = ref(false)
-const transferBusy = ref(false)
 const loadError = ref('')
 const operationError = ref('')
 const notice = ref('')
@@ -55,7 +54,8 @@ const productVersion = ref(0)
 const initialSupplierId = ref('')
 const supplierForm = ref<InstanceType<typeof SupplierForm> | null>(null)
 const productForm = ref<InstanceType<typeof ProductForm> | null>(null)
-const disabled = computed(() => loading.value || busy.value || transferBusy.value || Boolean(loadError.value))
+useDataImportRefresh(() => { void load() }, () => !loading.value && !busy.value && formMode.value === null)
+const disabled = computed(() => loading.value || busy.value || Boolean(loadError.value))
 const supplierNavigation = computed(() => [...new Set([...suppliers.value.map(item => item.id), ...products.value.map(item => item.supplierId)])].map(id => ({ id, supplier: suppliers.value.find(item => item.id === id), name: suppliers.value.find(item => item.id === id)?.name ?? 'Missing supplier', count: products.value.filter(item => item.supplierId === id).length })))
 const selectedSupplier = computed(() => suppliers.value.find(item => item.id === selectedSupplierId.value))
 const selectedProduct = computed(() => products.value.find(item => item.id === selectedProductId.value))
@@ -233,11 +233,6 @@ onMounted(load)
           Your global library of suppliers, materials and purchasable panels.
         </p>
       </div>
-      <CatalogTransfer
-        :disabled="loading || busy || Boolean(loadError) || formMode !== null"
-        @busy="transferBusy = $event"
-        @imported="load"
-      />
     </div>
     <dl
       aria-label="Catalog summary"

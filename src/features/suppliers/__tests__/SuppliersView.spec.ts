@@ -7,9 +7,6 @@ import { createCatalogRepositories } from '../../../application/catalog/catalog-
 import type { PersistenceResult, Repository } from '../../../application/persistence/repositories'
 import { validMaterialInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { stockItemSchema } from '../../../domain/model/stock-item'
-import { catalogTransferServiceKey } from '../catalog-transfer-service'
-import type { CatalogTransferService } from '../../../application/catalog/catalog-transfer-service'
-import { catalogTransferSchema } from '../../../application/catalog/catalog-transfer-format'
 import { materialSchema } from '../../../domain/model/material'
 import { supplierSchema } from '../../../domain/model/supplier'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
@@ -327,22 +324,11 @@ describe('SuppliersView', () => {
     resolve?.({ ok: true, value: supplier }); await flushPromises(); expect(wrapper.find('dialog').exists()).toBe(false)
   })
 
-  it('keeps .cocl import preview/confirmation functional and refreshes the new supplier list', async () => {
-    const repositories = setup()
-    const incoming = supplierSchema.parse({ ...supplier, id: 'imported-supplier', name: 'Imported supplier' })
-    const file = catalogTransferSchema.parse({ format: 'opticutlist-catalog', schemaVersion: 1, catalog: { materials: [], suppliers: [incoming], products: [] } })
-    const transfer: CatalogTransferService = { export: vi.fn().mockResolvedValue({ ok: true, value: JSON.stringify(file) }), preview: vi.fn().mockResolvedValue({ ok: true, value: { file, conflicts: 0, reused: 0 } }), import: vi.fn().mockImplementation(() => { repositories.suppliers.list.mockResolvedValue({ ok: true, value: [supplier, incoming] }); return Promise.resolve({ ok: true, value: file }) }) }
-    const wrapper = render(repositories, { [catalogTransferServiceKey]: transfer }); await flushPromises()
-    await button(wrapper, 'Import Catalog').trigger('click')
-    const input = wrapper.get('#catalog-import-file'); expect(input.attributes('accept')).toBe('.cocl')
-    const selected = new File([''], 'catalog.cocl'); Object.defineProperty(selected, 'text', { value: () => Promise.resolve(JSON.stringify(file)) }); Object.defineProperty(input.element, 'files', { value: [selected] })
-    await input.trigger('change'); await flushPromises(); expect(wrapper.text()).toContain('0 materials · 1 suppliers · 0 products')
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    await button(wrapper, 'Confirm Catalog Import').trigger('click'); await flushPromises()
-    expect(wrapper.find(`button[aria-label="Select supplier ${incoming.name}"]`).exists()).toBe(true)
-    expect(repositories.suppliers.list).toHaveBeenCalledTimes(2)
+  it('keeps catalog transfer actions out of the Catalog page', async () => {
+    const wrapper = render(setup()); await flushPromises()
+    expect(wrapper.text()).not.toContain('Import Catalog')
+    expect(wrapper.text()).not.toContain('Export Catalog')
   })
-
 
   it.each(['create', 'edit'] as const)('creates a material inline and preserves every product field during %s', async (mode) => {
     const repositories = setup()

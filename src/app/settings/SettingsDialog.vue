@@ -1,18 +1,22 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import AppIcon from '../../shared/ui/AppIcon.vue'
+import { computed, ref } from 'vue'
+import StockTransfer from '../../features/inventory/StockTransfer.vue'
 import ThemeSelector from '../theme/ThemeSelector.vue'
 import CatalogFormDialog from '../../features/suppliers/CatalogFormDialog.vue'
 import CatalogTransfer from '../../features/suppliers/CatalogTransfer.vue'
 
 defineProps<{ open: boolean }>()
-const emit = defineEmits<{ close: []; catalogImported: [] }>()
-const busy = ref(false)
-const pendingImport = ref(false)
+const emit = defineEmits<{ close: []; catalogImported: []; stockImported: [] }>()
+const catalogBusy = ref(false)
+const stockBusy = ref(false)
+const busy = computed(() => catalogBusy.value || stockBusy.value)
+const pendingCatalogImport = ref(false)
+const pendingStockImport = ref(false)
 function close(): void {
   if (busy.value) return
-  if (pendingImport.value && !window.confirm('Discard this catalog import preview? Nothing has been imported.')) return
-  pendingImport.value = false
+  if ((pendingCatalogImport.value || pendingStockImport.value) && !window.confirm('Discard pending import previews? Nothing has been imported.')) return
+  pendingCatalogImport.value = false
+  pendingStockImport.value = false
   emit('close')
 }
 </script>
@@ -46,9 +50,9 @@ function close(): void {
         <CatalogTransfer
           v-if="open"
           compact
-          :disabled="false"
-          @busy="busy = $event"
-          @preview-pending="pendingImport = $event"
+          :disabled="stockBusy"
+          @busy="catalogBusy = $event"
+          @preview-pending="pendingCatalogImport = $event"
           @imported="emit('catalogImported')"
         >
           <template #heading>
@@ -72,40 +76,30 @@ function close(): void {
         aria-labelledby="settings-stock"
         class="pt-5"
       >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h3
-            id="settings-stock"
-            class="text-sm font-semibold"
-          >
-            Stock
-          </h3>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              class="button button-compact"
-              disabled
-              aria-label="Export Stock"
-              aria-describedby="settings-stock-unavailable"
-            >
-              <AppIcon name="export" />Export
-            </button>
-            <button
-              type="button"
-              class="button button-compact"
-              disabled
-              aria-label="Import Stock"
-              aria-describedby="settings-stock-unavailable"
-            >
-              <AppIcon name="import" />Import
-            </button>
-          </div>
-        </div>
-        <p
-          id="settings-stock-unavailable"
-          class="mt-2 text-xs text-muted"
+        <StockTransfer
+          v-if="open"
+          compact
+          :disabled="catalogBusy"
+          @busy="stockBusy = $event"
+          @preview-pending="pendingStockImport = $event"
+          @imported="emit('stockImported')"
         >
-          Stock transfers are not available yet.
-        </p>
+          <template #heading>
+            <h3
+              id="settings-stock"
+              class="text-sm font-semibold"
+            >
+              Stock
+            </h3>
+          </template>
+        </StockTransfer>
+        <h3
+          v-else
+          id="settings-stock"
+          class="text-sm font-semibold"
+        >
+          Stock
+        </h3>
       </section>
     </div>
   </CatalogFormDialog>

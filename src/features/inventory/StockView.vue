@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDataImportRefresh } from '../../app/settings/use-data-import-refresh'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
@@ -27,6 +28,7 @@ const writeError = ref('')
 const notice = ref('')
 const busy = ref(false)
 const formOpen = ref(false)
+useDataImportRefresh(refreshOnFocus, () => !loading.value && !busy.value && !formOpen.value)
 const editing = shallowRef<StockItem | null>(null)
 const detailsOpen = ref(false)
 const materialFilter = ref('')

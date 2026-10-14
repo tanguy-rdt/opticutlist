@@ -1,3 +1,7 @@
+import { createStockTransferService } from '../../application/inventory/stock-transfer-service'
+import { stockTransferServiceKey } from '../../features/inventory/stock-transfer-service'
+import { createCatalogTransferService } from '../../application/catalog/catalog-transfer-service'
+import { catalogTransferServiceKey } from '../../features/suppliers/catalog-transfer-service'
 import { createStockRepository } from '../../application/inventory/stock-repository'
 import { stockRepositoryKey } from '../../features/inventory/stock-repository'
 import { createProjectStockService } from '../../application/inventory/project-stock-service'
@@ -74,6 +78,8 @@ async function mountAt(path: string, indexedDB = new IDBFactory()) {
       provide: {
         [optimizationServiceFactoryKey]: () => createOptimizationService(createWorker),
         [currentResultServiceKey]: createCurrentResultService(persistence),
+        [catalogTransferServiceKey]: createCatalogTransferService(persistence, projectJson),
+        [stockTransferServiceKey]: createStockTransferService(persistence, projectJson),
         [projectTransferServiceKey]: createProjectTransferService(persistence, projectJson),
         [cuttingConfirmationServiceKey]: createCuttingConfirmationService(persistence),
         [materialRepositoryKey]: catalog.materials,
@@ -165,14 +171,85 @@ describe('Home and application navigation', () => {
     expect(wrapper.get('[aria-labelledby="catalog-title"] svg').attributes('aria-hidden')).toBe('true')
   })
 
-  it('keeps branding and theme selection accessible in the persistent application sidebar', async () => {
+  it('keeps branding and moves theme selection into Settings', async () => {
     const { wrapper } = await mountAt('/')
     expect(wrapper.find('header nav').exists()).toBe(false)
     expect(wrapper.findAll('header a')).toHaveLength(1)
     expect(wrapper.get('header a').attributes('aria-label')).toBe('OptiCutList home')
+    expect(wrapper.find('aside #theme-preference').exists()).toBe(false)
+    expect(wrapper.get('aside').text()).not.toContain('Saved on this device')
+    expect(wrapper.get('aside').text()).not.toContain('GPL-3.0')
+    const settings = wrapper.get('button[aria-haspopup="dialog"]')
+    expect(settings.text()).toBe('Settings')
+    await settings.trigger('click')
+    expect(wrapper.get('dialog[aria-labelledby="settings-dialog-title"]').attributes('open') !== undefined).toBe(true)
     expect(wrapper.find('#theme-preference').exists()).toBe(true)
     expect(wrapper.find('aside[aria-label="Application navigation"]').exists()).toBe(true)
     expect(wrapper.findAll('nav[aria-label="Main navigation"] a').map(link => link.text())).toEqual(['Home', 'Projects', 'Catalog', 'Stock'])
+  })
+
+  it('opens and dismisses Settings without changing the project workspace tab', async () => {
+    const { wrapper, router, service } = await mountAt('/')
+    const project = await service.projects.create({ id: 'settings-project', name: 'Settings project', partIds: [], materialIds: [], supplierProductIds: [] })
+    expect(project.ok).toBe(true)
+    await router.push('/projects/settings-project/parts'); await flushPromises()
+    const opener = wrapper.get('button[aria-haspopup="dialog"]')
+    ;(opener.element as HTMLButtonElement).focus()
+    await opener.trigger('click')
+    await wrapper.get('#theme-preference').setValue('dark')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem('opticutlist.theme')).toBe('dark')
+    await wrapper.get('dialog[aria-labelledby="settings-dialog-title"]').trigger('cancel')
+    expect(router.currentRoute.value.path).toBe('/projects/settings-project/parts')
+    expect(wrapper.get('dialog[aria-labelledby="settings-dialog-title"]').attributes('open') !== undefined).toBe(false)
+    expect(document.activeElement).toBe(opener.element)
+    localStorage.removeItem('opticutlist.theme')
+  })
+
+  it('imports catalog data from Settings and refreshes the current Catalog without navigating', async () => {
+    const { wrapper, router } = await mountAt('/catalog')
+    expect(wrapper.find('#catalog-import-file').exists()).toBe(false)
+    await wrapper.get('button[aria-haspopup="dialog"]').trigger('click')
+    const dialog = wrapper.get('dialog[aria-labelledby="settings-dialog-title"]')
+    await dialog.get('button[aria-controls="catalog-import"]').trigger('click')
+    const input = dialog.get('#catalog-import-file')
+    const file = new File([''], 'catalog.cocl')
+    const payload = { format: 'opticutlist-catalog', schemaVersion: 1, catalog: { materials: [validMaterialInput], suppliers: [validSupplierInput], products: [validSupplierProductInput] } }
+    Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(payload)) })
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change'); await vi.waitFor(() => { expect(dialog.text()).toContain('Catalog import preview') })
+    const consent = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await dialog.get('button[aria-label="Close Settings"]').trigger('click')
+    expect(dialog.attributes('open')).toBeDefined()
+    consent.mockReturnValue(true)
+    await dialog.get('button.button-primary').trigger('click'); await vi.waitFor(() => { expect(dialog.text()).toContain('Catalog imported successfully') })
+    await vi.waitFor(() => { expect(wrapper.find(`button[aria-label="Select supplier ${validSupplierInput.name}"]`).exists()).toBe(true) })
+    expect(wrapper.find(`button[aria-label="Select supplier ${validSupplierInput.name}"]`).exists()).toBe(true)
+    expect(router.currentRoute.value.path).toBe('/catalog')
+  })
+
+  it.each(['/stock', '/projects/stock-import-project/materials'])('refreshes %s after a Settings Stock import without changing selections or navigation', async path => {
+    const { wrapper, router, persistence, service } = await mountAt('/')
+    await persistence.materials.create(validMaterialInput)
+    await service.projects.create({ id: 'stock-import-project', name: 'Import project', partIds: [], materialIds: [validMaterialInput.id], supplierProductIds: [] })
+    await router.push(path)
+    await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe(path === '/stock' ? 'Stock' : 'Materials') })
+    await wrapper.get('button[aria-haspopup="dialog"]').trigger('click')
+    const dialog = wrapper.get('dialog[aria-labelledby="settings-dialog-title"]')
+    await dialog.get('button[aria-controls="stock-import"]').trigger('click')
+    const input = dialog.get('#stock-import-file')
+    const selected = new File([''], 'stock.oclstock.json')
+    Object.defineProperty(selected, 'text', { value: () => Promise.resolve(JSON.stringify({ format: 'opticutlist-stock', schemaVersion: 1, materials: [validMaterialInput], stockItems: [validStockItemInput] })) })
+    Object.defineProperty(input.element, 'files', { value: [selected] })
+    await input.trigger('change')
+    await vi.waitFor(() => { expect(dialog.text()).toContain('Stock import preview') })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await dialog.get('button.button-primary').trigger('click')
+    await vi.waitFor(() => { expect(dialog.text()).toContain('Stock imported successfully') })
+    await vi.waitFor(() => { expect(wrapper.get('#main-content').text()).toContain(validMaterialInput.name) })
+    expect(router.currentRoute.value.path).toBe(path)
+    expect(await persistence.projects.get(cuttingProjectSchema.parse({ id: 'stock-import-project', name: 'Import project', partIds: [], materialIds: [validMaterialInput.id], supplierProductIds: [] }).id)).toMatchObject({ ok: true, value: { materialIds: [validMaterialInput.id] } })
+    expect(await persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [] })
   })
 
   it('navigates the sidebar with active states and collapses the small-screen menu after navigation or Escape', async () => {
@@ -290,14 +367,14 @@ describe('Home and application navigation', () => {
     expect(document.activeElement).toBe(wrapper.get('#project-name').element)
     await wrapper.get('#project-name').setValue('Draft only')
     await wrapper.get('button[aria-label="Close form"]').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.find('dialog').exists()).toBe(false) })
+    await vi.waitFor(() => { expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false) })
     expect(router.currentRoute.value.fullPath).toBe(path)
     expect(await persistence.projects.list()).toEqual({ ok: true, value: [] })
     await wrapper.get(tile).trigger('click')
     await vi.waitFor(() => { expect(wrapper.find('#project-name').exists()).toBe(true) })
     expect(wrapper.get<HTMLInputElement>('#project-name').element.value).toBe('')
-    await wrapper.get('dialog').trigger('cancel')
-    await vi.waitFor(() => { expect(wrapper.find('dialog').exists()).toBe(false) })
+    await wrapper.get('dialog:not([aria-labelledby="settings-dialog-title"])').trigger('cancel')
+    await vi.waitFor(() => { expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false) })
     expect(await persistence.projects.list()).toEqual({ ok: true, value: [] })
   })
 
@@ -312,7 +389,7 @@ describe('Home and application navigation', () => {
     if (!records.ok || !records.value[0]) throw new Error('Missing created project')
     expect(router.currentRoute.value.path).toBe(`/projects/${records.value[0].id}/materials`)
     expect(records.value[0].name).toBe('Desk')
-    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false)
   })
 
   it('restores direct creation URLs safely and removes only the creation flag on close', async () => {
@@ -325,10 +402,10 @@ describe('Home and application navigation', () => {
     expect(reopened.wrapper.get<HTMLInputElement>('#project-name').element.value).toBe('')
     expect(await reopened.persistence.projects.list()).toEqual({ ok: true, value: [] })
     await reopened.wrapper.get('button[aria-label="Close form"]').trigger('click')
-    await vi.waitFor(() => { expect(reopened.wrapper.find('dialog').exists()).toBe(false) })
+    await vi.waitFor(() => { expect(reopened.wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false) })
     expect(reopened.router.currentRoute.value.fullPath).toBe('/?keep=context#anchor')
     await reopened.router.push('/?create=unsupported')
-    expect(reopened.wrapper.find('dialog').exists()).toBe(false)
+    expect(reopened.wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false)
   })
 
   it('clears creation on navigation and keeps sidebar Projects free of automatic modals', async () => {
@@ -336,13 +413,13 @@ describe('Home and application navigation', () => {
     await wrapper.get('#project-name').setValue('Old draft')
     await router.push('/projects')
     await vi.waitFor(() => { expect(wrapper.get('h1').text()).toBe('Projects') })
-    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false)
     await router.push('/')
-    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false)
     await wrapper.get('nav[aria-label="Main navigation"] a[href="/projects"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/projects')
-    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false)
   })
 
   it.each(['/', '/projects'])('starts the same import workflow from %s and returns to its origin', async path => {
@@ -355,7 +432,7 @@ describe('Home and application navigation', () => {
     const back = wrapper.get(`main a[href="${path}"]`)
     await back.trigger('click'); await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe(path)
-    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(false)
   })
 
   it('creates, opens and refreshes an isolated project workspace from Home', async () => {
@@ -716,8 +793,8 @@ describe('Home and application navigation', () => {
     const remove = wrapper.findAll('button').find(button => button.text() === 'Delete project')
     if (!remove) throw new Error('Missing deletion action')
     await remove.trigger('click')
-    await vi.waitFor(() => { expect(wrapper.find('dialog').exists()).toBe(true) })
-    const cancel = wrapper.get('dialog').findAll('button').find(button => button.text() === 'Cancel')
+    await vi.waitFor(() => { expect(wrapper.find('dialog:not([aria-labelledby="settings-dialog-title"])').exists()).toBe(true) })
+    const cancel = wrapper.get('dialog:not([aria-labelledby="settings-dialog-title"])').findAll('button').find(button => button.text() === 'Cancel')
     if (!cancel) throw new Error('Missing deletion cancel action')
     await cancel.trigger('click')
     expect(await capture()).toEqual(records)

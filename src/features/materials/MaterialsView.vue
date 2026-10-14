@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDataImportRefresh } from '../../app/settings/use-data-import-refresh'
 import { computed, inject, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink, matchedRouteKey, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { isStockEligibleForProject } from '../../application/inventory/stock-eligibility'
@@ -90,6 +91,7 @@ const loadError = ref('')
 const saveError = ref('')
 let loadRevision = 0
 let active = true
+useDataImportRefresh(refreshSources, () => active && !loading.value && !busy.value)
 let wasDeactivated = false
 async function load(): Promise<void> {
   const revision = ++loadRevision
