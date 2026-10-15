@@ -99,13 +99,14 @@ describe('SuppliersView', () => {
     expect(wrapper.get('dialog h2').text()).toBe('New product')
     const form = wrapper.get('form[aria-label="Product editor"]')
     expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing', 'Additional information'])
-    for (const field of ['name', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain']) {
+    for (const field of ['name', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'currency', 'grain']) {
       const label = form.get(`label[for="product-${field}"]`)
       expect(label.get('span[aria-hidden="true"]').text()).toBe('*')
       expect(label.get('.sr-only').text()).toBe('(required)')
       expect(form.get(`#product-${field}`).attributes('required')).toBeDefined()
     }
     expect(form.get('#product-url').attributes('required')).toBeUndefined()
+    expect(form.get('#product-price').attributes('required')).toBeUndefined()
     expect(form.find('#product-availability').exists()).toBe(false)
     expect(wrapper.find('#catalog-availability').exists()).toBe(false)
     expect(wrapper.findAll('thead th').some(cell => cell.text().includes('Availability'))).toBe(false)
@@ -789,6 +790,26 @@ describe('SuppliersView', () => {
 
   })
 
+  it.each(['create', 'edit'] as const)('saves a missing product price during %s without substituting zero', async mode => {
+    const repositories = setup()
+    const unpriced = supplierProductSchema.parse(product)
+    delete unpriced.price
+    if (mode === 'edit') repositories.supplierProducts.list.mockResolvedValueOnce({ ok: true, value: [product] })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [unpriced] })
+    const wrapper = render(repositories); await flushPromises()
+    if (mode === 'edit') await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    else await fillProduct(wrapper)
+    await wrapper.get('#product-price').setValue('')
+    await submit(wrapper, 'product')
+    const saved = mode === 'edit' ? repositories.supplierProducts.update.mock.calls[0]?.[1] : repositories.supplierProducts.create.mock.calls[0]?.[0]
+    expect(saved).toBeDefined()
+    expect(saved).not.toHaveProperty('price')
+    expect(saved).toMatchObject({ currency: product.currency, lengthMm: product.lengthMm })
+    expect(wrapper.get('tbody').text()).toContain('N/A')
+    expect(wrapper.get('.catalog-product-overview').text()).toContain('N/A')
+    expect(wrapper.text()).not.toContain('NaN')
+  })
+
   it('creates a schema-validated product and rereads storage', async () => {
     const repositories = setup()
     repositories.supplierProducts.list.mockResolvedValueOnce({ ok: true, value: [] }).mockResolvedValue({ ok: true, value: [product] })
@@ -910,13 +931,13 @@ describe('SuppliersView', () => {
     expect(wrapper.find('#product-name').exists()).toBe(false)
   })
 
-  it('requires dimensions, name, price, supplier and material selection', async () => {
+  it('requires dimensions, name, supplier and material selection', async () => {
     const repositories = setup()
     const wrapper = render(repositories)
     await flushPromises()
     await openForm(wrapper, 'product')
     await submit(wrapper, 'product')
-    for (const field of ['name', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'material']) {
+    for (const field of ['name', 'lengthMm', 'widthMm', 'thicknessMm', 'material']) {
       expect(wrapper.get(`#product-${field}`).attributes('aria-invalid')).toBe('true')
       expect(wrapper.get(`#product-${field}-error`).text()).not.toBe('')
     }
@@ -937,12 +958,13 @@ describe('SuppliersView', () => {
     expect(repositories.supplierProducts.create).not.toHaveBeenCalled()
   })
 
-  it.each(['', '-1', 'invalid', '1e309'])('rejects invalid price %j', async (price) => {
+  it.each(['-1', 'invalid', '1e309'])('rejects invalid price %j', async (price) => {
     const repositories = setup()
     const wrapper = render(repositories)
     await flushPromises()
     await fillProduct(wrapper)
     await wrapper.get('#product-price').setValue(price)
+    if (price !== '-1') vi.spyOn(wrapper.get<HTMLInputElement>('#product-price').element.validity, 'badInput', 'get').mockReturnValue(true)
     await submit(wrapper, 'product')
     expect(wrapper.get('#product-price').attributes('aria-invalid')).toBe('true')
     expect(repositories.supplierProducts.create).not.toHaveBeenCalled()

@@ -104,9 +104,11 @@ function focusName(): void { form.value?.querySelector<HTMLInputElement>('input'
 defineExpose({ focusName })
 async function submit(): Promise<void> {
   if (props.disabled || materialBusy.value || creatingMaterial.value) return
+  const price = form.value?.querySelector<HTMLInputElement>('#product-price')?.validity.badInput ? NaN : numberInput(numbers.price)
   const result = supplierProductSchema.safeParse({
     id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: effectiveSupplierId.value, materialId: productPreset.value ? crypto.randomUUID() : materialId.value,
-    lengthMm: numberInput(numbers.lengthMm), widthMm: numberInput(numbers.widthMm), thicknessMm: numberInput(numbers.thicknessMm), price: numberInput(numbers.price),
+    lengthMm: numberInput(numbers.lengthMm), widthMm: numberInput(numbers.widthMm), thicknessMm: numberInput(numbers.thicknessMm),
+    ...(price !== undefined ? { price } : {}),
     currency: currency.value.trim(), grainDirection: grainDirection.value, availability: props.product?.availability ?? 'unknown',
     ...(productUrl.value.trim() ? { productUrl: productUrl.value.trim() } : {}),
   })
@@ -398,8 +400,7 @@ async function submit(): Promise<void> {
         <FormField
           id="product-price"
           required-indicator="asterisk"
-          label="Price per panel"
-          required
+          label="Price per panel (optional)"
           :error="errors.get('price') ?? ''"
         >
           <template #default="{ controlAttrs }">

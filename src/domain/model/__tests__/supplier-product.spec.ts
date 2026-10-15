@@ -8,6 +8,12 @@ describe('supplierProductSchema', () => {
     expect(supplierProductSchema.parse(validSupplierProductInput)).toEqual(validSupplierProductInput)
   })
 
+  it('accepts a missing price without substituting zero', () => {
+    const product = supplierProductSchema.parse(without(validSupplierProductInput, 'price'))
+    expect(product).not.toHaveProperty('price')
+    expect(product.currency).toBe('EUR')
+  })
+
   it('accepts a product without URL', () => {
     expect(supplierProductSchema.safeParse(without(validSupplierProductInput, 'productUrl')).success).toBe(true)
   })
@@ -18,7 +24,6 @@ describe('supplierProductSchema', () => {
     'materialId',
     'name',
     'grainDirection',
-    'price',
     'currency',
     'availability',
   ] as const)('requires %s', (key) => {

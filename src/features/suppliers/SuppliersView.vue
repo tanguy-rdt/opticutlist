@@ -686,7 +686,7 @@ onMounted(load)
                   </td><td class="whitespace-nowrap px-3 py-2.5 tabular-nums">
                     {{ product.thicknessMm }}
                   </td><td class="whitespace-nowrap px-3 py-2.5 tabular-nums">
-                    {{ product.price }} {{ product.currency }}
+                    {{ product.price === undefined ? 'N/A' : `${product.price} ${product.currency}` }}
                   </td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-xs text-muted">
                     {{ stockLabel(product) }}

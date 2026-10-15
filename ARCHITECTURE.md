@@ -525,3 +525,10 @@ Catalog UTF-8 JSON v1 optionally includes top-level `catalogOrders: [{ id: suppl
 ### Transient success notifications
 
 The application shell mounts one shared `AppToastHost`. A Pinia-scoped `toast-store` holds transient notifications and deduplicates identical active title/description pairs; it never persists business data. Catalog supplier/product CRUD and ordering successes use it after successful repository writes, while field and operation errors remain inline. Fixed theme-aware cards stack at the viewport bottom-right below native dialogs, announce status politely, and dismiss after four seconds or through a labeled close button. Per-card timers and progress pause on hover/focus and are cleaned up on removal/unmount; reduced-motion preferences suppress transitions and the progress animation.
+
+
+### Optional Catalog pricing
+
+SupplierProduct price is optional; an omitted price is unknown, while explicit zero remains a valid known price. The existing three-letter currency stays required, with the form's EUR default unchanged. Blank price inputs omit the field and edits can clear it; finite/nonnegative validation still applies to entered values. Strict repository reads/writes and version-1 Catalog/project transfer schemas reuse the domain schema without a database migration. Catalog and project material reference displays render unknown prices as N/A. The existing optional PDF pricing DTO retains a required numeric price whenever supplied, preserving export validation and purchasing calculations; document generation is unchanged.
+
+Global Stock rows retain selection, grouping and grip ordering, with compact Edit/Delete controls reusing existing guarded handlers and confirmation. Rows show Dimensions in mm and omit visible internal IDs and provenance; provenance and history remain in details and persistence.

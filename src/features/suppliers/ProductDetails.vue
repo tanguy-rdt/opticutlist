@@ -61,7 +61,10 @@ function grain(product: SupplierProduct): string { return product.grainDirection
             Price per panel
           </dt>
           <dd class="text-lg font-semibold tabular-nums text-accent">
-            {{ product.price }} <span class="text-sm">{{ product.currency }}</span>
+            {{ product.price ?? 'N/A' }} <span
+              v-if="product.price !== undefined"
+              class="text-sm"
+            >{{ product.currency }}</span>
           </dd>
         </div>
       </dl>

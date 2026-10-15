@@ -421,7 +421,7 @@ onActivated(() => {
               <span class="grid min-w-0 flex-1 gap-2 text-sm">
                 <span class="font-semibold [overflow-wrap:anywhere]">{{ product.name }}</span>
                 <span class="flex items-center gap-2 text-xs text-muted"><SupplierLogo :website-url="suppliers.find(supplier => supplier.id === product.supplierId)?.websiteUrl" />{{ supplierName(product) }}</span>
-                <span class="flex flex-wrap items-center justify-between gap-2 tabular-nums">{{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm<span class="block text-xs text-muted">{{ product.price }} {{ product.currency }} / panel</span></span>
+                <span class="flex flex-wrap items-center justify-between gap-2 tabular-nums">{{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm<span class="block text-xs text-muted">{{ product.price === undefined ? 'N/A' : `${product.price} ${product.currency}` }} / panel</span></span>
                 <span class="text-xs text-muted">{{ product.grainDirection }} grain · {{ product.availability }}<span v-if="!selectable(product)"> · Not available for new selection</span></span>
               </span>
             </label>

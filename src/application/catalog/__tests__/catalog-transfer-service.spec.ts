@@ -1,3 +1,4 @@
+import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { createCatalogRepositories } from '../catalog-repositories'
 import { orderCatalogProducts } from '../catalog-order'
 import { materialIdSchema, supplierIdSchema, supplierProductIdSchema } from '../../../domain/model/ids'
@@ -21,6 +22,23 @@ async function snapshot(persistence: ReturnType<typeof createLocalPersistence>) 
   return { materials: await persistence.materials.list(), suppliers: await persistence.suppliers.list(), products: await persistence.supplierProducts.list(), projects: await persistence.projects.list(), parts: await persistence.parts.list(), stock: await persistence.stockItems.list(), plans: await persistence.savedPlanContents.list(), confirmations: await persistence.cuttingConfirmations.list() }
 }
 describe('portable catalog transfer', () => {
+  it('round-trips products without prices and preserves legacy priced products', async () => {
+    const source = database(); const target = database()
+    const unpriced = supplierProductSchema.parse(validSupplierProductInput)
+    delete unpriced.price
+    await source.persistence.materials.create(validMaterialInput)
+    await source.persistence.suppliers.create(validSupplierInput)
+    await source.persistence.supplierProducts.create(unpriced)
+    await source.persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'priced-product' })
+    const exported = await source.service.export(); if (!exported.ok) throw new Error('Export failed')
+    const preview = await target.service.preview(exported.value); if (!preview.ok) throw new Error('Preview failed')
+    expect((await target.service.import(preview.value.file, true)).ok).toBe(true)
+    expect(await target.persistence.supplierProducts.get(supplierProductIdSchema.parse(unpriced.id))).toEqual({ ok: true, value: unpriced })
+    expect(await target.persistence.supplierProducts.get(supplierProductIdSchema.parse('priced-product'))).toEqual({ ok: true, value: { ...validSupplierProductInput, id: 'priced-product' } })
+    target.persistence.close()
+    const reopened = createLocalPersistence('catalog-transfer', { indexedDB: target.indexedDB, IDBKeyRange }); connections.push(reopened)
+    expect(await reopened.supplierProducts.get(supplierProductIdSchema.parse(unpriced.id))).toEqual({ ok: true, value: unpriced })
+  })
   it.each(['available', 'unavailable', 'unknown'] as const)('retains legacy product availability %s in catalog transfers and persisted reads', async availability => {
     const target = database()
     const legacy = { ...file, catalog: { ...file.catalog, products: file.catalog.products.map(product => ({ ...product, availability })) } }

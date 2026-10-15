@@ -15,7 +15,7 @@ export type ProductAvailability = z.infer<typeof productAvailabilitySchema>
 
 /**
  * A purchasable catalog panel. It is never owned stock: buying it creates separate `StockItem`s.
- * `price` is the price of one panel in `currency`; zero is allowed (e.g. free offers).
+ * `price` is optional; when present it is the price of one panel in `currency` (zero is valid).
  */
 export const supplierProductSchema = z.strictObject({
   id: supplierProductIdSchema,
@@ -26,7 +26,7 @@ export const supplierProductSchema = z.strictObject({
   grainDirection: grainDirectionSchema,
   price: z
     .number({ error: 'Price must be a finite number' })
-    .nonnegative({ error: 'Price must not be negative' }),
+    .nonnegative({ error: 'Price must not be negative' }).optional(),
   currency: currencyCodeSchema,
   productUrl: webUrlSchema.optional(),
   availability: productAvailabilitySchema,

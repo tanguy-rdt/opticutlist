@@ -11,6 +11,7 @@ import { useStockRepository } from './stock-repository'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
+import AppButton from '../../shared/ui/AppButton.vue'
 import AppDialog from '../../shared/ui/AppDialog.vue'
 import StockForm from './StockForm.vue'
 import StockDetails from './StockDetails.vue'
@@ -392,7 +393,7 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                       scope="col"
                       class="px-3 py-2"
                     >
-                      Length × width (mm)
+                      Dimensions
                     </th><th
                       scope="col"
                       class="px-3 py-2"
@@ -407,7 +408,7 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                       scope="col"
                       class="px-3 py-2"
                     >
-                      Provenance
+                      <span class="sr-only">Actions</span>
                     </th>
                   </tr>
                 </thead>
@@ -465,15 +466,39 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                         @click.stop="selectedId = item.id"
                       >
                         {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}
-                      </button><span class="mt-1 block max-w-32 truncate text-xs font-normal text-muted">{{ item.id }}</span>
+                      </button>
                     </th><td class="whitespace-nowrap px-3 py-3 tabular-nums">
-                      {{ item.lengthMm }} × {{ item.widthMm }}
+                      {{ item.lengthMm }} × {{ item.widthMm }} mm
                     </td><td class="px-3 py-3 tabular-nums">
                       {{ item.thicknessMm }}
                     </td><td class="px-3 py-3 tabular-nums">
                       {{ item.quantity }}
-                    </td><td class="px-3 py-3 text-xs capitalize text-muted">
-                      {{ item.provenance.source }}
+                    </td><td class="px-3 py-3">
+                      <div class="flex items-center gap-1">
+                        <AppButton
+                          variant="ghost"
+                          size="small"
+                          icon-only
+                          label="Edit stock item"
+                          title="Edit stock item"
+                          :disabled="!writer || busy || loading || Boolean(error)"
+                          @click.stop="openForm(item)"
+                        >
+                          <AppIcon name="edit" />
+                        </AppButton>
+                        <AppButton
+                          variant="ghost"
+                          size="small"
+                          icon-only
+                          label="Delete stock item"
+                          title="Delete stock item"
+                          class="text-danger"
+                          :disabled="!writer || busy || loading || Boolean(error)"
+                          @click.stop="remove(item)"
+                        >
+                          <AppIcon name="delete" />
+                        </AppButton>
+                      </div>
                     </td>
                   </tr>
                 </tbody>

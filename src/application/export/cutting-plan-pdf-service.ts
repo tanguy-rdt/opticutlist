@@ -21,7 +21,7 @@ export interface CuttingPlanPdfRequest {
   readonly materialName: string
   readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
-  readonly pricing?: Pick<SupplierProduct, 'price' | 'currency'>
+  readonly pricing?: (Pick<SupplierProduct, 'currency'> & { readonly price: number })
   readonly edited: boolean
 }
 export interface CuttingPlanPdfDocument extends Omit<CuttingPlanPdfRequest, 'plan'> {
@@ -31,7 +31,7 @@ export interface CuttingPlanPdfDocument extends Omit<CuttingPlanPdfRequest, 'pla
 }
 export interface ProjectCuttingPdfRequest extends SavePlanInput {
   /** Optional known export-time prices, never inferred from panel names or written to historical plans. */
-  readonly panelPrices?: readonly (Pick<SupplierProduct, 'id' | 'price' | 'currency'>)[]
+  readonly panelPrices?: readonly (Pick<SupplierProduct, 'id' | 'currency'> & { readonly price: number })[]
   readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
   readonly title: string
@@ -55,7 +55,7 @@ export type CuttingPlanPdfResult =
 
 /** Reuse the same scene, validation and metric projection for both internal panel and whole-result exports. */
 function panelDocument(snapshot: CuttingPlanPdfRequest): CuttingPlanPdfDocument {
-  if (snapshot.pricing) supplierProductSchema.pick({ price: true, currency: true }).parse(snapshot.pricing)
+  if (snapshot.pricing) supplierProductSchema.pick({ price: true, currency: true }).required({ price: true }).parse(snapshot.pricing)
   const projection = createCuttingPlanScene(snapshot.plan, snapshot)
   if (projection.status !== 'valid') throw new Error(projection.status === 'invalid' ? projection.message : 'No cutting plan to export.')
   const { plan, ...metadata } = snapshot
@@ -68,7 +68,7 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
     const validation = validateProjectPlan(snapshot.plan, savedPlanContext(snapshot))
     if (!validation.valid) throw new Error(validation.issues.map(issue => issue.message).join('; '))
     const prices = new Map(snapshot.panelPrices?.map(price => {
-      const valid = supplierProductSchema.pick({ id: true, price: true, currency: true }).parse(price)
+      const valid = supplierProductSchema.pick({ id: true, price: true, currency: true }).required({ price: true }).parse(price)
       if (!snapshot.sources.some(source => source.product.id === valid.id && !source.product.stockItemId)) throw new Error('Unknown catalog pricing reference.')
       return [valid.id, valid] as const
     }))

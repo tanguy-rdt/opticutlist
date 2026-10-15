@@ -625,7 +625,7 @@ describe('Home and application navigation', () => {
     await persistence.stockItems.create(ownOffcut)
     await persistence.stockItems.update(stockItemSchema.shape.id.parse(validStockItemInput.id), { ...validStockItemInput, quantity: 5 })
     await router.push('/stock')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain(ownOffcut.id) })
+    await vi.waitFor(() => { expect(wrapper.find(`[data-stock-id="${ownOffcut.id}"]`).exists()).toBe(true) })
     expect(wrapper.get('[aria-label="Stock summary"]').findAll('dd')[1]?.text()).toBe('6')
     await wrapper.get('nav[aria-label="Main navigation"]').findAll('a').find(link => link.text() === 'Projects')?.trigger('click')
     await vi.waitFor(() => { expect(wrapper.find(`input[aria-label="Use stock ${validStockItemInput.id}"]`).exists()).toBe(true) })
