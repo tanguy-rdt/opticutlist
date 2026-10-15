@@ -524,7 +524,7 @@ Catalog UTF-8 JSON v1 optionally includes top-level `catalogOrders: [{ id: suppl
 
 ### Transient success notifications
 
-The application shell mounts one shared `AppToastHost`. A Pinia-scoped `toast-store` holds transient notifications and deduplicates identical active title/description pairs; it never persists business data. Catalog supplier/product CRUD and ordering successes use it after successful repository writes, while field and operation errors remain inline. Fixed theme-aware cards stack at the viewport bottom-right below native dialogs, announce status politely, and dismiss after four seconds or through a labeled close button. Per-card timers and progress pause on hover/focus and are cleaned up on removal/unmount; reduced-motion preferences suppress transitions and the progress animation.
+The application shell mounts one shared `AppToastHost`. A Pinia-scoped `toast-store` holds transient notifications and deduplicates identical active title/description pairs; it never persists business data. Catalog supplier/product CRUD and ordering, plus project Part create/update/delete and Parts import successes, use it after successful repository writes, while field and operation errors remain inline. Fixed theme-aware cards stack at the viewport bottom-right below native dialogs, announce status politely, and dismiss after four seconds or through a labeled close button. Per-card timers and progress pause on hover/focus and are cleaned up on removal/unmount; reduced-motion preferences suppress transitions and the progress animation.
 
 
 ### Optional Catalog pricing

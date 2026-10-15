@@ -704,7 +704,7 @@ describe('Home and application navigation', () => {
     await wrapper.get('#part-thickness').setValue('18')
     await wrapper.get('#part-quantity').setValue('2')
     await wrapper.get('dialog form').trigger('submit')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Part created.') })
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Part created') })
     const before = await service.parts(project.id).list()
     const owner = await service.projects.get(project.id)
     if (!owner.ok) throw new Error('Missing project')

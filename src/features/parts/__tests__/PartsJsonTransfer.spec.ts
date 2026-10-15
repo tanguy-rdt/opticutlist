@@ -1,3 +1,5 @@
+import { createPinia } from 'pinia'
+import { useToastStore } from '../../../shared/ui/toast-store'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAppRouter } from '../../../app/router'
@@ -20,8 +22,9 @@ function setup() {
     preview: vi.fn<PartsTransferService['preview']>().mockResolvedValue({ ok: true, value: { file, materials: [material], materialIds: [material.id] } }),
     import: vi.fn<PartsTransferService['import']>().mockResolvedValue({ ok: true, value: 1 }),
   }
-  const wrapper = mount(PartsJsonTransfer, { props: { disabled: false }, attachTo: document.body, global: { plugins: [createAppRouter(createMemoryHistory())], provide: { [partsTransferServiceKey]: service, [projectIdKey]: projectId } } }); wrappers.push(wrapper)
-  return { wrapper, service }
+  const pinia = createPinia()
+  const wrapper = mount(PartsJsonTransfer, { props: { disabled: false }, attachTo: document.body, global: { plugins: [pinia, createAppRouter(createMemoryHistory())], provide: { [partsTransferServiceKey]: service, [projectIdKey]: projectId } } }); wrappers.push(wrapper)
+  return { wrapper, service, toasts: useToastStore(pinia) }
 }
 function button(wrapper: VueWrapper, text: string) { const result = wrapper.findAll('button').find(item => item.text() === text); if (!result) throw new Error('Missing button'); return result }
 async function select(wrapper: VueWrapper, filename = 'parts.oclparts.json') {
@@ -33,30 +36,34 @@ async function select(wrapper: VueWrapper, filename = 'parts.oclparts.json') {
 }
 describe('Parts JSON actions', () => {
   it.each(['parts.oclparts.json', 'parts.json'])('previews %s and requires explicit confirmation before importing', async filename => {
-    const { wrapper, service } = setup()
+    const { wrapper, service, toasts } = setup()
     await button(wrapper, 'Import JSON').trigger('click')
     expect(wrapper.get('input[type="file"]').attributes('accept')).toContain('.json')
     await select(wrapper, filename)
     expect(service.preview).toHaveBeenCalledWith(projectId, JSON.stringify(file))
     expect(wrapper.text()).toContain('500 × 400 × 18 mm · Qty 2')
     expect(service.import).not.toHaveBeenCalled()
+    expect(toasts.notifications).toHaveLength(0)
     await wrapper.get('form').trigger('submit'); await flushPromises()
     expect(service.import).toHaveBeenCalledWith(projectId, file, [material.id], true)
     expect(wrapper.emitted('imported')).toHaveLength(1)
+    expect(toasts.notifications).toEqual([expect.objectContaining({ title: 'Parts imported', description: '1 part added' })])
+    expect(wrapper.find('[role="status"]').exists()).toBe(false)
     expect(wrapper.find('dialog').exists()).toBe(false)
   })
   it('allows cancellation without writing and reports validation/storage failures', async () => {
-    const { wrapper, service } = setup()
+    const { wrapper, service, toasts } = setup()
     await button(wrapper, 'Import JSON').trigger('click'); await select(wrapper)
     await button(wrapper, 'Cancel').trigger('click')
     expect(service.import).not.toHaveBeenCalled()
+    expect(toasts.notifications).toHaveLength(0)
     service.preview.mockResolvedValue({ ok: false, error: { kind: 'invalidRecord', issues: [{ path: ['version'], message: 'Unsupported version' }] } })
     await button(wrapper, 'Import JSON').trigger('click'); await select(wrapper)
     expect(wrapper.get('[role="alert"]').text()).toContain('version: Unsupported version')
     expect(button(wrapper, 'Import parts').attributes('disabled')).toBeDefined()
   })
   it('requires a material choice without creating materials and retains failed previews', async () => {
-    const { wrapper, service } = setup()
+    const { wrapper, service, toasts } = setup()
     service.preview.mockResolvedValue({ ok: true, value: { file, materials: [material], materialIds: [null] } })
     await button(wrapper, 'Import JSON').trigger('click'); await select(wrapper)
     expect(button(wrapper, 'Import parts').attributes('disabled')).toBeDefined()
@@ -66,6 +73,7 @@ describe('Parts JSON actions', () => {
     service.import.mockResolvedValue({ ok: false, error: { kind: 'storageFailure', message: 'Disk full' } })
     await wrapper.get('form').trigger('submit'); await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
+    expect(toasts.notifications).toHaveLength(0)
     expect(wrapper.get('#import-part-material-0').text()).toContain(material.name)
   })
 

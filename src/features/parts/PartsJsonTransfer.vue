@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppButton from '../../shared/ui/AppButton.vue'
+import { useToastStore } from '../../shared/ui/toast-store'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { RouterLink } from 'vue-router'
 import { materialIdSchema, type MaterialId } from '../../domain/model/ids'
@@ -17,7 +18,7 @@ const service = usePartsTransferService()
 const open = ref(false)
 const busy = ref(false)
 const error = ref('')
-const notice = ref('')
+const toasts = useToastStore()
 const preview = shallowRef<PartsImportPreview | null>(null)
 const materialIds = ref<readonly (MaterialId | null)[]>([])
 const options = computed(() => preview.value?.materials.map(material => ({ value: material.id, name: material.name, group: material.category, presetId: material.libraryPresetId })) ?? [])
@@ -26,7 +27,7 @@ onBeforeUnmount(() => { generation++ })
 function message(failure: PersistenceError): string {
   return failure.kind === 'invalidRecord' ? failure.issues.map(issue => `${issue.path.join('.') || 'File'}: ${issue.message}`).join('; ') : persistenceErrorMessage(failure, 'Part')
 }
-function start(): void { open.value = true; preview.value = null; error.value = ''; notice.value = ''; materialIds.value = [] }
+function start(): void { open.value = true; preview.value = null; error.value = ''; materialIds.value = [] }
 function close(): void { if (!busy.value) { generation++; open.value = false } }
 async function select(event: Event): Promise<void> {
   if (!service || busy.value || !(event.target instanceof HTMLInputElement)) return
@@ -54,7 +55,7 @@ async function confirm(): Promise<void> {
   if (current !== generation) return
   busy.value = false
   if (!result.ok) { error.value = message(result.error); return }
-  close(); notice.value = `${String(result.value)} parts imported.`; emit('imported')
+  close(); toasts.success('Parts imported', `${String(result.value)} ${result.value === 1 ? 'part' : 'parts'} added`); emit('imported')
 }
 </script>
 <template>
@@ -73,11 +74,6 @@ async function confirm(): Promise<void> {
         Import JSON
       </AppButton>
     </slot>
-    <span
-      v-if="notice"
-      role="status"
-      class="text-sm text-muted"
-    >{{ notice }}</span>
     <span
       v-if="error && !open"
       role="alert"

@@ -7,6 +7,7 @@ import type { Material } from '../../domain/model/material'
 import type { Part } from '../../domain/model/part'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import AppSplitButton from '../../shared/ui/AppSplitButton.vue'
+import { useToastStore } from '../../shared/ui/toast-store'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import { useMaterialRepository } from '../materials/material-repository'
@@ -37,7 +38,7 @@ const busy = ref(false)
 const loadError = ref('')
 const materialError = ref('')
 const operationError = ref('')
-const notice = ref('')
+const toasts = useToastStore()
 const editing = shallowRef<Part | null>(null)
 const formOpen = ref(false)
 const formVersion = ref(0)
@@ -67,7 +68,6 @@ async function edit(part: Part | null): Promise<void> {
   editing.value = part
   formVersion.value++
   operationError.value = ''
-  notice.value = ''
   formOpen.value = true
   await nextTick()
   partForm.value?.focusName()
@@ -77,7 +77,6 @@ async function save(part: Part): Promise<void> {
   if (busy.value || loading.value || loadError.value || materialError.value) return
   busy.value = true
   operationError.value = ''
-  notice.value = ''
   // Reread both selection and catalog sources before committing a draft.
   await loadMaterials()
   if (materialError.value || !availableMaterials.value.some(material => material.id === part.materialId)) {
@@ -98,7 +97,7 @@ async function save(part: Part): Promise<void> {
   if (result.ok) {
     formOpen.value = false
     selectedId.value = result.value.id
-    notice.value = wasEditing ? 'Part updated.' : 'Part created.'
+    toasts.success(wasEditing ? 'Part updated' : 'Part created')
     await load()
   } else operationError.value = persistenceErrorMessage(result.error, 'Part')
   busy.value = false
@@ -108,11 +107,10 @@ async function remove(part: Part): Promise<void> {
   if (!window.confirm(`Delete “${part.name}”? This cannot be undone.`)) return
   busy.value = true
   operationError.value = ''
-  notice.value = ''
   const result = await repository.delete(part.id)
   if (result.ok) {
     if (editing.value?.id === part.id) formOpen.value = false
-    notice.value = 'Part deleted.'
+    toasts.success('Part deleted')
     await load()
   } else operationError.value = persistenceErrorMessage(result.error, 'Part')
   busy.value = false
@@ -173,13 +171,6 @@ onMounted(load)
         </PartsJsonTransfer>
       </div>
     </header>
-    <p
-      v-if="notice"
-      role="status"
-      class="rounded-lg bg-success-surface px-4 py-3 text-sm text-success"
-    >
-      {{ notice }}
-    </p>
     <p
       v-if="operationError && !formOpen"
       role="alert"

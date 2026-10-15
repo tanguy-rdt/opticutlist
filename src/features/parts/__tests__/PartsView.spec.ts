@@ -1,3 +1,6 @@
+import { defineComponent } from 'vue'
+import { createPinia } from 'pinia'
+import AppToastHost from '../../../shared/ui/AppToastHost.vue'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -48,10 +51,10 @@ function setup() {
   return { parts: fakeRepository(part), materials: fakeRepository(material, [material]), projects: fakeRepository(project), products: fakeRepository(supplierProductSchema.parse(validSupplierProductInput)) }
 }
 function render(repositories: { parts: Repository<typeof part>; materials: Repository<typeof material>; projects?: Repository<typeof project>; products?: Repository<ReturnType<typeof supplierProductSchema.parse>>; stock?: Repository<StockItem> }, transfer?: PartsTransferService) {
-  const wrapper = mount(PartsView, {
+  const wrapper = mount(defineComponent({ components: { PartsView, AppToastHost }, template: '<PartsView /><AppToastHost />' }), {
     attachTo: document.body,
     global: {
-      plugins: [createAppRouter(createMemoryHistory())],
+      plugins: [createPinia(), createAppRouter(createMemoryHistory())],
       provide: {
         ...(transfer ? { [partsTransferServiceKey]: transfer } : {}),
         ...(repositories.stock ? { [stockRepositoryKey]: repositories.stock } : {}),
@@ -252,7 +255,8 @@ describe('PartsView', () => {
     expect(repositories.materials.get).toHaveBeenCalledExactlyOnceWith(material.id)
     expect(repositories.parts.list).toHaveBeenCalledTimes(2)
     expect(wrapper.get('tbody').text()).toContain(part.name)
-    expect(wrapper.get('[role="status"]').text()).toBe('Part created.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Part created')
+    expect(wrapper.findComponent(PartsView).find('[role="status"]').exists()).toBe(false)
     expect(wrapper.find('dialog').exists()).toBe(false)
   })
 
@@ -272,7 +276,7 @@ describe('PartsView', () => {
     expect(repositories.parts.update).toHaveBeenCalledExactlyOnceWith(part.id, updated)
     expect(repositories.parts.create).not.toHaveBeenCalled()
     expect(wrapper.get('tbody').text()).toContain(updated.name)
-    expect(wrapper.get('[role="status"]').text()).toBe('Part updated.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Part updated')
   })
 
   it('cancels an edit without writing', async () => {
@@ -304,7 +308,7 @@ describe('PartsView', () => {
     expect(repositories.parts.delete).toHaveBeenCalledExactlyOnceWith(part.id)
     expect(wrapper.text()).toContain('No parts yet')
     expect(wrapper.find('dialog').exists()).toBe(false)
-    expect(wrapper.get('[role="status"]').text()).toBe('Part deleted.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Part deleted')
     expect(wrapper.find('dialog').exists()).toBe(false)
   })
 
@@ -314,6 +318,7 @@ describe('PartsView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
+    expect(wrapper.find('.app-toast').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('No parts yet')
     await button(wrapper, 'Try again').trigger('click')
     await flushPromises()
@@ -376,8 +381,9 @@ describe('PartsView', () => {
     expect(wrapper.get('[role="alert"]').text()).not.toBe('')
     expect(wrapper.get<HTMLInputElement>('#part-name').element.value).toBe(part.name)
     expect(repositories.parts.list).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[role="status"]').exists()).toBe(false)
     await submit(wrapper)
-    expect(wrapper.get('[role="status"]').text()).toBe('Part created.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Part created')
   })
 
   it('retains edits if the part was removed before updating', async () => {
@@ -404,6 +410,7 @@ describe('PartsView', () => {
     await wrapper.get(`button[aria-label="Delete ${part.name}"]`).trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
+    expect(wrapper.find('.app-toast').exists()).toBe(false)
     expect(wrapper.get('tbody').text()).toContain(part.name)
   })
 
@@ -430,8 +437,9 @@ describe('PartsView', () => {
     await flushPromises()
     await fill(wrapper)
     await submit(wrapper)
-    expect(wrapper.get('[role="status"]').text()).toBe('Part created.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Part created')
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
+    expect(wrapper.find('.app-toast').exists()).toBe(true)
   })
 
   it('persists through the existing Dexie adapter across connections and remounts', async () => {
