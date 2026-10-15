@@ -9,7 +9,6 @@ const manifestSchema = z.strictObject({
     id: materialPresetIdSchema,
     name: z.string().min(1),
     category: z.enum(['feuillus', 'resineux', 'exotiques', 'derives']),
-    texture: z.string().regex(/^textures\/[a-z]+\.webp$/),
     preview: z.string().regex(/^previews\/[a-z]+\.webp$/),
   })),
 })
