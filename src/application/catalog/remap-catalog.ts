@@ -42,5 +42,5 @@ export function remapCatalog(catalog: CatalogRecords, existing: ExistingCatalog,
     if (existing.products.some(record => record.id === item.id && identical(updated, record))) productIds.set(item.id, item.id)
     return { ...updated, id: mapped(productIds, item.id) }
   })
-  return { catalog: { materials, suppliers, products }, materialIds, productIds }
+  return { catalog: { materials, suppliers, products }, materialIds, supplierIds, productIds }
 }

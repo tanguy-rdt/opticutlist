@@ -168,8 +168,6 @@
   .catalog-material-symbol { @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-quiet-surface text-muted; }
   .catalog-material-symbol svg { @apply h-6 w-6; }
   .catalog-badge { @apply inline-flex rounded-md bg-quiet-surface px-2.5 py-1.5 text-xs font-medium; }
-  .catalog-selection-mark { @apply flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border; }
-  .catalog-selection-mark svg { @apply h-3.5 w-3.5; }
   .catalog-product-table { @apply text-xs; }
   .catalog-product-table thead { @apply h-10; }
   .catalog-product-table tbody tr { @apply h-12; }

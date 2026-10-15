@@ -1,3 +1,4 @@
+import { orderCatalogProducts, catalogOrderSchema, type CatalogOrder } from './catalog-order'
 import { type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
@@ -6,6 +7,8 @@ import type { LocalPersistence, PersistenceResult, Repositories, Repository } fr
 import { resolvePresetMaterial } from './resolve-preset-material'
 
 export interface CatalogProductRepository extends Repository<SupplierProduct> {
+  ordering(): Promise<PersistenceResult<readonly CatalogOrder[]>>
+  move(id: SupplierProduct['id'], targetId: SupplierProduct['id'], position: 'before' | 'after'): Promise<PersistenceResult<CatalogOrder>>
   saveWithPreset(record: unknown, presetId: string, updatingId?: SupplierProduct['id']): Promise<PersistenceResult<SupplierProduct>>
 }
 
@@ -47,6 +50,24 @@ export function createCatalogRepositories(persistence: LocalPersistence): Pick<R
     },
     supplierProducts: {
       ...persistence.supplierProducts,
+      ordering: () => persistence.catalogOrders.list(),
+      move: (id, targetId, position) => persistence.transaction(async repositories => {
+        const products = await repositories.supplierProducts.list(); if (!products.ok) return products
+        const source = products.value.find(product => product.id === id)
+        const target = products.value.find(product => product.id === targetId)
+        if (!source || !target) return { ok: false, error: { kind: 'notFound', id: !source ? id : targetId } }
+        if (source.supplierId !== target.supplierId || source.materialId !== target.materialId) return conflict('Products can only be reordered within the same supplier and material.')
+        const orders = await repositories.catalogOrders.list(); if (!orders.ok) return orders
+        const previous = orders.value.find(order => order.id === source.supplierId)
+        const productIds = orderCatalogProducts(products.value.filter(product => product.supplierId === source.supplierId), orders.value).map(product => product.id)
+        if (id !== targetId) {
+          productIds.splice(productIds.indexOf(id), 1)
+          productIds.splice(productIds.indexOf(targetId) + (position === 'after' ? 1 : 0), 0, id)
+        }
+        const order = catalogOrderSchema.parse({ id: source.supplierId, productIds })
+        if (previous && JSON.stringify(previous) === JSON.stringify(order)) return { ok: true, value: order }
+        return previous ? repositories.catalogOrders.update(order.id, order) : repositories.catalogOrders.create(order)
+      }),
       saveWithPreset: (record, presetId, updatingId) => saveProduct(record, updatingId, presetId),
       create: (record) => saveProduct(record),
       update: (id, record) => saveProduct(record, id),

@@ -1,3 +1,5 @@
+import { createCatalogRepositories } from '../catalog-repositories'
+import { orderCatalogProducts } from '../catalog-order'
 import { materialIdSchema, supplierIdSchema, supplierProductIdSchema } from '../../../domain/model/ids'
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -146,5 +148,59 @@ describe('portable catalog transfer', () => {
     vi.spyOn(persistence, 'transaction').mockImplementation(work => transaction(repositories => work({ ...repositories, supplierProducts: { ...repositories.supplierProducts, create: () => Promise.resolve({ ok: false, error: { kind: 'storageFailure', message: 'Disk full' } }) } })))
     expect(await service.import(file, true)).toMatchObject({ ok: false, error: { kind: 'storageFailure' } })
     expect(await snapshot(persistence)).toEqual(before)
+  })
+})
+
+
+describe('catalog order exchange', () => {
+  const ordered = catalogTransferSchema.parse({ ...file, catalog: { ...file.catalog, products: [{ ...validSupplierProductInput, id: 'a-product' }, { ...validSupplierProductInput, id: 'b-product' }] }, catalogOrders: [{ id: validSupplierInput.id, productIds: ['b-product', 'a-product'] }] })
+  it('round-trips manual ordering and keeps existing local ranks when importing again', async () => {
+    const source = database(); const target = database()
+    expect((await source.service.import(ordered, true)).ok).toBe(true)
+    const exported = await source.service.export(); if (!exported.ok) throw new Error('Export failed')
+    const preview = await target.service.preview(exported.value); if (!preview.ok) throw new Error('Preview failed')
+    expect((await target.service.import(preview.value.file, true)).ok).toBe(true)
+    const products = await target.persistence.supplierProducts.list(); const orders = await target.persistence.catalogOrders.list()
+    if (!products.ok || !orders.ok) throw new Error('Read failed')
+    expect(orderCatalogProducts(products.value, orders.value).map(product => product.id)).toEqual(['b-product', 'a-product'])
+    const first = products.value[0]; const second = products.value[1]; if (!first || !second) throw new Error('Fixture')
+    await createCatalogRepositories(target.persistence).supplierProducts.move(first.id, second.id, 'before')
+    const local = await target.persistence.catalogOrders.list()
+    expect((await target.service.import(ordered, true)).ok).toBe(true)
+    expect(await target.persistence.catalogOrders.list()).toEqual(local)
+    expect(await target.persistence.stockItems.list()).toEqual({ ok: true, value: [] })
+  })
+  it('remaps supplier and product order IDs with conflicting catalog entities', async () => {
+    const { service, persistence } = database()
+    await persistence.materials.create(validMaterialInput)
+    await persistence.suppliers.create({ ...validSupplierInput, name: 'Existing supplier' })
+    await persistence.supplierProducts.create({ ...validSupplierProductInput, id: 'a-product', name: 'Existing panel' })
+    const imported = await service.import(ordered, true); if (!imported.ok) throw new Error('Import failed')
+    const order = imported.value.catalogOrders?.[0]
+    expect(order?.id).not.toBe(validSupplierInput.id)
+    expect(order?.productIds[1]).not.toBe('a-product')
+    expect(imported.value.catalog.products.every(product => product.supplierId === order?.id)).toBe(true)
+    expect(new Set(order?.productIds)).toEqual(new Set(imported.value.catalog.products.map(product => product.id)))
+    expect(await persistence.catalogOrders.list()).toEqual({ ok: true, value: imported.value.catalogOrders })
+  })
+  it('accepts old catalogs without order metadata and rejects missing or wrong-supplier references', async () => {
+    expect(validateCatalogTransfer(file).ok).toBe(true)
+    expect(validateCatalogTransfer({ ...ordered, catalogOrders: [{ id: validSupplierInput.id, productIds: ['missing'] }] }).ok).toBe(false)
+    expect(validateCatalogTransfer({ ...ordered, catalogOrders: [{ id: 'another-supplier', productIds: ['a-product'] }] }).ok).toBe(false)
+    const target = database()
+    await target.service.import(ordered, true)
+    const before = await target.persistence.catalogOrders.list()
+    await target.service.import(file, true)
+    expect(await target.persistence.catalogOrders.list()).toEqual(before)
+  })
+  it('rolls back imported entities when order persistence fails', async () => {
+    const { persistence, service } = database()
+    const transaction = persistence.transaction.bind(persistence)
+    vi.spyOn(persistence, 'transaction').mockImplementation(work => transaction(repositories => work({ ...repositories, catalogOrders: { ...repositories.catalogOrders, create: () => Promise.resolve({ ok: false, error: { kind: 'storageFailure', message: 'Disk full' } }) } })))
+    expect(await service.import(ordered, true)).toMatchObject({ ok: false })
+    expect(await persistence.materials.list()).toEqual({ ok: true, value: [] })
+    expect(await persistence.suppliers.list()).toEqual({ ok: true, value: [] })
+    expect(await persistence.supplierProducts.list()).toEqual({ ok: true, value: [] })
+    expect(await persistence.catalogOrders.list()).toEqual({ ok: true, value: [] })
   })
 })

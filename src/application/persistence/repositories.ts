@@ -1,3 +1,4 @@
+import type { CatalogOrder } from '../catalog/catalog-order'
 import type { StockOrder } from '../inventory/stock-order'
 import type { ProjectStock } from '../../domain/model/project-stock'
 import type { CurrentCuttingResult } from '../../domain/model/current-cutting-result'
@@ -36,6 +37,7 @@ export interface SavedPlanSummaryRepository extends Repository<SavedPlanSummary>
 }
 
 export interface Repositories {
+  readonly catalogOrders: Repository<CatalogOrder>
   readonly stockOrders: Repository<StockOrder>
   readonly projectStock: Repository<ProjectStock> & { find(id: CuttingProjectId): Promise<PersistenceResult<ProjectStock | null>> }
   readonly currentCuttingResults: Repository<CurrentCuttingResult> & {

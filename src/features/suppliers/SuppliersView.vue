@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, onMounted, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { orderCatalogProducts, type CatalogOrder } from '../../application/catalog/catalog-order'
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
@@ -41,6 +42,7 @@ let generation = 0
 onBeforeUnmount(() => { generation++ })
 const materialRepository = useMaterialRepository()
 const suppliers = shallowRef<readonly Supplier[]>([])
+const orders = shallowRef<readonly CatalogOrder[]>([])
 const products = shallowRef<readonly SupplierProduct[]>([])
 const materials = shallowRef<readonly Material[]>([])
 const loading = ref(true)
@@ -70,7 +72,7 @@ const sections = computed(() => {
     if (search.value && !`${product.name} ${material?.name ?? ''} ${material?.category ?? ''}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase().trim())) continue
     const group = grouped.get(product.materialId) ?? []; group.push(product); grouped.set(product.materialId, group)
   }
-  return [...grouped].map(([id, items]) => ({ id, material: materials.value.find(item => item.id === id), items }))
+  return [...grouped].map(([id, items]) => ({ id, material: materials.value.find(item => item.id === id), items: orderCatalogProducts(items, orders.value) }))
 })
 watch(sections, visibleSections => {
   const visibleProducts = visibleSections.flatMap(section => section.items)
@@ -104,7 +106,7 @@ function closeForm(): void { if (!busy.value) { formMode.value = null; operation
 async function load(): Promise<void> {
   const current = ++generation
   loading.value = true
-  const [supplierResult, productResult, materialResult] = await Promise.all([repositories.suppliers.list(), repositories.supplierProducts.list(), materialRepository.list()])
+  const [supplierResult, productResult, materialResult, ordering] = await Promise.all([repositories.suppliers.list(), repositories.supplierProducts.list(), materialRepository.list(), repositories.supplierProducts.ordering()])
   if (current !== generation) return
   const errors: string[] = []
   if (supplierResult.ok) suppliers.value = supplierResult.value
@@ -113,6 +115,8 @@ async function load(): Promise<void> {
   else errors.push(persistenceErrorMessage(productResult.error, 'Product'))
   if (materialResult.ok) materials.value = materialResult.value
   else errors.push(persistenceErrorMessage(materialResult.error, 'Material'))
+  if (ordering.ok) orders.value = ordering.value
+  else errors.push(persistenceErrorMessage(ordering.error, 'Product'))
   loadError.value = errors.join(' ')
   if (!supplierNavigation.value.some(item => item.id === selectedSupplierId.value)) selectedSupplierId.value = supplierNavigation.value[0]?.id ?? ''
   if (!products.value.some(item => item.id === selectedProductId.value)) selectedProductId.value = ''
@@ -124,6 +128,51 @@ async function load(): Promise<void> {
     else { stock.value = []; stockError.value = persistenceErrorMessage(result.error, 'Product') }
   }
   loading.value = false
+}
+const canReorder = computed(() => !disabled.value && !formMode.value && !search.value.trim() && !categoryFilter.value && !materialFilter.value)
+const dragged = shallowRef<SupplierProduct | null>(null)
+const dropTarget = shallowRef<{ id: string; position: 'before' | 'after' } | null>(null)
+function clearDrag(): void { dragged.value = null; dropTarget.value = null }
+async function moveRow(product: SupplierProduct, target: SupplierProduct, position: 'before' | 'after'): Promise<void> {
+  if (!canReorder.value || product.supplierId !== target.supplierId || product.materialId !== target.materialId) return
+  busy.value = true; operationError.value = ''; notice.value = ''
+  const current = generation
+  const result = await repositories.supplierProducts.move(product.id, target.id, position)
+  if (current !== generation) return
+  busy.value = false
+  if (!result.ok) operationError.value = 'Product order could not be saved. ' + persistenceErrorMessage(result.error, 'Product')
+  else {
+    orders.value = [...orders.value.filter(order => order.id !== result.value.id), result.value]
+    notice.value = 'Product order updated.'
+  }
+}
+async function moveBy(product: SupplierProduct, direction: number, event: KeyboardEvent): Promise<void> {
+  const handle = event.currentTarget
+  const group = orderCatalogProducts(products.value.filter(item => item.supplierId === product.supplierId && item.materialId === product.materialId), orders.value)
+  const target = group[group.findIndex(item => item.id === product.id) + direction]
+  if (target) {
+    await moveRow(product, target, direction < 0 ? 'before' : 'after')
+    await nextTick()
+    if (handle instanceof HTMLButtonElement && handle.isConnected) handle.focus()
+  }
+}
+function dragStart(event: DragEvent, product: SupplierProduct): void {
+  if (!canReorder.value) { event.preventDefault(); return }
+  dragged.value = product
+  if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', product.id) }
+}
+function dragOver(event: DragEvent, product: SupplierProduct): void {
+  if (!canReorder.value || !dragged.value || dragged.value.id === product.id || dragged.value.supplierId !== product.supplierId || dragged.value.materialId !== product.materialId) { dropTarget.value = null; return }
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  const bounds = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
+  dropTarget.value = { id: product.id, position: bounds && event.clientY >= bounds.top + bounds.height / 2 ? 'after' : 'before' }
+}
+async function drop(event: DragEvent, target: SupplierProduct): Promise<void> {
+  event.preventDefault()
+  const source = dragged.value; const position = dropTarget.value?.id === target.id ? dropTarget.value.position : null
+  clearDrag()
+  if (source && position) await moveRow(source, target, position)
 }
 async function editSupplier(supplier: Supplier | null): Promise<void> {
   if (disabled.value) return
@@ -501,6 +550,12 @@ onMounted(load)
         >
           No products match this supplier and your filters.
         </p>
+        <p
+          id="catalog-order-help"
+          :class="search.trim() || categoryFilter || materialFilter ? 'text-xs text-muted' : 'sr-only'"
+        >
+          {{ search.trim() || categoryFilter || materialFilter ? 'Clear product search and filters to reorder products.' : 'Drag a grip within the same material and supplier, or focus it and use Up and Down arrow keys.' }}
+        </p>
         <section
           v-for="section in sections"
           :key="section.id"
@@ -544,6 +599,12 @@ onMounted(load)
                 <tr>
                   <th
                     scope="col"
+                    class="w-10 px-2 py-2"
+                  >
+                    <span class="sr-only">Order</span>
+                  </th>
+                  <th
+                    scope="col"
                     class="px-3 py-2"
                   >
                     Product
@@ -580,30 +641,55 @@ onMounted(load)
                   v-for="product in section.items"
                   :key="product.id"
                   class="border-t border-line hover:bg-subtle"
-                  :class="selectedProductId === product.id ? 'bg-subtle' : ''"
+                  :data-product-id="product.id"
+                  :class="[selectedProductId === product.id ? 'bg-subtle' : '', dragged?.id === product.id ? 'opacity-50' : '']"
+                  :style="dropTarget?.id === product.id ? { boxShadow: `inset 0 ${dropTarget.position === 'before' ? '2px' : '-2px'} 0 var(--accent)` } : {}"
                   @click="inspectProduct(product.id)"
+                  @dragover="dragOver($event, product)"
+                  @drop="drop($event, product)"
                 >
+                  <td class="px-2 py-2">
+                    <button
+                      type="button"
+                      class="inline-flex size-9 items-center justify-center rounded text-muted hover:bg-quiet-surface hover:text-ink focus-visible:outline-accent enabled:cursor-grab active:cursor-grabbing"
+                      :draggable="canReorder"
+                      :disabled="!canReorder"
+                      :aria-label="`Reorder product ${product.name}`"
+                      aria-describedby="catalog-order-help"
+                      aria-keyshortcuts="ArrowUp ArrowDown"
+                      title="Drag to reorder; Up/Down keys move one row"
+                      @click.stop
+                      @dragstart.stop="dragStart($event, product)"
+                      @dragend="clearDrag"
+                      @keydown.up.prevent.stop="moveBy(product, -1, $event)"
+                      @keydown.down.prevent.stop="moveBy(product, 1, $event)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        class="size-4"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      ><circle
+                        v-for="(point, index) in [[9, 5], [15, 5], [9, 12], [15, 12], [9, 19], [15, 19]]"
+                        :key="index"
+                        :cx="point[0]"
+                        :cy="point[1]"
+                        r="1.5"
+                      /></svg>
+                    </button>
+                  </td>
                   <th
                     scope="row"
                     class="min-w-28 px-3 py-2.5 font-medium"
                   >
                     <button
                       type="button"
-                      class="inline-flex items-center gap-4 rounded text-left underline-offset-4 hover:underline"
+                      class="inline-flex items-center rounded text-left underline-offset-4 hover:underline"
                       :aria-label="`View product ${product.name}`"
                       :aria-pressed="selectedProductId === product.id"
                       aria-controls="product-details"
                       @click.stop="inspectProduct(product.id)"
                     >
-                      <span
-                        class="catalog-selection-mark"
-                        :class="selectedProductId === product.id ? 'border-accent bg-accent text-on-accent' : 'border-control-line bg-surface'"
-                      >
-                        <AppIcon
-                          v-if="selectedProductId === product.id"
-                          name="check"
-                        />
-                      </span>
                       {{ product.name }}
                     </button>
                   </th>

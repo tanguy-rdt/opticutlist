@@ -5,7 +5,7 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../../../app/router'
-import { createCatalogRepositories } from '../../../application/catalog/catalog-repositories'
+import { createCatalogRepositories, type CatalogProductRepository } from '../../../application/catalog/catalog-repositories'
 import type { PersistenceResult, Repository } from '../../../application/persistence/repositories'
 import { validMaterialInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { stockItemSchema } from '../../../domain/model/stock-item'
@@ -32,9 +32,9 @@ function fakeRepository<Entity extends { id: string }>(record: Entity, records: 
   }
 }
 function setup() {
-  return { suppliers: fakeRepository(supplier, [supplier]), supplierProducts: fakeRepository(product), materials: fakeRepository(material, [material]) }
+  return { suppliers: fakeRepository(supplier, [supplier]), supplierProducts: { ...fakeRepository(product), ordering: vi.fn<CatalogProductRepository['ordering']>().mockResolvedValue({ ok: true, value: [] }), move: vi.fn<CatalogProductRepository['move']>() }, materials: fakeRepository(material, [material]) }
 }
-function render(repositories: { suppliers: Repository<typeof supplier>; supplierProducts: Repository<typeof product> & Partial<Pick<ReturnType<typeof createCatalogRepositories>['supplierProducts'], 'saveWithPreset'>>; materials: Repository<typeof material> }, provide: Record<symbol, unknown> = {}) {
+function render(repositories: { suppliers: Repository<typeof supplier>; supplierProducts: Repository<typeof product> & Partial<Pick<ReturnType<typeof createCatalogRepositories>['supplierProducts'], 'saveWithPreset' | 'ordering' | 'move'>>; materials: Repository<typeof material> }, provide: Record<symbol, unknown> = {}) {
   const wrapper = mount(SuppliersView, {
     attachTo: document.body,
     global: {
@@ -136,7 +136,8 @@ describe('SuppliersView', () => {
     expect(details.get('[aria-label="Owned inventory"]').text()).toContain('0 owned units')
     expect(details.get('[aria-label="Product actions"]').text()).toContain('Edit product')
     const selected = wrapper.get('button[aria-controls="product-details"][aria-pressed="true"]')
-    expect(selected.get('.catalog-selection-mark svg').attributes('aria-hidden')).toBe('true')
+    expect(selected.find('.catalog-selection-mark').exists()).toBe(false)
+    expect(selected.element.closest('tr')?.classList.contains('bg-subtle')).toBe(true)
     await wrapper.get(`button[aria-label="Edit panel ${product.name}"]`).trigger('click')
     expect(wrapper.find('#product-name').exists()).toBe(true)
     expect(inventory.list).toHaveBeenCalledTimes(1)
@@ -166,7 +167,7 @@ describe('SuppliersView', () => {
   it('defaults to the first visible product, preserves explicit selections and updates details with filters and supplier changes', async () => {
     const repositories = setup()
     const secondSupplier = supplierSchema.parse({ ...supplier, id: 'second-supplier', name: 'Other supplier' })
-    const alternative = supplierProductSchema.parse({ ...product, id: 'alternative', name: 'Alternative panel', thicknessMm: 25 })
+    const alternative = supplierProductSchema.parse({ ...product, id: `${product.id}-alternative`, name: 'Alternative panel', thicknessMm: 25 })
     const other = supplierProductSchema.parse({ ...product, id: 'other-panel', name: 'Other panel', supplierId: secondSupplier.id })
     repositories.suppliers.list.mockResolvedValue({ ok: true, value: [supplier, secondSupplier] })
     repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product, alternative, other] })
@@ -1077,11 +1078,67 @@ describe('SuppliersView', () => {
       const reopened = render(createCatalogRepositories(second))
       await vi.waitFor(() => { expect(reopened.text()).toContain(product.name) })
       expect(reopened.get('table').text()).toContain('2500 × 1250')
-      expect(reopened.get('table tbody td').text()).toBe('2500 × 1250')
+      expect(reopened.get('table tbody').findAll('td')[1]?.text()).toBe('2500 × 1250')
       await selectProduct(reopened)
       expect(reopened.get('#product-details').text()).toContain('2500 × 1250 × 18 mm')
       expect(reopened.get('#product-details [aria-label="Product specifications"] dl').text()).toContain('Thickness18 mm')
       expect(await second.stockItems.list()).toEqual({ ok: true, value: [] })
     } finally { first.close(); second.close() }
+  })
+})
+
+
+describe('manual Catalog row order', () => {
+  function ids(wrapper: VueWrapper) { return wrapper.findAll('tbody tr').map(row => row.attributes('data-product-id')) }
+  it('reorders from a grip, preserves product selection and restores custom ordering on reopening', async () => {
+    const repositories = setup()
+    const a = supplierProductSchema.parse({ ...product, id: 'a-product', name: 'First panel' })
+    const b = supplierProductSchema.parse({ ...product, id: 'b-product', name: 'Second panel' })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [a, b] })
+    const order = { id: supplier.id, productIds: [b.id, a.id] }
+    repositories.supplierProducts.move.mockResolvedValue({ ok: true, value: order })
+    const wrapper = render(repositories); await flushPromises()
+    expect(wrapper.find('.catalog-selection-mark, table input[type="checkbox"]').exists()).toBe(false)
+    await wrapper.get('tr[data-product-id="b-product"]').trigger('click')
+    const handle = wrapper.get<HTMLButtonElement>('button[aria-label="Reorder product Second panel"]')
+    handle.element.focus()
+    await handle.trigger('keydown', { key: 'ArrowUp' }); await flushPromises()
+    expect(repositories.supplierProducts.move).toHaveBeenCalledExactlyOnceWith(b.id, a.id, 'before')
+    expect(ids(wrapper)).toEqual(['b-product', 'a-product'])
+    expect(wrapper.get('#product-details h3').text()).toBe(b.name)
+    expect(wrapper.get('tr[data-product-id="b-product"]').classes()).toContain('bg-subtle')
+    expect(document.activeElement).toBe(handle.element)
+    wrapper.unmount()
+    repositories.supplierProducts.ordering.mockResolvedValue({ ok: true, value: [order] })
+    const reopened = render(repositories); await flushPromises()
+    expect(ids(reopened)).toEqual(['b-product', 'a-product'])
+  })
+  it('shows insertion feedback, rejects cross-material drops and disables grips while filtering', async () => {
+    const repositories = setup()
+    const otherMaterial = materialSchema.parse({ ...material, id: 'other-material' })
+    const a = supplierProductSchema.parse({ ...product, id: 'a-product', name: 'First panel' })
+    const b = supplierProductSchema.parse({ ...product, id: 'b-product', name: 'Second panel' })
+    const c = supplierProductSchema.parse({ ...product, id: 'c-product', name: 'Other material panel', materialId: otherMaterial.id })
+    repositories.materials.list.mockResolvedValue({ ok: true, value: [material, otherMaterial] })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [a, b, c] })
+    repositories.supplierProducts.move.mockResolvedValue({ ok: true, value: { id: supplier.id, productIds: [b.id, a.id, c.id] } })
+    const wrapper = render(repositories); await flushPromises()
+    const handle = wrapper.get('button[aria-label="Reorder product Second panel"]')
+    expect(wrapper.get('tr[data-product-id="b-product"]').attributes('draggable')).toBeUndefined()
+    await handle.trigger('dragstart', { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    const target = wrapper.get('tr[data-product-id="a-product"]')
+    await target.trigger('dragover', { clientY: -1 })
+    expect(target.attributes('style')).toContain('box-shadow')
+    await target.trigger('drop'); await flushPromises()
+    expect(ids(wrapper)).toEqual(['b-product', 'a-product', 'c-product'])
+    await handle.trigger('dragstart', { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    const other = wrapper.get('tr[data-product-id="c-product"]')
+    await other.trigger('dragover', { clientY: -1 }); await other.trigger('drop')
+    expect(repositories.supplierProducts.move).toHaveBeenCalledTimes(1)
+    await wrapper.get('#catalog-search').setValue('Second')
+    expect(handle.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Clear product search and filters to reorder products.')
+    await handle.trigger('keydown', { key: 'ArrowUp' })
+    expect(repositories.supplierProducts.move).toHaveBeenCalledTimes(1)
   })
 })
