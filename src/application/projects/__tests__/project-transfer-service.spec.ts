@@ -53,6 +53,24 @@ async function inventorySnapshot(persistence: ReturnType<typeof createLocalPersi
   return { projects: await persistence.projects.list(), parts: await persistence.parts.list(), materials: await persistence.materials.list(), suppliers: await persistence.suppliers.list(), products: await persistence.supplierProducts.list(), summaries: await persistence.savedPlanSummaries.list(), contents: await persistence.savedPlanContents.list(), stock: await persistence.stockItems.list(), confirmations: await persistence.cuttingConfirmations.list() }
 }
 describe('portable project transfer', () => {
+  it.each([undefined, 'Étagère de cuisine\nFinition naturelle'])('round-trips optional descriptions %j with the unchanged project format', async description => {
+    const original = await source()
+    const before = await original.persistence.projects.get(project.id)
+    if (!before.ok) throw new Error('Missing project')
+    if (description !== undefined) expect((await original.persistence.projects.update(project.id, { ...before.value, description })).ok).toBe(true)
+    const exported = await original.transfer.export(project.id)
+    if (!exported.ok) throw new Error('Export failed')
+    const target = database()
+    const preview = await target.transfer.preview(exported.value.text)
+    if (!preview.ok) throw new Error('Invalid preview')
+    expect(preview.value.file.schemaVersion).toBe(1)
+    const imported = await target.transfer.import(preview.value.file, true)
+    if (!imported.ok) throw new Error('Import failed')
+    expect(imported.value).toEqual({ ...before.value, ...(description === undefined ? {} : { description }) })
+    const reopened = createLocalPersistence('project-transfer', { indexedDB: target.indexedDB, IDBKeyRange }); connections.push(reopened)
+    expect(await reopened.projects.get(project.id)).toEqual(imported)
+  })
+
   it('preserves stock selections and historical stock layouts without transferring inventory or remapping them as catalog products', async () => {
     const original = await source()
     const owner = await original.persistence.projects.get(project.id)

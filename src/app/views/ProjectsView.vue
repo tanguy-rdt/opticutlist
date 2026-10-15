@@ -23,6 +23,9 @@ const loading = ref(true)
 const search = ref('')
 const visible = computed(() => projects.value.filter(project => project.name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())))
 const name = ref('')
+const description = ref('')
+const descriptionError = ref('')
+const descriptionInput = ref<HTMLTextAreaElement | null>(null)
 const nameError = ref('')
 const error = ref('')
 const formError = ref('')
@@ -33,7 +36,7 @@ const stockHandling = ref<ProjectStockHandling>('keep')
 const restorationIssues = ref<readonly string[]>([])
 const deletionLoading = ref(false)
 const deletionError = ref('')
-const formMode = ref<'create' | 'rename' | null>(null)
+const formMode = ref<'create' | 'edit' | null>(null)
 const editing = shallowRef<CuttingProject | null>(null)
 const nameInput = ref<HTMLInputElement | null>(null)
 let deletionGeneration = 0
@@ -50,27 +53,33 @@ async function load(): Promise<void> {
 }
 async function openForm(project: CuttingProject | null = null): Promise<void> {
   if (busy.value || loading.value || error.value) return
-  editing.value = project; formMode.value = project ? 'rename' : 'create'; name.value = project?.name ?? ''
-  nameError.value = ''; formError.value = ''; notice.value = ''
+  editing.value = project; formMode.value = project ? 'edit' : 'create'; name.value = project?.name ?? ''; description.value = project?.description ?? ''
+  nameError.value = ''; descriptionError.value = ''; formError.value = ''; notice.value = ''
   await nextTick(); nameInput.value?.focus()
 }
 function closeForm(): void { if (!busy.value) { formMode.value = null; editing.value = null } }
 async function save(): Promise<void> {
   if (busy.value) return
-  nameError.value = ''; formError.value = ''
+  nameError.value = ''; descriptionError.value = ''; formError.value = ''
   if (!editing.value) return
-  const parsed = cuttingProjectSchema.safeParse({ ...editing.value, name: name.value })
-  if (!parsed.success) { nameError.value = parsed.error.issues.find(issue => issue.path[0] === 'name')?.message ?? 'Invalid project name'; nameInput.value?.focus(); return }
+  const parsed = cuttingProjectSchema.safeParse({ ...editing.value, name: name.value, description: description.value })
+  if (!parsed.success) {
+    nameError.value = parsed.error.issues.find(issue => issue.path[0] === 'name')?.message ?? ''
+    descriptionError.value = parsed.error.issues.find(issue => issue.path[0] === 'description')?.message ?? ''
+    if (nameError.value) nameInput.value?.focus()
+    else descriptionInput.value?.focus()
+    return
+  }
   busy.value = true
   const current = generation
-  // Read again so renaming never replaces the cached ownership/catalog selections.
+  // Read again so editing never replaces the cached ownership/catalog selections.
   const latest = await service.projects.get(editing.value.id)
-  const result = latest.ok ? await service.projects.update(latest.value.id, { ...latest.value, name: parsed.data.name }) : latest
+  const result = latest.ok ? await service.projects.update(latest.value.id, { ...latest.value, name: parsed.data.name, description: parsed.data.description ?? '' }) : latest
   if (current !== generation) return
   busy.value = false
   if (!result.ok) { formError.value = persistenceErrorMessage(result.error, 'Project'); return }
   closeForm()
-  notice.value = 'Project renamed.'; await load()
+  notice.value = 'Project updated.'; await load()
 }
 async function remove(project: CuttingProject): Promise<void> {
   if (busy.value) return
@@ -183,7 +192,7 @@ onMounted(load)
         v-if="visible.length"
         :projects="visible"
         :disabled="busy || !!formMode || !!deleting"
-        @rename="openForm"
+        @edit="openForm"
         @delete="remove"
       />
       <div
@@ -334,8 +343,8 @@ onMounted(load)
       @close="closeForm"
     />
     <AppDialog
-      v-if="formMode === 'rename'"
-      title="Rename project"
+      v-if="formMode === 'edit'"
+      title="Edit project"
       size="small"
       :busy="busy"
       @close="closeForm"
@@ -363,6 +372,22 @@ onMounted(load)
             :disabled="busy"
           >
         </FormField>
+        <FormField
+          id="project-description"
+          v-slot="{ controlAttrs }"
+          label="Description (optional)"
+          :error="descriptionError"
+        >
+          <textarea
+            v-bind="controlAttrs"
+            ref="descriptionInput"
+            v-model="description"
+            class="field"
+            rows="3"
+            maxlength="2000"
+            :disabled="busy"
+          />
+        </FormField>
         <p
           v-if="formError"
           role="alert"
@@ -372,11 +397,18 @@ onMounted(load)
         </p>
         <div class="dialog-actions">
           <AppButton
+            type="button"
+            :disabled="busy"
+            @click="closeForm"
+          >
+            Cancel
+          </AppButton>
+          <AppButton
             type="submit"
             variant="primary"
             :disabled="busy"
           >
-            {{ busy ? 'Saving…' : 'Save name' }}
+            {{ busy ? 'Saving…' : 'Save changes' }}
           </AppButton>
         </div>
       </form>

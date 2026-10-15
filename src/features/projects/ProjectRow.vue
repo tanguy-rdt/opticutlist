@@ -6,7 +6,7 @@ import type { CuttingProject } from '../../domain/model/cutting-project'
 import { useProjectNavigation } from './project-navigation'
 import ProjectExport from './ProjectExport.vue'
 const props = defineProps<{ project: CuttingProject; disabled: boolean }>()
-const emit = defineEmits<{ rename: [project: CuttingProject]; delete: [project: CuttingProject] }>()
+const emit = defineEmits<{ edit: [project: CuttingProject]; delete: [project: CuttingProject] }>()
 const navigation = useProjectNavigation()
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
@@ -41,6 +41,12 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
       <h2 class="text-lg font-semibold leading-snug [overflow-wrap:anywhere]">
         {{ project.name }}
       </h2>
+      <p
+        v-if="project.description"
+        class="mt-1 line-clamp-2 whitespace-pre-line text-sm leading-relaxed text-muted [overflow-wrap:anywhere]"
+      >
+        {{ project.description }}
+      </p>
       <p class="mt-1 text-sm text-muted">
         {{ project.partIds.length }} part references · {{ project.materialIds.length }} selected materials
       </p>
@@ -97,9 +103,9 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
           type="button"
           role="menuitem"
           class="action-menu-item"
-          @click="close(true); emit('rename', project)"
+          @click="close(true); emit('edit', project)"
         >
-          Rename project
+          Edit project
         </button>
         <ProjectExport
           :project-id="project.id"

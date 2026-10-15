@@ -6,6 +6,12 @@ describe('CuttingProject', () => {
   it('validates a named project and its stable catalog and Part references', () => {
     expect(cuttingProjectSchema.parse(record)).toEqual({ ...record, name: 'Cabinet' })
   })
+  it('accepts missing/empty descriptions, trims text and rejects invalid descriptions', () => {
+    expect(cuttingProjectSchema.parse(record)).not.toHaveProperty('description')
+    expect(cuttingProjectSchema.parse({ ...record, description: '  ' }).description).toBe('')
+    expect(cuttingProjectSchema.parse({ ...record, description: ' A cabinet.\nSecond line. ' }).description).toBe('A cabinet.\nSecond line.')
+    for (const description of [null, 42, 'x'.repeat(2001)]) expect(cuttingProjectSchema.safeParse({ ...record, description }).success).toBe(false)
+  })
   it.each(['partIds', 'materialIds', 'supplierProductIds', 'stockItemIds'])('rejects duplicate, blank and malformed %s rather than discarding them', field => {
     for (const ids of [['same', 'same'], [''], ['has space'], [1], null]) {
       expect(cuttingProjectSchema.safeParse({ ...record, [field]: ids }).success).toBe(false)

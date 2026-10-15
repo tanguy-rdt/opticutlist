@@ -7,6 +7,7 @@ export const panelQuantitySchema = z.number().int().min(0).refine(Number.isSafeI
 export const cuttingProjectSchema = z.strictObject({
   id: cuttingProjectIdSchema,
   name: nameSchema,
+  description: z.string().trim().max(2000).optional(),
   partIds: z.array(partIdSchema).refine(ids => new Set(ids).size === ids.length, 'Part IDs must be unique'),
   materialIds: z.array(materialIdSchema).refine(ids => new Set(ids).size === ids.length, 'Material IDs must be unique'),
   supplierProductIds: z.array(supplierProductIdSchema).refine(ids => new Set(ids).size === ids.length, 'Product IDs must be unique'),

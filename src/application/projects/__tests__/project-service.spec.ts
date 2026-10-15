@@ -48,6 +48,19 @@ async function selectMaterial(projectId = first.id): Promise<void> {
 afterEach(() => { for (const connection of connections) connection.close(); connections.length = 0; vi.restoreAllMocks() })
 
 describe('Project ownership and selections', () => {
+  it('persists metadata edits and clearing across connections without changing ownership or selections', async () => {
+    await selectMaterial()
+    value(await service.parts(first.id).create(part))
+    const before = value(await service.projects.get(first.id))
+    const updated = { ...before, name: 'Updated cabinet', description: 'Kitchen storage\nPainted finish' }
+    expect(value(await service.projects.update(first.id, updated))).toEqual(updated)
+    const reopened = createProjectService(connect())
+    expect(value(await reopened.projects.get(first.id))).toEqual(updated)
+    expect(value(await reopened.parts(first.id).list())).toEqual([part])
+    value(await reopened.projects.update(first.id, { ...updated, description: '' }))
+    expect(value(await createProjectService(connect()).projects.get(first.id))).toEqual({ ...updated, description: '' })
+    expect(value(await service.projects.get(second.id))).toEqual(second)
+  })
   it('creates stable projects, validates names/IDs and never overwrites duplicate IDs', async () => {
     expect(value(await service.projects.get(first.id))).toEqual(first)
     expect(await service.projects.create({ ...first, name: 'Overwrite' })).toMatchObject({ ok: false, error: { kind: 'duplicateId' } })

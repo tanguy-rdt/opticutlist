@@ -12,6 +12,9 @@ const emit = defineEmits<{ close: [] }>()
 const service = useProjectService()
 const router = useRouter()
 const name = ref('')
+const description = ref('')
+const descriptionError = ref('')
+const descriptionInput = ref<HTMLTextAreaElement | null>(null)
 const nameError = ref('')
 const error = ref('')
 const busy = ref(false)
@@ -22,9 +25,15 @@ onBeforeUnmount(() => { active = false })
 function close(): void { if (!busy.value) emit('close') }
 async function create(): Promise<void> {
   if (busy.value) return
-  nameError.value = ''; error.value = ''
-  const parsed = cuttingProjectSchema.safeParse({ id: crypto.randomUUID(), name: name.value, partIds: [], materialIds: [], supplierProductIds: [] })
-  if (!parsed.success) { nameError.value = parsed.error.issues.find(issue => issue.path[0] === 'name')?.message ?? 'Invalid project name'; nameInput.value?.focus(); return }
+  nameError.value = ''; descriptionError.value = ''; error.value = ''
+  const parsed = cuttingProjectSchema.safeParse({ id: crypto.randomUUID(), name: name.value, ...(description.value.trim() ? { description: description.value } : {}), partIds: [], materialIds: [], supplierProductIds: [] })
+  if (!parsed.success) {
+    nameError.value = parsed.error.issues.find(issue => issue.path[0] === 'name')?.message ?? ''
+    descriptionError.value = parsed.error.issues.find(issue => issue.path[0] === 'description')?.message ?? ''
+    if (nameError.value) nameInput.value?.focus()
+    else descriptionInput.value?.focus()
+    return
+  }
   busy.value = true
   const result = await service.projects.create(parsed.data)
   if (!active) return
@@ -61,6 +70,22 @@ async function create(): Promise<void> {
           autocomplete="off"
           :disabled="busy"
         >
+      </FormField>
+      <FormField
+        id="project-description"
+        v-slot="{ controlAttrs }"
+        label="Description (optional)"
+        :error="descriptionError"
+      >
+        <textarea
+          v-bind="controlAttrs"
+          ref="descriptionInput"
+          v-model="description"
+          class="field"
+          rows="3"
+          maxlength="2000"
+          :disabled="busy"
+        />
       </FormField>
       <p
         v-if="error"

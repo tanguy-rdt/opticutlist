@@ -791,7 +791,7 @@ describe('Home and application navigation', () => {
     expect(await reopened.persistence.suppliers.list()).toEqual({ ok: true, value: [expect.objectContaining(validSupplierInput)] })
   })
 
-  it('renames persisted projects without changing catalog, parts, stock or historical cutting plans', async () => {
+  it('edits persisted project metadata without changing catalog, parts, stock or historical cutting plans', async () => {
     const indexedDB = new IDBFactory()
     const initial = await mountAt('/', indexedDB)
     const { wrapper, router, persistence, service } = initial
@@ -817,11 +817,13 @@ describe('Home and application navigation', () => {
     await router.push('/projects')
     await vi.waitFor(() => { expect(wrapper.find('ul[aria-label="Projects"]').exists()).toBe(true) })
     await wrapper.get('ul[aria-label="Projects"] button[aria-haspopup="menu"]').trigger('click'); await flushPromises()
-    const rename = wrapper.findAll('button').find(button => button.text() === 'Rename project')
-    if (!rename) throw new Error('Missing rename action')
-    await rename.trigger('click'); await wrapper.get('#project-name').setValue('Renamed cabinet'); await wrapper.get('form').trigger('submit')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('Project renamed.') })
-    expect(await service.projects.get(project.id)).toEqual(before.ok ? { ok: true, value: { ...before.value, name: 'Renamed cabinet' } } : before)
+    const edit = wrapper.findAll('button').find(button => button.text() === 'Edit project')
+    if (!edit) throw new Error('Missing edit action')
+    await edit.trigger('click'); await wrapper.get('#project-name').setValue('Renamed cabinet')
+    await wrapper.get('#project-description').setValue('Kitchen storage\nPainted finish')
+    await wrapper.get('form').trigger('submit')
+    await vi.waitFor(() => { expect(wrapper.text()).toContain('Project updated.') })
+    expect(await service.projects.get(project.id)).toEqual(before.ok ? { ok: true, value: { ...before.value, name: 'Renamed cabinet', description: 'Kitchen storage\nPainted finish' } } : before)
     expect(await capture()).toEqual(records)
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     await wrapper.get('ul[aria-label="Projects"] button[aria-haspopup="menu"]').trigger('click'); await flushPromises()
@@ -836,6 +838,7 @@ describe('Home and application navigation', () => {
     wrapper.unmount(); persistence.close()
     const reopened = await mountAt('/projects', indexedDB)
     await vi.waitFor(() => { expect(reopened.wrapper.text()).toContain('Renamed cabinet') })
+    expect(reopened.wrapper.text()).toContain('Kitchen storage')
     expect(reopened.wrapper.get('ul[aria-label="Projects"]').text()).toContain('1 part references · 1 selected materials')
   })
 
