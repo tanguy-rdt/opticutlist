@@ -19,6 +19,9 @@ import { createLocalPersistence } from '../../../infrastructure/persistence/loca
 import { materialRepositoryKey } from '../../materials/material-repository'
 import MaterialSelector from '../../materials/MaterialSelector.vue'
 import PartsView from '../PartsView.vue'
+import AppSplitButton from '../../../shared/ui/AppSplitButton.vue'
+import { partsTransferServiceKey } from '../parts-transfer-service'
+import type { PartsTransferService } from '../../../application/projects/parts-transfer-service'
 import { stockRepositoryKey } from '../../inventory/stock-repository'
 import { stockItemSchema, type StockItem } from '../../../domain/model/stock-item'
 import { partRepositoryKey } from '../part-repository'
@@ -43,12 +46,13 @@ function fakeRepository<Entity extends { id: string }>(record: Entity, records: 
 function setup() {
   return { parts: fakeRepository(part), materials: fakeRepository(material, [material]), projects: fakeRepository(project), products: fakeRepository(supplierProductSchema.parse(validSupplierProductInput)) }
 }
-function render(repositories: { parts: Repository<typeof part>; materials: Repository<typeof material>; projects?: Repository<typeof project>; products?: Repository<ReturnType<typeof supplierProductSchema.parse>>; stock?: Repository<StockItem> }) {
+function render(repositories: { parts: Repository<typeof part>; materials: Repository<typeof material>; projects?: Repository<typeof project>; products?: Repository<ReturnType<typeof supplierProductSchema.parse>>; stock?: Repository<StockItem> }, transfer?: PartsTransferService) {
   const wrapper = mount(PartsView, {
     attachTo: document.body,
     global: {
       plugins: [createAppRouter(createMemoryHistory())],
       provide: {
+        ...(transfer ? { [partsTransferServiceKey]: transfer } : {}),
         ...(repositories.stock ? { [stockRepositoryKey]: repositories.stock } : {}),
         [partRepositoryKey]: repositories.parts, [materialRepositoryKey]: repositories.materials,
         [projectIdKey]: projectId,
@@ -453,6 +457,40 @@ describe('PartsView', () => {
     await wrapper.get('[aria-label="Search parts by name"]').setValue('missing')
     expect(wrapper.text()).toContain('No parts match your search.')
     expect(wrapper.find('table').exists()).toBe(false)
+  })
+
+  it('reuses the shared split button for independent creation and accessible import actions', async () => {
+    const repositories = setup()
+    const transfer = { preview: vi.fn<PartsTransferService['preview']>(), import: vi.fn<PartsTransferService['import']>(), export: vi.fn<PartsTransferService['export']>() }
+    const wrapper = render(repositories, transfer); await flushPromises()
+    expect(wrapper.findComponent(AppSplitButton).exists()).toBe(true)
+    expect(wrapper.findAll('button').filter(control => control.text() === 'Import JSON')).toHaveLength(0)
+    expect(button(wrapper, 'Export JSON').exists()).toBe(true)
+    await button(wrapper, 'New part').trigger('click')
+    expect(wrapper.get('dialog h2').text()).toBe('New part')
+    expect(transfer.preview).not.toHaveBeenCalled()
+    await wrapper.get('[aria-label="Close part form"]').trigger('click')
+    const trigger = wrapper.get('button[aria-label="More part actions"]')
+    await trigger.trigger('keydown', { key: 'ArrowDown' })
+    expect(wrapper.get('[role="menuitem"]').text()).toBe('Import parts')
+    expect(document.activeElement).toBe(wrapper.get('[role="menuitem"]').element)
+    await wrapper.get('[role="menuitem"]').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(trigger.element)
+    await trigger.trigger('click')
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await flushPromises()
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    await trigger.trigger('click')
+    await wrapper.get('[role="menuitem"]').trigger('click')
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    expect(wrapper.get('dialog h2').text()).toBe('Import Parts JSON')
+    expect(wrapper.find('#parts-json-file').exists()).toBe(true)
+    expect(wrapper.find('#part-name').exists()).toBe(false)
+    await wrapper.get('dialog').trigger('cancel')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    expect(repositories.parts.create).not.toHaveBeenCalled()
+    expect(transfer.import).not.toHaveBeenCalled()
   })
 
   it('opens and closes the drawer without writes, restoring trigger focus', async () => {

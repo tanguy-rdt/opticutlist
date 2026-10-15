@@ -6,6 +6,7 @@ import { useStockRepository } from '../inventory/stock-repository'
 import type { Material } from '../../domain/model/material'
 import type { Part } from '../../domain/model/part'
 import AppIcon from '../../shared/ui/AppIcon.vue'
+import AppSplitButton from '../../shared/ui/AppSplitButton.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import { useMaterialRepository } from '../materials/material-repository'
@@ -143,18 +144,23 @@ onMounted(load)
         <PartsJsonTransfer
           :disabled="busy || loading || Boolean(loadError) || formOpen"
           @imported="load"
-        />
-        <button
-          type="button"
-          class="button button-primary"
-          :disabled="busy || loading || Boolean(loadError) || Boolean(materialError) || availableMaterials.length === 0"
-          @click="edit(null)"
         >
-          <AppIcon
-            name="plus"
-            class="size-4"
-          /> New part
-        </button>
+          <template #import="{ start, disabled }">
+            <AppSplitButton
+              label="New part"
+              menu-label="More part actions"
+              :primary-disabled="busy || loading || Boolean(loadError) || Boolean(materialError) || availableMaterials.length === 0"
+              :actions="disabled ? [] : [{ value: 'import', label: 'Import parts' }]"
+              @primary="edit(null)"
+              @select="start"
+            >
+              <AppIcon
+                name="plus"
+                class="size-4"
+              /> New part
+            </AppSplitButton>
+          </template>
+        </PartsJsonTransfer>
       </div>
     </header>
     <p

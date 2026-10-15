@@ -73,14 +73,20 @@ async function exportParts(): Promise<void> {
 </script>
 <template>
   <div class="flex flex-wrap items-center gap-2">
-    <AppButton
-      type="button"
-      variant="secondary"
+    <slot
+      name="import"
+      :start="start"
       :disabled="disabled || busy || !service"
-      @click="start"
     >
-      Import JSON
-    </AppButton>
+      <AppButton
+        type="button"
+        variant="secondary"
+        :disabled="disabled || busy || !service"
+        @click="start"
+      >
+        Import JSON
+      </AppButton>
+    </slot>
     <AppButton
       type="button"
       variant="secondary"
