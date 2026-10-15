@@ -6,6 +6,7 @@ import { useProjectService } from '../features/projects/project-service'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import { dataImportRevisionKey } from './settings/data-import-revision'
 import AppIcon from '../shared/ui/AppIcon.vue'
+import AppToastHost from '../shared/ui/AppToastHost.vue'
 const settingsOpen = ref(false)
 const dataImportRevision = ref(0)
 provide(dataImportRevisionKey, dataImportRevision)
@@ -148,6 +149,7 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
         </div>
       </div>
     </aside>
+    <AppToastHost />
     <SettingsDialog
       :open="settingsOpen"
       @close="settingsOpen = false"

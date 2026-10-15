@@ -18,6 +18,7 @@ import SupplierActions from './SupplierActions.vue'
 import AppButton from '../../shared/ui/AppButton.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import AppDialog from '../../shared/ui/AppDialog.vue'
+import { useToastStore } from '../../shared/ui/toast-store'
 
 const repositories = useCatalogRepositories()
 const stockRepository = useCatalogStockRepository()
@@ -49,7 +50,7 @@ const loading = ref(true)
 const busy = ref(false)
 const loadError = ref('')
 const operationError = ref('')
-const notice = ref('')
+const toasts = useToastStore()
 const editingSupplier = shallowRef<Supplier | null>(null)
 const editingProduct = shallowRef<SupplierProduct | null>(null)
 const supplierVersion = ref(0)
@@ -135,7 +136,7 @@ const dropTarget = shallowRef<{ id: string; position: 'before' | 'after' } | nul
 function clearDrag(): void { dragged.value = null; dropTarget.value = null }
 async function moveRow(product: SupplierProduct, target: SupplierProduct, position: 'before' | 'after'): Promise<void> {
   if (!canReorder.value || product.supplierId !== target.supplierId || product.materialId !== target.materialId) return
-  busy.value = true; operationError.value = ''; notice.value = ''
+  busy.value = true; operationError.value = ''
   const current = generation
   const result = await repositories.supplierProducts.move(product.id, target.id, position)
   if (current !== generation) return
@@ -143,7 +144,7 @@ async function moveRow(product: SupplierProduct, target: SupplierProduct, positi
   if (!result.ok) operationError.value = 'Product order could not be saved. ' + persistenceErrorMessage(result.error, 'Product')
   else {
     orders.value = [...orders.value.filter(order => order.id !== result.value.id), result.value]
-    notice.value = 'Product order updated.'
+    toasts.success('Product order updated')
   }
 }
 async function moveBy(product: SupplierProduct, direction: number, event: KeyboardEvent): Promise<void> {
@@ -181,7 +182,6 @@ async function editSupplier(supplier: Supplier | null): Promise<void> {
   editingSupplier.value = supplier
   supplierVersion.value++
   operationError.value = ''
-  notice.value = ''
   await nextTick()
   supplierForm.value?.focusName()
 }
@@ -193,18 +193,16 @@ async function editProduct(product: SupplierProduct | null, supplierId = ''): Pr
   initialSupplierId.value = supplierId
   productVersion.value++
   operationError.value = ''
-  notice.value = ''
   await nextTick()
   productForm.value?.focusName()
 }
 async function saveSupplier(supplier: Supplier): Promise<void> {
   if (disabled.value) return
   busy.value = true
-  notice.value = ''
   operationError.value = ''
   const result = editingSupplier.value ? await repositories.suppliers.update(supplier.id, supplier) : await repositories.suppliers.create(supplier)
   if (result.ok) {
-    notice.value = editingSupplier.value ? 'Supplier updated.' : 'Supplier created.'
+    toasts.success(editingSupplier.value ? 'Supplier updated' : 'Supplier created')
     selectedSupplierId.value = result.value.id
     editingSupplier.value = null
     formMode.value = null
@@ -219,13 +217,12 @@ async function saveSupplier(supplier: Supplier): Promise<void> {
 async function saveProduct(product: SupplierProduct, presetId?: string): Promise<void> {
   if (disabled.value) return
   busy.value = true
-  notice.value = ''
   operationError.value = ''
   const result = presetId !== undefined
     ? await repositories.supplierProducts.saveWithPreset(product, presetId, editingProduct.value?.id)
     : editingProduct.value ? await repositories.supplierProducts.update(product.id, product) : await repositories.supplierProducts.create(product)
   if (result.ok) {
-    notice.value = editingProduct.value ? 'Product updated.' : 'Product created.'
+    toasts.success(editingProduct.value ? 'Product updated' : 'Product created')
     selectedSupplierId.value = result.value.supplierId
     selectedProductId.value = result.value.id
     editingProduct.value = null
@@ -242,12 +239,11 @@ async function saveProduct(product: SupplierProduct, presetId?: string): Promise
 async function removeSupplier(supplier: Supplier): Promise<void> {
   if (disabled.value || !window.confirm(`Delete supplier “${supplier.name}”? This cannot be undone.`)) return
   busy.value = true
-  notice.value = ''
   operationError.value = ''
   const result = await repositories.suppliers.delete(supplier.id)
   if (result.ok) {
     if (editingSupplier.value?.id === supplier.id) { editingSupplier.value = null; supplierVersion.value++; formMode.value = null }
-    notice.value = 'Supplier deleted.'
+    toasts.success('Supplier deleted')
     await load()
   } else operationError.value = persistenceErrorMessage(result.error, 'Supplier')
   busy.value = false
@@ -257,12 +253,11 @@ async function removeSupplier(supplier: Supplier): Promise<void> {
 async function removeProduct(product: SupplierProduct): Promise<void> {
   if (disabled.value || !window.confirm(`Delete catalog product “${product.name}”? This cannot be undone.`)) return
   busy.value = true
-  notice.value = ''
   operationError.value = ''
   const result = await repositories.supplierProducts.delete(product.id)
   if (result.ok) {
     if (editingProduct.value?.id === product.id) { editingProduct.value = null; productVersion.value++; formMode.value = null }
-    notice.value = 'Product deleted.'
+    toasts.success('Product deleted')
     await load()
   } else operationError.value = persistenceErrorMessage(result.error, 'Product')
   busy.value = false
@@ -316,13 +311,6 @@ onMounted(load)
         <p>{{ stockError || !stockRepository ? 'Inventory unavailable' : 'Full panels in your inventory' }}</p>
       </div>
     </dl>
-    <p
-      v-if="notice"
-      role="status"
-      class="rounded-lg border border-success bg-success-surface px-4 py-3 text-sm text-success"
-    >
-      {{ notice }}
-    </p>
     <p
       v-if="operationError && !formMode"
       role="alert"

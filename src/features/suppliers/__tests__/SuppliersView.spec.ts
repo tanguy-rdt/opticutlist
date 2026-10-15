@@ -1,4 +1,6 @@
-import { ref } from 'vue'
+import { defineComponent, ref } from 'vue'
+import { createPinia } from 'pinia'
+import AppToastHost from '../../../shared/ui/AppToastHost.vue'
 import { dataImportRevisionKey } from '../../../app/settings/data-import-revision'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
@@ -35,10 +37,10 @@ function setup() {
   return { suppliers: fakeRepository(supplier, [supplier]), supplierProducts: { ...fakeRepository(product), ordering: vi.fn<CatalogProductRepository['ordering']>().mockResolvedValue({ ok: true, value: [] }), move: vi.fn<CatalogProductRepository['move']>() }, materials: fakeRepository(material, [material]) }
 }
 function render(repositories: { suppliers: Repository<typeof supplier>; supplierProducts: Repository<typeof product> & Partial<Pick<ReturnType<typeof createCatalogRepositories>['supplierProducts'], 'saveWithPreset' | 'ordering' | 'move'>>; materials: Repository<typeof material> }, provide: Record<symbol, unknown> = {}) {
-  const wrapper = mount(SuppliersView, {
+  const wrapper = mount(defineComponent({ components: { SuppliersView, AppToastHost }, template: '<SuppliersView /><AppToastHost />' }), {
     attachTo: document.body,
     global: {
-      plugins: [createAppRouter(createMemoryHistory())],
+      plugins: [createPinia(), createAppRouter(createMemoryHistory())],
       provide: { [supplierRepositoryKey]: repositories.suppliers, [supplierProductRepositoryKey]: repositories.supplierProducts, [materialRepositoryKey]: repositories.materials, ...provide },
     },
   })
@@ -422,7 +424,7 @@ describe('SuppliersView', () => {
       await wrapper.get('#product-name').setValue(product.name)
       for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
       await submit(wrapper, 'product')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain(mode === 'edit' ? 'Product updated.' : 'Product created.') })
+      await vi.waitFor(() => { expect(wrapper.text()).toContain(mode === 'edit' ? 'Product updated' : 'Product created') })
       const materials = await persistence.materials.list(); const products = await persistence.supplierProducts.list()
       if (!materials.ok || !products.ok) throw new Error('Read failed')
       const resolved = materials.value.find(item => item.libraryPresetId === 'pin')
@@ -644,7 +646,7 @@ describe('SuppliersView', () => {
       await vi.waitFor(() => { expect(wrapper.text()).toContain('Material created and selected.') })
       const selectedId = wrapper.get<HTMLButtonElement>('#product-material').element.value
       await submit(wrapper, 'product')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Product created.') })
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Product created') })
       wrapper.unmount()
       first.close()
       const storedMaterials = await second.materials.list()
@@ -680,7 +682,7 @@ describe('SuppliersView', () => {
     const created = supplierSchema.parse(repositories.suppliers.create.mock.calls[0]?.[0])
     expect(created).toEqual({ ...supplier, id: created.id, websiteUrl: new URL(supplier.websiteUrl ?? '').href })
     expect(repositories.suppliers.list).toHaveBeenCalledTimes(2)
-    expect(wrapper.get('[role="status"]').text()).toBe('Supplier created.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Supplier created')
     expect(wrapper.find('#supplier-name').exists()).toBe(false)
   })
 
@@ -727,7 +729,7 @@ describe('SuppliersView', () => {
     await wrapper.get('#supplier-website').setValue('')
     await submit(wrapper, 'supplier')
     expect(repositories.suppliers.update).toHaveBeenCalledExactlyOnceWith(supplier.id, { id: supplier.id, name: 'Updated supplier' })
-    expect(wrapper.get('[role="status"]').text()).toBe('Supplier updated.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Supplier updated')
   })
 
   it('validates supplier name and http(s) website and focuses invalid input', async () => {
@@ -759,7 +761,7 @@ describe('SuppliersView', () => {
     await flushPromises()
     expect(repositories.suppliers.delete).toHaveBeenCalledExactlyOnceWith(supplier.id)
     expect(wrapper.text()).toContain('No suppliers yet')
-    expect(wrapper.get('[role="status"]').text()).toBe('Supplier deleted.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Supplier deleted')
     expect(document.activeElement).toBe(button(wrapper, '+ Add Supplier').element)
   })
 
@@ -795,7 +797,7 @@ describe('SuppliersView', () => {
     const created = supplierProductSchema.parse(repositories.supplierProducts.create.mock.calls[0]?.[0])
     expect(created).toEqual({ ...product, id: created.id, availability: 'unknown' })
     expect(repositories.supplierProducts.list).toHaveBeenCalledTimes(2)
-    expect(wrapper.get('[role="status"]').text()).toBe('Product created.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Product created')
     expect(wrapper.find('#product-name').exists()).toBe(false)
   })
 
@@ -825,7 +827,7 @@ describe('SuppliersView', () => {
       id: product.id, name: 'Updated product', supplierId: supplier.id, materialId: alternateMaterial.id,
       lengthMm: 2400, widthMm: 1200, thicknessMm: 18.5, price: 0, currency: 'USD', grainDirection: 'width', availability: product.availability,
     })
-    expect(wrapper.get('[role="status"]').text()).toBe('Product updated.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Product updated')
   })
 
   it.each(['supplier', 'product'] as const)('cancels %s editing without writing', async (entity) => {
@@ -983,7 +985,7 @@ describe('SuppliersView', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
     expect(wrapper.get<HTMLInputElement>(`#${entity}-name`).element.value).toBe(entity === 'supplier' ? supplier.name : product.name)
     await submit(wrapper, entity)
-    expect(wrapper.get('[role="status"]').text()).toContain('created.')
+    expect(wrapper.get('[role="status"]').text()).toContain('created')
   })
 
   it.each(['supplier', 'product'] as const)('reports %s deletion constraints and keeps the record', async (entity) => {
@@ -1058,7 +1060,7 @@ describe('SuppliersView', () => {
     await flushPromises()
     await fillProduct(wrapper)
     await submit(wrapper, 'product')
-    expect(wrapper.get('[role="status"]').text()).toBe('Product created.')
+    expect(wrapper.get('[role="status"]').text()).toBe('Product created')
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
   })
 
@@ -1072,12 +1074,12 @@ describe('SuppliersView', () => {
       await vi.waitFor(() => { expect(wrapper.text()).toContain('No suppliers yet') })
       await fillSupplier(wrapper)
       await submit(wrapper, 'supplier')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Supplier created.') })
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Supplier created') })
       const storedSuppliers = await first.suppliers.list()
       if (!storedSuppliers.ok || !storedSuppliers.value[0]) throw new Error('Missing saved supplier')
       await fillProduct(wrapper)
       await submit(wrapper, 'product')
-      await vi.waitFor(() => { expect(wrapper.text()).toContain('Product created.') })
+      await vi.waitFor(() => { expect(wrapper.text()).toContain('Product created') })
       wrapper.unmount()
       first.close()
       const reopened = render(createCatalogRepositories(second))
