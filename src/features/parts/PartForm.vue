@@ -128,7 +128,7 @@ async function submit(): Promise<void> {
       <h3 class="text-sm font-semibold">
         Dimensions
       </h3>
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 sm:grid-cols-2">
         <FormField
           id="part-length"
           label="Length (mm)"
@@ -192,6 +192,31 @@ async function submit(): Promise<void> {
             >
           </template>
         </FormField>
+        <FormField
+          id="part-grain"
+          label="Grain direction"
+          required
+          required-indicator="asterisk"
+          :error="errors.get('grainDirection') ?? ''"
+        >
+          <template #default="{ controlAttrs }">
+            <select
+              v-model="grainDirection"
+              v-bind="controlAttrs"
+              class="field"
+              name="grainDirection"
+              :disabled="disabled || busy"
+            >
+              <option
+                v-for="direction in grainDirectionSchema.options"
+                :key="direction"
+                :value="direction"
+              >
+                {{ direction === 'none' ? 'No grain constraint' : (direction === 'length' ? 'Along length' : 'Along width') }}
+              </option>
+            </select>
+          </template>
+        </FormField>
       </div>
     </section>
     <section class="space-y-4 border-t border-line pt-5">
@@ -222,44 +247,20 @@ async function submit(): Promise<void> {
         </FormField>
       </div>
     </section>
-    <section class="space-y-4 border-t border-line pt-5">
+    <section
+      v-if="grainDirection === 'none'"
+      class="space-y-4 border-t border-line pt-5"
+    >
       <h3 class="text-sm font-semibold">
         Cutting constraints
       </h3>
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          id="part-grain"
-          label="Grain direction"
-          required
-          required-indicator="asterisk"
-          :error="errors.get('grainDirection') ?? ''"
-          hint="Direction relative to this part's length and width."
-        >
-          <template #default="{ controlAttrs }">
-            <select
-              v-model="grainDirection"
-              v-bind="controlAttrs"
-              class="field"
-              name="grainDirection"
-              :disabled="disabled || busy"
-            >
-              <option
-                v-for="direction in grainDirectionSchema.options"
-                :key="direction"
-                :value="direction"
-              >
-                {{ direction === 'none' ? 'No grain constraint' : (direction === 'length' ? 'Along length' : 'Along width') }}
-              </option>
-            </select>
-          </template>
-        </FormField>
         <FormField
           id="part-rotation"
           label="90° rotation"
           required
           required-indicator="asterisk"
           :error="errors.get('rotation') ?? ''"
-          hint="Grain direction still applies when rotation is allowed."
         >
           <template #default="{ controlAttrs }">
             <select
@@ -274,7 +275,7 @@ async function submit(): Promise<void> {
                 :key="policy"
                 :value="policy"
               >
-                {{ policy === 'allowed' ? 'Allowed' : 'Forbidden' }}
+                {{ policy === 'allowed' ? 'Allowed' : 'Not allowed' }}
               </option>
             </select>
           </template>

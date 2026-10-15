@@ -17,11 +17,11 @@ describe('getAllowedOrientations', () => {
     ['length', 'allowed', 'width', ['rotated']],
     ['width', 'allowed', 'length', ['rotated']],
     ['width', 'allowed', 'width', ['normal']],
-    // Both have grain, rotation forbidden: aligned or conflicting.
+    // Both have grain: legacy rotation preferences cannot override alignment.
     ['length', 'forbidden', 'length', ['normal']],
     ['width', 'forbidden', 'width', ['normal']],
-    ['length', 'forbidden', 'width', []],
-    ['width', 'forbidden', 'length', []],
+    ['length', 'forbidden', 'width', ['rotated']],
+    ['width', 'forbidden', 'length', ['rotated']],
   ])('part grain %s, rotation %s, panel grain %s → %o', (grainDirection, rotation, panelGrain, expected) => {
     expect(getAllowedOrientations({ grainDirection, rotation }, panelGrain)).toEqual(expected)
   })

@@ -27,7 +27,7 @@ const projectId = cuttingProjectIdSchema.parse('parts-project')
 const project = cuttingProjectSchema.parse({ id: projectId, name: 'Workshop', partIds: [], materialIds: [validMaterialInput.id, 'mat-mdf'], supplierProductIds: [] })
 const material = materialSchema.parse(validMaterialInput)
 const part = partSchema.parse(validPartInput)
-const updated = partSchema.parse({ ...part, name: 'Updated panel', quantity: 3, grainDirection: 'width', rotation: 'allowed' })
+const updated = partSchema.parse({ ...part, name: 'Updated panel', quantity: 3, grainDirection: 'width', rotation: 'forbidden' })
 const wrappers: VueWrapper[] = []
 const failure = { ok: false, error: { kind: 'storageFailure', message: 'Disk full' } } as const
 
@@ -75,8 +75,8 @@ async function fill(wrapper: VueWrapper) {
   await wrapper.get('#part-width').setValue(String(part.widthMm))
   await wrapper.get('#part-thickness').setValue(String(part.thicknessMm))
   await wrapper.get('#part-quantity').setValue(String(part.quantity))
-  await wrapper.get('#part-grain').setValue(part.grainDirection)
   await wrapper.get('#part-rotation').setValue(part.rotation)
+  await wrapper.get('#part-grain').setValue(part.grainDirection)
 }
 async function submit(wrapper: VueWrapper) {
   await wrapper.get('form').trigger('submit')
@@ -189,6 +189,7 @@ describe('PartsView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     await fill(wrapper)
+    if (field === 'rotation') await wrapper.get('#part-grain').setValue('none')
     const select = wrapper.get<HTMLSelectElement>(`#part-${field}`)
     select.element.add(new Option('Invalid', 'invalid'))
     await select.setValue('invalid')
@@ -234,11 +235,11 @@ describe('PartsView', () => {
     await flushPromises()
     await wrapper.get(`button[aria-label="Edit ${part.name}"]`).trigger('click')
     expect(wrapper.get<HTMLInputElement>('#part-thickness').element.value).toBe('18')
-    expect(wrapper.get<HTMLSelectElement>('#part-rotation').element.value).toBe('forbidden')
+    expect(wrapper.find('#part-rotation').exists()).toBe(false)
     await wrapper.get('#part-name').setValue(updated.name)
     await wrapper.get('#part-quantity').setValue('3')
     await wrapper.get('#part-grain').setValue('width')
-    await wrapper.get('#part-rotation').setValue('allowed')
+    expect(wrapper.find('#part-rotation').exists()).toBe(false)
     await submit(wrapper)
     expect(repositories.parts.update).toHaveBeenCalledExactlyOnceWith(part.id, updated)
     expect(repositories.parts.create).not.toHaveBeenCalled()
@@ -566,7 +567,7 @@ describe('PartsView', () => {
     await flushPromises()
     expect(wrapper.findAll('div').some(element => element.classes().includes('xl:grid-cols-[minmax(0,1fr)_320px]'))).toBe(true)
     await button(wrapper, 'New part').trigger('click')
-    expect(wrapper.get('#part-length').element.parentElement?.parentElement?.classList.contains('sm:grid-cols-3')).toBe(true)
+    expect(wrapper.get('#part-length').element.parentElement?.parentElement?.classList.contains('sm:grid-cols-2')).toBe(true)
     expect(wrapper.findComponent(MaterialSelector).exists()).toBe(true)
   })
 

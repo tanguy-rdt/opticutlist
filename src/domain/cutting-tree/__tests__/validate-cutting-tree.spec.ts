@@ -421,11 +421,11 @@ describe('validateCuttingTree', () => {
       expect(result).toMatchObject({ valid: false, issues: [{ kind: 'orientationNotAllowed', allowed: ['normal'] }] })
     })
 
-    it('reports a part whose grain requires a forbidden rotation', () => {
+    it('rejects normal placement when grain requires rotation despite a legacy preference', () => {
       const crossGrain = partSchema.parse({ ...validPartInput, widthMm: 1230, grainDirection: 'width' })
       const result = validateCuttingTree(withLeaf(place(r(10, 10, 720, 1230), crossGrain.id)), { ...context, parts: [crossGrain] })
 
-      expect(result).toMatchObject({ valid: false, issues: [{ kind: 'orientationNotAllowed', orientation: 'normal', allowed: [] }] })
+      expect(result).toMatchObject({ valid: false, issues: [{ kind: 'orientationNotAllowed', orientation: 'normal', allowed: ['rotated'] }] })
     })
 
     it('reports a rotated part whose region was not rotated', () => {

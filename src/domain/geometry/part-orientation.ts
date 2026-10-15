@@ -23,10 +23,10 @@ export function grainInPanelAxes(partGrain: GrainDirection, orientation: Orienta
 }
 
 /**
- * Orientations permitted by the part's rotation policy and grain.
+ * Orientations permitted by grain alignment, or the rotation preference when grain is unconstrained.
  * Grain constrains orientation only when both the part and the panel have a grain direction;
  * then the part's grain must run parallel to the panel's grain.
- * An empty result means rotation is forbidden but the grain would require it.
+ * When both grains are specified, their alignment takes precedence over the stored rotation preference.
  */
 export function getAllowedOrientations(part: PartOrientationSpec, panelGrain: GrainDirection): Orientation[] {
   const permitted = part.rotation === 'allowed' ? ALL_ORIENTATIONS : (['normal'] as const)
@@ -35,7 +35,7 @@ export function getAllowedOrientations(part: PartOrientationSpec, panelGrain: Gr
   if (partGrain === 'none' || panelGrain === 'none') {
     return [...permitted]
   }
-  return permitted.filter((orientation) => grainInPanelAxes(partGrain, orientation) === panelGrain)
+  return ALL_ORIENTATIONS.filter((orientation) => grainInPanelAxes(partGrain, orientation) === panelGrain)
 }
 
 /** Part dimensions expressed in panel axes. Thickness is preserved unchanged. */

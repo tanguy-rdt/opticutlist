@@ -89,14 +89,17 @@ describe('automatic panel allocation', () => {
     expect(plan.panels).toEqual([])
     expect(plan.unplaced.map(item => item.reason)).toEqual(['noCompatiblePanel', 'constraintsPreventPlacement'])
   })
-  it('preserves grain and rotation restrictions across panels', () => {
+  it('prioritizes grain alignment while preserving unconstrained rotation restrictions across panels', () => {
     const grained = partSchema.parse({ ...part, lengthMm: 100, widthMm: 50, grainDirection: 'length', rotation: 'allowed' })
     const grainedPanel = supplierProductSchema.parse({ ...product, lengthMm: 50, widthMm: 100, grainDirection: 'width' })
     const plan = run({ ...input, parts: [grained], panels: [{ product: grainedPanel, quantity: 2 }] })
     expect(plan.panels.flatMap(panel => panel.plan.placements.map(placed => placed.orientation))).toEqual(['rotated', 'rotated'])
     const forbidden = run({ ...input, parts: [{ ...grained, rotation: 'forbidden' }], panels: [{ product: grainedPanel, quantity: 2 }] })
-    expect(forbidden.panels).toEqual([])
-    expect(forbidden.metrics.unplacedCount).toBe(2)
+    expect(forbidden.panels.flatMap(panel => panel.plan.placements.map(placed => placed.orientation))).toEqual(['rotated', 'rotated'])
+    expect(forbidden.metrics.unplacedCount).toBe(0)
+    const noGrain = run({ ...input, parts: [{ ...grained, grainDirection: 'none', rotation: 'forbidden' }], panels: [{ product: grainedPanel, quantity: 2 }] })
+    expect(noGrain.panels).toEqual([])
+    expect(noGrain.metrics.unplacedCount).toBe(2)
   })
   it('respects micrometre kerf feasibility and literal edge margins', () => {
     const plan = run({ ...input, panels: [{ product: { ...product, lengthMm: 130, widthMm: 130 }, quantity: 2 }], settings: { kerfMm: 3, edgeMarginMm: 10 } })

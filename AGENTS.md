@@ -24,7 +24,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 
 - Every `Part`, `SupplierProduct` and `StockItem` has mandatory `lengthMm`, `widthMm` and `thicknessMm` fields; all must be finite and strictly positive.
 - Material compatibility and exact thickness equality are required for placement.
-- Respect grain direction, permitted rotation, saw kerf, margins and quantities.
+- Respect grain direction, permitted rotation, saw kerf, margins and quantities. When both part and source panel specify grain, alignment determines orientation regardless of the stored rotation preference; without grain on either side, preserve the existing rotation-policy rules.
 - A collision-free layout is not necessarily guillotine-feasible. Independently validate executable plans and their cut trees.
 - Supplier products and physically owned stock are distinct concepts.
 - Current project cutting plans synchronize physical stock automatically through exact source StockItem IDs. Stock consumption, safe reversal and selected-offcut changes must be atomic and idempotent; catalogue sources are external panels, never owned inventory. Preserve immutable legacy confirmation history.

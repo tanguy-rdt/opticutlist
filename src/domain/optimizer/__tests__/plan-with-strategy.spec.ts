@@ -315,20 +315,12 @@ describe('planWithStrategy (largestAreaFirst baseline)', () => {
       expect(result.unplaced[0]?.reason).toMatchObject({ kind: 'cannotFitPanel', issues: [{ kind: 'exceedsUsableArea', triedOrientations: ['normal'] }] })
     })
 
-    it('reports a part whose grain requires a forbidden rotation', () => {
+    it('aligns grain even when a legacy rotation preference forbids a required turn', () => {
       const crossGrain = part({ grainDirection: 'width', rotation: 'forbidden' })
-
-      expect(plan({ parts: [crossGrain] }).unplaced).toEqual([
-        {
-          partId: crossGrain.id,
-          firstCopyIndex: 0,
-          count: 2,
-          reason: {
-            kind: 'cannotFitPanel',
-            issues: [{ kind: 'grainRequiresRotation', partGrain: 'width', panelGrain: 'length', rotation: 'forbidden' }],
-          },
-        },
-      ])
+      const result = plan({ parts: [crossGrain] })
+      expect(result.unplaced).toEqual([])
+      expect(result.placements.map(placement => placement.orientation)).toEqual(['rotated', 'rotated'])
+      expect(validateCuttingTree(result.tree, { panel, parts: [crossGrain], settings })).toEqual({ valid: true })
     })
 
     it('ignores grain on a grainless panel', () => {

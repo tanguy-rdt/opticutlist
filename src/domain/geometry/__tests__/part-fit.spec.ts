@@ -126,13 +126,9 @@ describe('checkPartFit', () => {
       expect(result).toMatchObject({ fits: true, orientations: ['rotated'] })
     })
 
-    it('reports a grain/rotation conflict when grain requires a forbidden rotation', () => {
+    it('prioritizes grain alignment over a legacy forbidden rotation preference', () => {
       const result = checkPartFit(part({ grainDirection: 'width', rotation: 'forbidden' }), panel, noMargin)
-
-      expect(result).toEqual({
-        fits: false,
-        issues: [{ kind: 'grainRequiresRotation', partGrain: 'width', panelGrain: 'length', rotation: 'forbidden' }],
-      })
+      expect(result).toMatchObject({ fits: true, orientations: ['rotated'] })
     })
 
     it('does not rotate against the grain to make a part fit', () => {
@@ -178,7 +174,7 @@ describe('checkPartFit', () => {
         { edgeMarginMm: 700 },
       )
 
-      expect(issueKinds(result)).toEqual(['materialMismatch', 'thicknessMismatch', 'noUsableArea', 'grainRequiresRotation'])
+      expect(issueKinds(result)).toEqual(['materialMismatch', 'thicknessMismatch', 'noUsableArea'])
     })
 
     it('reports size problems alongside compatibility problems', () => {

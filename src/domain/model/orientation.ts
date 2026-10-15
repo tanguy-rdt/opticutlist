@@ -11,7 +11,7 @@ export type GrainDirection = z.infer<typeof grainDirectionSchema>
 
 /**
  * Whether a part may be rotated by 90° in the panel plane during placement.
- * Grain constraints still apply on top of this permission.
+ * Used when grain does not determine orientation; explicit part/panel grain alignment takes precedence.
  */
 export const rotationPolicySchema = z.enum(['allowed', 'forbidden'])
 export type RotationPolicy = z.infer<typeof rotationPolicySchema>

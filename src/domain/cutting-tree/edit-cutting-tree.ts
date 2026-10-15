@@ -77,8 +77,7 @@ export function editCuttingTree(root: CuttingTreeNode, context: CuttingTreeConte
       const part = context.parts.find(part => part.id === leaf.partId)
       if (part === undefined) return reject('The part definition is missing.')
       const orientation = leaf.orientation === 'normal' ? 'rotated' : 'normal'
-      if (part.rotation === 'forbidden') return reject('This part forbids 90-degree rotation.')
-      if (!getAllowedOrientations(part, context.panel.grainDirection).includes(orientation)) return reject('The rotated grain would not match the panel grain.')
+      if (!getAllowedOrientations(part, context.panel.grainDirection).includes(orientation)) return reject(part.grainDirection === 'none' || context.panel.grainDirection === 'none' ? 'This part forbids 90-degree rotation.' : 'The rotated grain would not match the panel grain.')
       const size = getOrientedDimensions(part, orientation)
       const target = rotationRegions(root, leaf).regions.find(node => canTrim(size, node.region, context.settings.kerfMm))
       if (target === undefined) return reject('Rotation cannot fit the reserved region with valid kerf cuts. Neighboring parts and margins cannot move.')
