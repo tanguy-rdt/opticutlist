@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import AppButton from '../../shared/ui/AppButton.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
-import { RouterLink } from 'vue-router'
+import { useRouter } from 'vue-router'
+import AppSplitButton from '../../shared/ui/AppSplitButton.vue'
 import type { ProjectStockHandling } from '../../application/projects/project-deletion'
 import { cuttingProjectSchema, type CuttingProject } from '../../domain/model/cutting-project'
 import FormField from '../../shared/ui/FormField.vue'
@@ -15,6 +16,7 @@ import { useProjectNavigation } from '../../features/projects/project-navigation
 import { useProjectService } from '../../features/projects/project-service'
 
 const service = useProjectService()
+const router = useRouter()
 const navigation = useProjectNavigation()
 const projects = shallowRef<readonly CuttingProject[]>([])
 const loading = ref(true)
@@ -105,22 +107,16 @@ onMounted(load)
           Your builds, ready for the next workshop session.
         </p>
       </div>
-      <div class="flex flex-wrap gap-2">
-        <AppButton
-          type="button"
-          variant="primary"
-          :disabled="loading || busy || !!error"
-          @click="openForm()"
-        >
-          <AppIcon name="plus" />New project
-        </AppButton>
-        <RouterLink
-          to="/import?from=projects"
-          class="button"
-        >
-          <AppIcon name="import" />Import project
-        </RouterLink>
-      </div>
+      <AppSplitButton
+        label="New project"
+        menu-label="More project actions"
+        :actions="[{ value: 'import', label: 'Import project' }]"
+        :primary-disabled="loading || busy || !!error"
+        @primary="openForm()"
+        @select="router.push('/import?from=projects')"
+      >
+        <AppIcon name="plus" />New project
+      </AppSplitButton>
     </header>
     <p
       v-if="notice"

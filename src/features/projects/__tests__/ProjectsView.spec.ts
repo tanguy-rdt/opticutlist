@@ -98,7 +98,7 @@ function button(wrapper: VueWrapper, text: string) {
   return found
 }
 async function menu(wrapper: VueWrapper, index = 0): Promise<void> {
-  const trigger = wrapper.get('ul[aria-label="Projects"]').findAll('button[aria-haspopup="menu"]')[index]
+  const trigger = wrapper.get('ul[aria-label="Projects"]').findAll('ul[aria-label="Projects"] button[aria-haspopup="menu"]')[index]
   if (!trigger) throw new Error('Missing project action menu')
   await trigger.trigger('click'); await flushPromises()
 }
@@ -154,10 +154,28 @@ describe('Project manager', () => {
     if (action === 'Export project') expect(transfer.export).toHaveBeenCalledExactlyOnceWith(project.id)
     else expect(wrapper.find('dialog').exists()).toBe(true)
   })
+  it('opens creation and import independently from the header split button', async () => {
+    const { wrapper, router } = setup([project]); await flushPromises()
+    await wrapper.get('header button[aria-label="More project actions"]').trigger('click')
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    const action = wrapper.get('header [role="menuitem"]')
+    expect(action.text()).toBe('Import project')
+    expect(wrapper.get('header [role="menu"]').findAll('[role="menuitem"]')).toHaveLength(1)
+    await action.trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/import?from=projects')
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    expect(wrapper.find('dialog').exists()).toBe(false)
+    await router.push('/projects'); await flushPromises()
+    await button(wrapper, 'New project').trigger('click')
+    expect(wrapper.find('#project-name').exists()).toBe(true)
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+  })
+
   it('uses one main list without detail statistics or permanent action rows', async () => {
     const { wrapper } = setup([project]); await flushPromises()
     expect(wrapper.get('header').text()).toContain('New project')
-    expect(wrapper.get('header').text()).toContain('Import project')
+    expect(wrapper.get('header').text()).not.toContain('Import project')
+    expect(wrapper.find('button[aria-label="More project actions"]').exists()).toBe(true)
     expect(wrapper.get('ul[aria-label="Projects"]').findAll('li')).toHaveLength(1)
     expect(wrapper.find('[aria-label="Selected project details"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="Project metrics"]').exists()).toBe(false)
@@ -180,7 +198,7 @@ describe('Project manager', () => {
   })
   it('supports keyboard menu navigation, Escape focus restoration and responsive row actions', async () => {
     const { wrapper } = setup([project]); await flushPromises()
-    const trigger = wrapper.get<HTMLButtonElement>('button[aria-haspopup="menu"]')
+    const trigger = wrapper.get<HTMLButtonElement>('ul[aria-label="Projects"] button[aria-haspopup="menu"]')
     await trigger.trigger('keydown', { key: 'ArrowDown' }); await flushPromises()
     const items = wrapper.get('[role="menu"]').findAll('[role="menuitem"]')
     expect(document.activeElement).toBe(items[0]?.element)
@@ -238,7 +256,7 @@ describe('Project manager', () => {
   })
   it('presents a compact named confirmation with accessible clickable stock rows and close behavior', async () => {
     const { wrapper, service } = setup([project]); await flushPromises()
-    const trigger = wrapper.get<HTMLButtonElement>('button[aria-haspopup="menu"]')
+    const trigger = wrapper.get<HTMLButtonElement>('ul[aria-label="Projects"] button[aria-haspopup="menu"]')
     trigger.element.focus()
     await menu(wrapper)
     await button(wrapper, 'Delete project').trigger('click'); await flushPromises()
