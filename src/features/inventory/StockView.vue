@@ -522,10 +522,6 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
             :history="history"
             :history-loading="historyLoading"
             :history-error="historyError"
-            :writable="!!writer"
-            :busy="busy"
-            @edit="openForm(selected)"
-            @delete="remove(selected)"
           /><p
             v-else
             class="text-sm text-muted"
@@ -548,10 +544,6 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
         :history="history"
         :history-loading="historyLoading"
         :history-error="historyError"
-        :writable="!!writer"
-        :busy="busy"
-        @edit="openForm(selected)"
-        @delete="remove(selected)"
       />
     </AppDialog>
     <AppDialog

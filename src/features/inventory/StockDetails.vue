@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import AppButton from '../../shared/ui/AppButton.vue'
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
 import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
-import AppIcon from '../../shared/ui/AppIcon.vue'
 
-defineProps<{ item: StockItem; material: Material | undefined; history: readonly CuttingConfirmation[]; historyLoading: boolean; historyError: string; writable: boolean; busy: boolean }>()
-const emit = defineEmits<{ edit: []; delete: [] }>()
+defineProps<{ item: StockItem; material: Material | undefined; history: readonly CuttingConfirmation[]; historyLoading: boolean; historyError: string }>()
 </script>
 <template>
   <section
@@ -134,23 +131,5 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
         </li>
       </ul>
     </section>
-    <div class="grid gap-2 border-t border-line pt-4">
-      <AppButton
-        type="button"
-        variant="secondary"
-        :disabled="!writable || busy"
-        @click="emit('edit')"
-      >
-        <AppIcon name="edit" />Edit stock item
-      </AppButton>
-      <AppButton
-        type="button"
-        variant="destructive"
-        :disabled="!writable || busy"
-        @click="emit('delete')"
-      >
-        <AppIcon name="delete" />Delete stock item
-      </AppButton>
-    </div>
   </section>
 </template>

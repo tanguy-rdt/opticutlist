@@ -67,7 +67,7 @@ async function openForm(wrapper: VueWrapper, entity: 'supplier' | 'product') {
   await button(wrapper, entity === 'supplier' ? '+ Add Supplier' : '+ Add Product').trigger('click')
 }
 async function selectProduct(wrapper: VueWrapper) {
-  if (!wrapper.find(`button[aria-label="Edit product ${product.name}"]`).exists()) await wrapper.get(`button[aria-label="View product ${product.name}"]`).trigger('click')
+  await wrapper.get(`button[aria-label="View product ${product.name}"]`).trigger('click')
 }
 async function fillSupplier(wrapper: VueWrapper) {
   await openForm(wrapper, 'supplier')
@@ -137,7 +137,8 @@ describe('SuppliersView', () => {
     expect(details.find('img').exists()).toBe(false)
     expect(details.get('[aria-label="Product specifications"]').text()).toContain('Thickness18 mm')
     expect(details.get('[aria-label="Owned inventory"]').text()).toContain('0 owned units')
-    expect(details.get('[aria-label="Product actions"]').text()).toContain('Edit product')
+    expect(details.find('[aria-label="Product actions"]').exists()).toBe(false)
+    expect(details.find('button').exists()).toBe(false)
     const selected = wrapper.get('button[aria-controls="product-details"][aria-pressed="true"]')
     expect(selected.find('.catalog-selection-mark').exists()).toBe(false)
     expect(selected.element.closest('tr')?.classList.contains('bg-subtle')).toBe(true)
@@ -205,7 +206,7 @@ describe('SuppliersView', () => {
     expect(wrapper.get('#product-details [aria-label="Product specifications"] dl').text()).toContain('Thickness25 mm')
     expect(controls[0]?.attributes('aria-pressed')).toBe('false')
     expect(controls[1]?.attributes('aria-pressed')).toBe('true')
-    await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    await wrapper.get(`[data-product-id="${duplicate.id}"] button[aria-label="Edit product"]`).trigger('click')
     expect(wrapper.get<HTMLInputElement>('#product-thicknessMm').element.value).toBe('25')
     await submit(wrapper, 'product')
     expect(repositories.supplierProducts.update.mock.calls[0]?.[0]).toBe(duplicate.id)
@@ -255,7 +256,7 @@ describe('SuppliersView', () => {
     const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
     const revision = ref(0)
     const wrapper = render(repositories, { [dataImportRevisionKey]: revision }); await flushPromises()
-    await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click')
     await wrapper.get('#product-name').setValue('Pending draft')
     revision.value++; revision.value++; await flushPromises()
     expect(repositories.supplierProducts.list).toHaveBeenCalledTimes(1)
@@ -337,7 +338,7 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories, { [catalogStockRepositoryKey]: inventory }); await flushPromises(); await selectProduct(wrapper)
     expect(wrapper.get('#product-details [role="alert"]').text()).toContain('Could not access local storage')
     expect(wrapper.get('[aria-label="Catalog summary"]').findAll('dd')[3]?.text()).toBe('—')
-    expect(wrapper.get(`button[aria-label="Edit product ${product.name}"]`).attributes('disabled')).toBeUndefined()
+    expect(wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).attributes('disabled')).toBeUndefined()
   })
 
   it('opens accessible contextual forms, restores focus after Escape and blocks closing during pending writes', async () => {
@@ -368,7 +369,7 @@ describe('SuppliersView', () => {
     repositories.materials.create.mockImplementation((record) => Promise.resolve({ ok: true, value: materialSchema.parse(record) }))
     const wrapper = render(repositories)
     await flushPromises()
-    if (mode === 'edit') { await selectProduct(wrapper); await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click') }
+    if (mode === 'edit') { await selectProduct(wrapper); await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click') }
     await fillProduct(wrapper)
     await openCustomMaterial(wrapper)
     expect(document.activeElement).toBe(wrapper.get('#inline-material-name').element)
@@ -408,7 +409,7 @@ describe('SuppliersView', () => {
       const repositories = createCatalogRepositories(persistence)
       const wrapper = render(repositories)
       await vi.waitFor(() => { expect(button(wrapper, '+ Add Product').attributes('disabled')).toBeUndefined() })
-      if (mode === 'edit') { await selectProduct(wrapper); await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click') }
+      if (mode === 'edit') { await selectProduct(wrapper); await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click') }
       else await openForm(wrapper, 'product')
       const dimensions = wrapper.get('section[aria-labelledby="product-dimensions-heading"]')
       expect(dimensions.findAll('input, select').map(control => control.attributes('id'))).toEqual(['product-lengthMm', 'product-widthMm', 'product-thicknessMm', 'product-grain'])
@@ -797,7 +798,7 @@ describe('SuppliersView', () => {
     if (mode === 'edit') repositories.supplierProducts.list.mockResolvedValueOnce({ ok: true, value: [product] })
     repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [unpriced] })
     const wrapper = render(repositories); await flushPromises()
-    if (mode === 'edit') await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    if (mode === 'edit') await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click')
     else await fillProduct(wrapper)
     await wrapper.get('#product-price').setValue('')
     await submit(wrapper, 'product')
@@ -834,7 +835,7 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     await selectProduct(wrapper)
-    await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click')
     await wrapper.get('#product-name').setValue('Updated product')
     expect(wrapper.find('#product-supplier').exists()).toBe(false)
     await selectMaterial(wrapper, alternateMaterial.id)
@@ -862,7 +863,7 @@ describe('SuppliersView', () => {
     if (entity === 'supplier') {
       await wrapper.get('button[aria-label="Supplier actions"]').trigger('click')
       await wrapper.findAll('[role="menuitem"]')[0]?.trigger('click')
-    } else await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    } else await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click')
     await wrapper.get(`#${entity}-name`).setValue('Unsaved')
     await button(wrapper, 'Cancel').trigger('click')
     expect(wrapper.find(`#${entity}-name`).exists()).toBe(false)
@@ -919,8 +920,8 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories)
     await flushPromises()
     await selectProduct(wrapper)
-    await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
-    const action = wrapper.get(`button[aria-label="Delete product ${product.name}"]`)
+    await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click')
+    const action = wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Delete product"]`)
     await action.trigger('click')
     expect(repositories.supplierProducts.delete).not.toHaveBeenCalled()
     confirmation.mockReturnValue(true)
@@ -993,7 +994,7 @@ describe('SuppliersView', () => {
     await wrapper.get('button[aria-label="Select supplier Missing supplier"]').trigger('click')
     expect(wrapper.text()).toContain('Missing material')
     await selectProduct(wrapper)
-    await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click')
     await submit(wrapper, 'product')
     expect(wrapper.get('#product-supplier-error').text()).toContain('Choose an existing supplier')
     expect(wrapper.get('#product-material-error').text()).toContain('Choose an existing material')
@@ -1067,7 +1068,7 @@ describe('SuppliersView', () => {
     if (entity === 'supplier') {
       await wrapper.get('button[aria-label="Supplier actions"]').trigger('click')
       await wrapper.findAll('[role="menuitem"]')[1]?.trigger('click')
-    } else await wrapper.get(`button[aria-label="Delete product ${product.name}"]`).trigger('click')
+    } else await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Delete product"]`).trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('referenced by existing records')
     expect(wrapper.text()).toContain(entity === 'supplier' ? supplier.name : product.name)
@@ -1096,7 +1097,7 @@ describe('SuppliersView', () => {
     if (entity === 'supplier') {
       await wrapper.get('button[aria-label="Supplier actions"]').trigger('click')
       await wrapper.findAll('[role="menuitem"]')[0]?.trigger('click')
-    } else await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click')
+    } else await wrapper.get(`[data-product-id="${product.id}"] button[aria-label="Edit product"]`).trigger('click')
     await wrapper.get(`#${entity}-name`).setValue('Unsaved edit')
     await submit(wrapper, entity)
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')

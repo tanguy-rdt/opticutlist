@@ -8,7 +8,7 @@ import { materialPresets } from '../../materials/material-library'
 import ProductDetails from '../ProductDetails.vue'
 const material = materialSchema.parse(validMaterialInput)
 const product = supplierProductSchema.parse(validSupplierProductInput)
-const props = { product, materials: [material], suppliers: [], stock: [], stockAvailable: true, stockError: '', disabled: false }
+const props = { product, materials: [material], suppliers: [], stock: [], stockAvailable: true, stockError: '' }
 
 describe('product technical preview', () => {
   it.each(materialPresets)('uses the same neutral fill for $name without a material texture', preset => {
@@ -33,10 +33,10 @@ describe('product technical preview', () => {
     expect(wrapper.get('[aria-label="Product specifications"]').text()).not.toContain('Availability')
     wrapper.unmount()
   })
-  it('orders the preview, identity, key values, specifications, stock and accessible actions', async () => {
+  it('orders the preview, identity, key values, specifications, stock without redundant actions', async () => {
     const stock = stockItemSchema.parse({ ...validStockItemInput, quantity: 4 })
     const wrapper = mount(ProductDetails, { props: { ...props, stock: [stock], materials: [materialSchema.parse({ ...material, libraryPresetId: 'pin' })] } })
-    const sections = ['figure', '.catalog-product-header', '.catalog-product-overview', '[aria-label="Product specifications"]', '[aria-label="Owned inventory"]', '[aria-label="Product actions"]']
+    const sections = ['figure', '.catalog-product-header', '.catalog-product-overview', '[aria-label="Product specifications"]', '[aria-label="Owned inventory"]']
     for (let index = 1; index < sections.length; index += 1) {
       const previous = sections[index - 1]; const current = sections[index]
       if (!previous || !current) throw new Error('Missing section')
@@ -48,9 +48,8 @@ describe('product technical preview', () => {
     expect(wrapper.get('[aria-label="Product specifications"]').text()).toContain('Along length')
     expect(wrapper.get('[aria-label="Owned inventory"]').text()).toContain('4 owned units')
     expect(wrapper.get('[aria-label="Owned inventory"]').text()).toContain(`${String(stock.lengthMm)} × ${String(stock.widthMm)} × ${String(stock.thicknessMm)} mm`)
-    await wrapper.get('button[aria-label^="Edit product"]').trigger('click')
-    await wrapper.get('button[aria-label^="Delete product"]').trigger('click')
-    expect(wrapper.emitted('edit')).toEqual([[product]]); expect(wrapper.emitted('delete')).toEqual([[product]])
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Product actions"]').exists()).toBe(false)
     await wrapper.setProps({ stock: [], product: supplierProductSchema.parse({ ...product, availability: 'available' }) })
     expect(wrapper.get('[aria-label="Owned inventory"]').text()).toContain('0 owned units')
     wrapper.unmount()

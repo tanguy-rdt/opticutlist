@@ -732,9 +732,6 @@ onMounted(load)
         :stock="selectedProduct ? linkedStock(selectedProduct) : []"
         :stock-available="Boolean(stockRepository)"
         :stock-error="stockError"
-        :disabled="disabled"
-        @edit="editProduct"
-        @delete="removeProduct"
       />
     </div>
     <AppDialog
@@ -751,9 +748,6 @@ onMounted(load)
         :stock="selectedProduct ? linkedStock(selectedProduct) : []"
         :stock-available="Boolean(stockRepository)"
         :stock-error="stockError"
-        :disabled="disabled"
-        @edit="editProduct"
-        @delete="removeProduct"
       />
     </AppDialog>
     <AppDialog

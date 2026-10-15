@@ -8,9 +8,9 @@ import { validMaterialInput, validStockItemInput } from '../../../domain/model/_
 
 const stock = stockItemSchema.parse(validStockItemInput)
 const material = materialSchema.parse({ ...validMaterialInput, name: 'Pine Douglas', libraryPresetId: 'pin' })
-const defaults = { item: stock, material, history: [], historyLoading: false, historyError: '', writable: true, busy: false }
+const defaults = { item: stock, material, history: [], historyLoading: false, historyError: '' }
 describe('stock details hierarchy', () => {
-  it('keeps material/type above the technical preview and preserves edit/delete actions', async () => {
+  it('keeps material/type above the technical preview and keeps details read-only', () => {
     const wrapper = mount(StockDetails, { props: defaults })
     expect(wrapper.get('section').element.firstElementChild?.tagName).toBe('HEADER')
     expect(wrapper.get('h3').text()).toBe('Pine Douglas')
@@ -21,11 +21,7 @@ describe('stock details hierarchy', () => {
     expect(wrapper.text()).toContain('800 × 400.5 × 18 mm')
     expect(wrapper.text()).toContain('1 physically owned')
     expect(wrapper.text()).not.toContain(stock.id)
-    await wrapper.findAll('button')[0]?.trigger('click')
-    await wrapper.findAll('button')[1]?.trigger('click')
-    expect(wrapper.emitted('edit')).toHaveLength(1); expect(wrapper.emitted('delete')).toHaveLength(1)
-    await wrapper.setProps({ busy: true })
-    expect(wrapper.findAll('button').every(button => button.attributes('disabled') !== undefined)).toBe(true)
+    expect(wrapper.find('button').exists()).toBe(false)
     wrapper.unmount()
   })
   it('displays meaningful cutting provenance/history without exposing internal identifiers', () => {

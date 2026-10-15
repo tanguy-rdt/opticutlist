@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import AppButton from '../../shared/ui/AppButton.vue'
 import { computed } from 'vue'
 import type { Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
@@ -7,8 +6,7 @@ import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { StockItem } from '../../domain/model/stock-item'
 import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
-const props = defineProps<{ product: SupplierProduct | undefined; materials: readonly Material[]; suppliers: readonly Supplier[]; stock: readonly StockItem[]; stockAvailable: boolean; stockError: string; disabled: boolean }>()
-const emit = defineEmits<{ edit: [product: SupplierProduct]; delete: [product: SupplierProduct] }>()
+const props = defineProps<{ product: SupplierProduct | undefined; materials: readonly Material[]; suppliers: readonly Supplier[]; stock: readonly StockItem[]; stockAvailable: boolean; stockError: string }>()
 const material = computed(() => props.materials.find(item => item.id === props.product?.materialId))
 const materialName = computed(() => material.value?.name ?? 'Missing material')
 const ownedQuantity = computed(() => props.stock.reduce((quantity, item) => quantity + item.quantity, 0))
@@ -143,34 +141,6 @@ function grain(product: SupplierProduct): string { return product.grainDirection
         <p class="mt-3 text-xs leading-relaxed text-muted">
           Actual owned stock only. Catalog references are not owned panels.
         </p>
-      </section>
-      <section
-        class="mt-5 border-t border-line pt-5"
-        aria-label="Product actions"
-      >
-        <h3 class="sr-only">
-          Actions
-        </h3>
-        <div class="grid gap-2">
-          <AppButton
-            type="button"
-            class="button w-full"
-            :disabled="disabled"
-            :aria-label="`Edit product ${product.name}`"
-            @click="emit('edit', product)"
-          >
-            <AppIcon name="edit" />Edit product
-          </AppButton>
-          <AppButton
-            type="button"
-            class="button button-danger w-full"
-            :disabled="disabled"
-            :aria-label="`Delete product ${product.name}`"
-            @click="emit('delete', product)"
-          >
-            <AppIcon name="delete" />Delete product
-          </AppButton>
-        </div>
       </section>
     </template>
     <p
