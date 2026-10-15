@@ -20,6 +20,7 @@ import { materialRepositoryKey } from '../../materials/material-repository'
 import MaterialSelector from '../../materials/MaterialSelector.vue'
 import PartsView from '../PartsView.vue'
 import AppSplitButton from '../../../shared/ui/AppSplitButton.vue'
+import PartsJsonTransfer from '../PartsJsonTransfer.vue'
 import { partsTransferServiceKey } from '../parts-transfer-service'
 import type { PartsTransferService } from '../../../application/projects/parts-transfer-service'
 import { stockRepositoryKey } from '../../inventory/stock-repository'
@@ -98,6 +99,20 @@ afterEach(() => {
 })
 
 describe('PartsView', () => {
+  it('reloads once after a successful import while preserving search without a manual Refresh action', async () => {
+    const repositories = setup()
+    const wrapper = render(repositories); await flushPromises()
+    expect(repositories.parts.list).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAll('button').some(control => control.text() === 'Refresh')).toBe(false)
+    await wrapper.get('input[aria-label="Search parts by name"]').setValue(part.name)
+    repositories.parts.list.mockResolvedValue({ ok: true, value: [part] })
+    wrapper.findComponent(PartsJsonTransfer).vm.$emit('imported')
+    await flushPromises()
+    expect(repositories.parts.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('tbody').text()).toContain(part.name)
+    expect(wrapper.get<HTMLInputElement>('input[aria-label="Search parts by name"]').element.value).toBe(part.name)
+  })
+
   it('shows loading, disables writes, and then shows an empty library', async () => {
     const repositories = setup()
     let resolve: ((result: PersistenceResult<readonly typeof part[]>) => void) | undefined

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { projectPartMaterialIds } from '../../application/projects/part-materials'
 import { useStockRepository } from '../inventory/stock-repository'
@@ -120,6 +120,16 @@ async function remove(part: Part): Promise<void> {
 function materialFor(part: Part): Material | undefined { return materials.value.find(material => material.id === part.materialId) }
 function materialName(part: Part): string { return materialFor(part)?.name ?? (materialError.value ? 'Material unavailable' : 'Missing material') }
 function grain(part: Part): string { return part.grainDirection === 'none' ? 'None' : part.grainDirection === 'length' ? 'Along length' : 'Along width' }
+// Refresh cached returns once safe, keeping open/failed drafts intact.
+const active = ref(true)
+const refreshRequested = ref(false)
+onDeactivated(() => { active.value = false; refreshRequested.value = true })
+onActivated(() => { active.value = true })
+watch(() => active.value && refreshRequested.value && !loading.value && !busy.value && !formOpen.value, ready => {
+  if (!ready) return
+  refreshRequested.value = false
+  void load()
+})
 onMounted(load)
 </script>
 
@@ -232,14 +242,6 @@ onMounted(load)
               placeholder="Search parts…"
             >
           </div>
-          <button
-            type="button"
-            class="button text-sm"
-            :disabled="loading || busy"
-            @click="load"
-          >
-            Refresh
-          </button>
         </div>
         <p
           v-if="loading"
