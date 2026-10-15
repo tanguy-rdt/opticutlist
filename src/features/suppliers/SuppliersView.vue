@@ -691,8 +691,8 @@ onMounted(load)
                   <td class="whitespace-nowrap px-3 py-2.5 text-xs text-muted">
                     {{ stockLabel(product) }}
                   </td>
-                  <td class="px-3 py-2.5">
-                    <div class="flex items-center gap-1">
+                  <td class="w-px whitespace-nowrap px-3 py-2.5">
+                    <div class="flex items-center justify-end gap-1">
                       <AppButton
                         variant="ghost"
                         size="small"

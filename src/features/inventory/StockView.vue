@@ -473,8 +473,8 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                       {{ item.thicknessMm }}
                     </td><td class="px-3 py-3 tabular-nums">
                       {{ item.quantity }}
-                    </td><td class="px-3 py-3">
-                      <div class="flex items-center gap-1">
+                    </td><td class="w-px whitespace-nowrap px-3 py-3">
+                      <div class="flex items-center justify-end gap-1">
                         <AppButton
                           variant="ghost"
                           size="small"
