@@ -1,8 +1,7 @@
-# Parts JSON exchange (version 1)
+# Parts JSON import (version 1)
 
-Parts → **Export JSON** downloads `<project_name>.oclparts.json` as readable UTF-8 JSON.
-Names are lowercase, accents normalized and word separators replaced with underscores.
-Parts → **Import JSON** accepts `.oclparts.json` and legacy `.json`, validates a file, previews its rows and requires confirmation.
+Parts → **New part ▾ → Import parts** accepts UTF-8 `.oclparts.json` and legacy `.json` files, validates a file, previews its rows and requires confirmation.
+Existing files remain supported. Standalone Parts export is no longer available; use full project export for project backups.
 Import appends new Parts; it never overwrites existing Parts or creates materials.
 
 ## Complete example

@@ -12,30 +12,13 @@ export interface PartsImportPreview {
   readonly materials: readonly Material[]
   readonly materialIds: readonly (MaterialId | null)[]
 }
-export function createPartsTransferService(persistence: LocalPersistence, json: ProjectJsonPort) {
+export function createPartsTransferService(persistence: LocalPersistence, json: Pick<ProjectJsonPort, 'parse'>) {
   const projects = createProjectService(persistence)
   function parse(text: string): PersistenceResult<PartsTransfer> {
     try { return validatePartsTransfer(json.parse(text)) }
     catch { return invalidTransfer('The file is not valid JSON.') }
   }
   return {
-    export(projectId: CuttingProjectId): Promise<PersistenceResult<{ text: string; name: string }>> {
-      return persistence.transaction(async repositories => {
-        const project = await repositories.projects.get(projectId); if (!project.ok) return project
-        const owners = await repositories.projects.list(); if (!owners.ok) return owners
-        if (owners.value.some(other => other.id !== projectId && other.partIds.some(id => project.value.partIds.includes(id)))) return invalidTransfer('Part ownership is inconsistent.')
-        const parts: PartsTransfer['parts'] = []
-        for (const id of project.value.partIds) {
-          const record = await repositories.parts.get(id); if (!record.ok) return record
-          const part = record.value
-          const material = await repositories.materials.get(part.materialId); if (!material.ok) return material
-          parts.push({ name: part.name, material: material.value.name, length: part.lengthMm, width: part.widthMm, thickness: part.thicknessMm, quantity: part.quantity, grainDirection: part.grainDirection, rotation: part.rotation })
-        }
-        const validated = validatePartsTransfer({ format: 'opticutlist-parts', version: 1, parts }); if (!validated.ok) return validated
-        try { return { ok: true, value: { text: json.stringify(validated.value), name: project.value.name } } }
-        catch { return invalidTransfer('Parts could not be serialized.') }
-      })
-    },
     preview(projectId: CuttingProjectId, text: string): Promise<PersistenceResult<PartsImportPreview>> {
       const parsed = parse(text); if (!parsed.ok) return Promise.resolve(parsed)
       return persistence.transaction(async repositories => {

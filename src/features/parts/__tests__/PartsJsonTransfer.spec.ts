@@ -19,25 +19,24 @@ function setup() {
   const service = {
     preview: vi.fn<PartsTransferService['preview']>().mockResolvedValue({ ok: true, value: { file, materials: [material], materialIds: [material.id] } }),
     import: vi.fn<PartsTransferService['import']>().mockResolvedValue({ ok: true, value: 1 }),
-    export: vi.fn<PartsTransferService['export']>().mockResolvedValue({ ok: true, value: { text: JSON.stringify(file, null, 2), name: 'Cabinet' } }),
   }
   const wrapper = mount(PartsJsonTransfer, { props: { disabled: false }, attachTo: document.body, global: { plugins: [createAppRouter(createMemoryHistory())], provide: { [partsTransferServiceKey]: service, [projectIdKey]: projectId } } }); wrappers.push(wrapper)
   return { wrapper, service }
 }
 function button(wrapper: VueWrapper, text: string) { const result = wrapper.findAll('button').find(item => item.text() === text); if (!result) throw new Error('Missing button'); return result }
-async function select(wrapper: VueWrapper) {
+async function select(wrapper: VueWrapper, filename = 'parts.oclparts.json') {
   const input = wrapper.get<HTMLInputElement>('input[type="file"]')
-  const upload = new File(['json'], 'parts.json', { type: 'application/json' })
+  const upload = new File(['json'], filename, { type: 'application/json' })
   Object.defineProperty(upload, 'text', { value: () => Promise.resolve(JSON.stringify(file)) })
   Object.defineProperty(input.element, 'files', { value: [upload] })
   await input.trigger('change'); await flushPromises()
 }
 describe('Parts JSON actions', () => {
-  it('previews local JSON and requires explicit confirmation before importing', async () => {
+  it.each(['parts.oclparts.json', 'parts.json'])('previews %s and requires explicit confirmation before importing', async filename => {
     const { wrapper, service } = setup()
     await button(wrapper, 'Import JSON').trigger('click')
     expect(wrapper.get('input[type="file"]').attributes('accept')).toContain('.json')
-    await select(wrapper)
+    await select(wrapper, filename)
     expect(service.preview).toHaveBeenCalledWith(projectId, JSON.stringify(file))
     expect(wrapper.text()).toContain('500 × 400 × 18 mm · Qty 2')
     expect(service.import).not.toHaveBeenCalled()
@@ -69,16 +68,5 @@ describe('Parts JSON actions', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not access local storage')
     expect(wrapper.get('#import-part-material-0').text()).toContain(material.name)
   })
-  it('downloads the generated JSON with the project filename and releases its URL', async () => {
-    const { wrapper, service } = setup()
-    const revoke = vi.fn(); const create = vi.fn().mockReturnValue('blob:parts')
-    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke })
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function(this: HTMLAnchorElement) { expect(this.download).toBe('cabinet.oclparts.json') })
-    vi.useFakeTimers({ toFake: ['setTimeout'] })
-    await button(wrapper, 'Export JSON').trigger('click'); await flushPromises()
-    expect(service.export).toHaveBeenCalledWith(projectId)
-    expect(create).toHaveBeenCalledOnce(); expect(click).toHaveBeenCalledOnce()
-    vi.advanceTimersByTime(1000)
-    expect(revoke).toHaveBeenCalledWith('blob:parts')
-  })
+
 })

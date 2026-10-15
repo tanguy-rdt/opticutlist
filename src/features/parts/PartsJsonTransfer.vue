@@ -9,7 +9,6 @@ import { usePartsTransferService } from './parts-transfer-service'
 import AppDialog from '../../shared/ui/AppDialog.vue'
 import MaterialSelector from '../materials/MaterialSelector.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
-import { downloadJson } from '../../shared/ui/download-json'
 import type { PersistenceError } from '../../application/persistence/repositories'
 const props = defineProps<{ disabled: boolean }>()
 const emit = defineEmits<{ imported: [] }>()
@@ -57,19 +56,6 @@ async function confirm(): Promise<void> {
   if (!result.ok) { error.value = message(result.error); return }
   close(); notice.value = `${String(result.value)} parts imported.`; emit('imported')
 }
-async function exportParts(): Promise<void> {
-  if (!service || busy.value || props.disabled) return
-  const current = ++generation
-  busy.value = true; error.value = ''; notice.value = ''
-  try {
-    const result = await service.export(projectId)
-    if (current !== generation) return
-    if (!result.ok) { error.value = message(result.error); return }
-    downloadJson(result.value.text, result.value.name, 'oclparts.json')
-    notice.value = 'Parts JSON download started.'
-  } catch { if (current === generation) error.value = 'Could not export Parts JSON.' }
-  finally { if (current === generation) busy.value = false }
-}
 </script>
 <template>
   <div class="flex flex-wrap items-center gap-2">
@@ -87,14 +73,6 @@ async function exportParts(): Promise<void> {
         Import JSON
       </AppButton>
     </slot>
-    <AppButton
-      type="button"
-      variant="secondary"
-      :disabled="disabled || busy || !service"
-      @click="exportParts"
-    >
-      Export JSON
-    </AppButton>
     <span
       v-if="notice"
       role="status"

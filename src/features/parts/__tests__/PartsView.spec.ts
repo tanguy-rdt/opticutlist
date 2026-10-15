@@ -476,11 +476,11 @@ describe('PartsView', () => {
 
   it('reuses the shared split button for independent creation and accessible import actions', async () => {
     const repositories = setup()
-    const transfer = { preview: vi.fn<PartsTransferService['preview']>(), import: vi.fn<PartsTransferService['import']>(), export: vi.fn<PartsTransferService['export']>() }
+    const transfer = { preview: vi.fn<PartsTransferService['preview']>(), import: vi.fn<PartsTransferService['import']>() }
     const wrapper = render(repositories, transfer); await flushPromises()
     expect(wrapper.findComponent(AppSplitButton).exists()).toBe(true)
     expect(wrapper.findAll('button').filter(control => control.text() === 'Import JSON')).toHaveLength(0)
-    expect(button(wrapper, 'Export JSON').exists()).toBe(true)
+    expect(wrapper.findAll('button').some(control => control.text() === 'Export JSON')).toBe(false)
     await button(wrapper, 'New part').trigger('click')
     expect(wrapper.get('dialog h2').text()).toBe('New part')
     expect(transfer.preview).not.toHaveBeenCalled()

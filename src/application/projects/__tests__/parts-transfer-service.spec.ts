@@ -4,7 +4,7 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
 import { createProjectService } from '../project-service'
 import { createPartsTransferService } from '../parts-transfer-service'
-import { validatePartsTransfer, partsTransferSchema } from '../parts-transfer-format'
+import { validatePartsTransfer } from '../parts-transfer-format'
 import { projectJson } from '../../../infrastructure/projects/project-json'
 import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import { materialSchema } from '../../../domain/model/material'
@@ -25,38 +25,36 @@ async function setup() {
   value(await persistence.materials.create(material)); value(await projects.projects.create(project))
   return { indexedDB, persistence, projects, project, service: createPartsTransferService(persistence, projectJson) }
 }
-describe('Parts JSON exchange', () => {
-  it('imports, exports and round trips all properties with fresh identities, without unrelated data', async () => {
+describe('Parts JSON import', () => {
+  it('imports existing version-1 files with all properties and fresh identities, preserving data after reopening', async () => {
     const { projects, project, service, indexedDB } = await setup()
     value(await projects.parts(project.id).create(validPartInput))
     const existing = value(await projects.parts(project.id).list())
     const preview = value(await service.preview(project.id, JSON.stringify(file)))
     expect(preview.materialIds).toEqual([material.id, material.id])
     expect(value(await service.import(project.id, preview.file, preview.materialIds, true))).toBe(2)
-    const exported = value(await service.export(project.id))
-    expect(exported.name).toBe('Cabinet')
-    const parsed = partsTransferSchema.parse(projectJson.parse(exported.text))
-    expect(parsed.parts.slice(1)).toEqual(file.parts)
-    expect(exported.text).toContain('\n  "format"')
-    expect(exported.text).not.toContain('materialId'); expect(exported.text).not.toContain('lengthMm')
+    const imported = value(await projects.parts(project.id).list()).filter(part => part.id !== validPartInput.id)
+    expect(imported.map(part => ({ name: part.name, material: material.name, length: part.lengthMm, width: part.widthMm, thickness: part.thicknessMm, quantity: part.quantity, grainDirection: part.grainDirection, rotation: part.rotation })).sort((a, b) => a.name.localeCompare(b.name))).toEqual(file.parts)
     expect(value(await projects.parts(project.id).get(partSchema.parse(validPartInput).id))).toEqual(existing[0])
     const next = createLocalPersistence('parts-json', { indexedDB, IDBKeyRange }); connections.push(next)
+    expect(value(await createProjectService(next).parts(project.id).list())).toEqual(value(await projects.parts(project.id).list()))
     const nextService = createPartsTransferService(next, projectJson)
-    const reopened = value(await nextService.preview(project.id, exported.text))
+    const reopened = value(await nextService.preview(project.id, JSON.stringify(file)))
     value(await nextService.import(project.id, reopened.file, reopened.materialIds, true))
     const parts = value(await createProjectService(next).parts(project.id).list())
-    expect(parts).toHaveLength(6); expect(new Set(parts.map(part => part.id)).size).toBe(6)
+    expect(parts).toHaveLength(5); expect(new Set(parts.map(part => part.id)).size).toBe(5)
     expect(value(await next.materials.list())).toEqual([material])
     expect(value(await next.stockItems.list())).toEqual([])
     expect(value(await next.supplierProducts.list())).toEqual([])
   })
-  it('exports and imports an empty list without changing selections or requiring a material', async () => {
+  it('imports an empty list without changing selections or requiring a material', async () => {
     const { persistence, projects, project, service } = await setup()
-    value(await projects.projects.update(project.id, { ...project, materialIds: [] }))
-    const exported = value(await service.export(project.id))
-    expect(projectJson.parse(exported.text)).toEqual({ format: 'opticutlist-parts', version: 1, parts: [] })
-    expect(value(await service.import(project.id, projectJson.parse(exported.text), [], true))).toBe(0)
+    const owner = value(await projects.projects.update(project.id, { ...project, materialIds: [] }))
+    const empty = { ...file, parts: [] }
+    const preview = value(await service.preview(project.id, JSON.stringify(empty)))
+    expect(value(await service.import(project.id, preview.file, [], true))).toBe(0)
     expect(value(await persistence.parts.list())).toEqual([])
+    expect(value(await projects.projects.get(project.id))).toEqual(owner)
   })
   it.each([
     { ...file, format: 'another-format' }, { ...file, version: 2 }, { ...file, version: '1' },
