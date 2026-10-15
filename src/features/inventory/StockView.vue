@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useDataImportRefresh } from '../../app/settings/use-data-import-refresh'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { orderStockItems, type StockOrder } from '../../application/inventory/stock-order'
 import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
@@ -18,6 +19,7 @@ const writer = useStockRepository()
 const repository = writer ?? useCatalogStockRepository()
 const materialRepository = useMaterialRepository()
 const stock = shallowRef<readonly StockItem[]>([])
+const orders = shallowRef<readonly StockOrder[]>([])
 const materials = shallowRef<readonly Material[]>([])
 const history = shallowRef<readonly CuttingConfirmation[]>([])
 const historyLoading = ref(false)
@@ -41,7 +43,7 @@ let historyGeneration = 0
 onBeforeUnmount(() => { generation++; historyGeneration++; window.removeEventListener('focus', refreshOnFocus) })
 function materialName(id: string): string { return materials.value.find(material => material.id === id)?.name ?? 'Missing material' }
 const materialGroups = computed(() => [...new Set(stock.value.map(item => item.materialId))].map(id => ({ id, material: materials.value.find(material => material.id === id), name: materialName(id), items: stock.value.filter(item => item.materialId === id) })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)))
-const visible = computed(() => stock.value.filter(item => {
+const visible = computed(() => orderStockItems(stock.value, orders.value).filter(item => {
   const text = `${materialName(item.materialId)} ${item.id} ${item.kind === 'offcut' ? 'Offcut' : 'Full panel'} ${String(item.lengthMm)} ${String(item.widthMm)} ${String(item.thicknessMm)} ${item.provenance.source}`.toLocaleLowerCase()
   return (!materialFilter.value || item.materialId === materialFilter.value) && (!kindFilter.value || item.kind === kindFilter.value) && (!grainFilter.value || item.grainDirection === grainFilter.value) && text.includes(search.value.trim().toLocaleLowerCase())
 }))
@@ -70,12 +72,59 @@ watch(selected, async item => {
 async function load(): Promise<void> {
   const current = ++generation; loading.value = true; error.value = ''
   if (!repository) { error.value = 'Inventory information is not available.'; loading.value = false; return }
-  const [items, names] = await Promise.all([repository.list(), materialRepository.list()])
+  const [items, names, ordering] = await Promise.all([repository.list(), materialRepository.list(), writer ? writer.ordering() : Promise.resolve({ ok: true as const, value: [] })])
   if (current !== generation) return
   if (!items.ok) error.value = persistenceErrorMessage(items.error, 'Stock item')
   else if (!names.ok) error.value = persistenceErrorMessage(names.error, 'Material')
-  else { stock.value = items.value; materials.value = names.value; if (materialFilter.value && !items.value.some(item => item.materialId === materialFilter.value)) materialFilter.value = '' }
+  else if (!ordering.ok) error.value = persistenceErrorMessage(ordering.error, 'Stock item')
+  else { orders.value = ordering.value; stock.value = items.value; materials.value = names.value; if (materialFilter.value && !items.value.some(item => item.materialId === materialFilter.value)) materialFilter.value = '' }
   loading.value = false
+}
+const filtered = computed(() => Boolean(search.value.trim() || kindFilter.value || grainFilter.value))
+const canReorder = computed(() => Boolean(writer) && !loading.value && !busy.value && !error.value && !formOpen.value && !filtered.value)
+const dragged = shallowRef<StockItem | null>(null)
+const dropTarget = shallowRef<{ id: string; position: 'before' | 'after' } | null>(null)
+function clearDrag(): void { dragged.value = null; dropTarget.value = null }
+async function moveRow(item: StockItem, target: StockItem, position: 'before' | 'after'): Promise<void> {
+  if (!writer || !canReorder.value || item.materialId !== target.materialId) return
+  busy.value = true; writeError.value = ''; notice.value = ''
+  const current = generation
+  const result = await writer.move(item.id, target.id, position)
+  if (current !== generation) return
+  busy.value = false
+  if (!result.ok) writeError.value = 'Stock order could not be saved. ' + persistenceErrorMessage(result.error, 'Stock item')
+  else {
+    orders.value = [...orders.value.filter(order => order.id !== result.value.id), result.value]
+    notice.value = 'Stock order updated.'
+  }
+}
+async function moveBy(item: StockItem, direction: number, event: KeyboardEvent): Promise<void> {
+  const handle = event.currentTarget
+  const group = orderStockItems(stock.value.filter(stock => stock.materialId === item.materialId), orders.value)
+  const target = group[group.findIndex(stock => stock.id === item.id) + direction]
+  if (target) {
+    await moveRow(item, target, direction < 0 ? 'before' : 'after')
+    await nextTick()
+    if (handle instanceof HTMLButtonElement && handle.isConnected) handle.focus()
+  }
+}
+function dragStart(event: DragEvent, item: StockItem): void {
+  if (!canReorder.value) { event.preventDefault(); return }
+  dragged.value = item
+  if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id) }
+}
+function dragOver(event: DragEvent, item: StockItem): void {
+  if (!canReorder.value || !dragged.value || dragged.value.id === item.id || dragged.value.materialId !== item.materialId) { dropTarget.value = null; return }
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  const bounds = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
+  dropTarget.value = { id: item.id, position: bounds && event.clientY >= bounds.top + bounds.height / 2 ? 'after' : 'before' }
+}
+async function drop(event: DragEvent, target: StockItem): Promise<void> {
+  event.preventDefault()
+  const source = dragged.value; const position = dropTarget.value?.id === target.id ? dropTarget.value.position : null
+  clearDrag()
+  if (source && position) await moveRow(source, target, position)
 }
 async function openForm(item: StockItem | null = null): Promise<void> {
   if (!writer || busy.value || loading.value || error.value) return
@@ -296,6 +345,12 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
           >
             No stock matches these filters.
           </p>
+          <p
+            id="stock-order-help"
+            :class="filtered ? 'text-xs text-muted' : 'sr-only'"
+          >
+            {{ filtered ? 'Clear search and type/grain filters to reorder stock.' : 'Drag a grip to reorder within its material, or focus it and use the Up and Down arrow keys.' }}
+          </p>
           <section
             v-for="group in sections"
             :key="group.id"
@@ -322,6 +377,12 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                 </caption>
                 <thead class="bg-quiet-surface text-xs text-muted">
                   <tr>
+                    <th
+                      scope="col"
+                      class="w-10 px-2 py-2"
+                    >
+                      <span class="sr-only">Order</span>
+                    </th>
                     <th
                       scope="col"
                       class="px-3 py-2"
@@ -355,9 +416,43 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                     v-for="item in group.items"
                     :key="item.id"
                     class="border-t border-line hover:bg-subtle"
-                    :class="selectedId === item.id ? 'bg-success-surface' : ''"
+                    :data-stock-id="item.id"
+                    :class="[selectedId === item.id ? 'bg-success-surface' : '', dragged?.id === item.id ? 'opacity-50' : '']"
+                    :style="dropTarget?.id === item.id ? { boxShadow: `inset 0 ${dropTarget.position === 'before' ? '2px' : '-2px'} 0 var(--accent)` } : {}"
                     @click="selectedId = item.id"
+                    @dragover="dragOver($event, item)"
+                    @drop="drop($event, item)"
                   >
+                    <td class="px-2 py-2">
+                      <button
+                        type="button"
+                        class="inline-flex size-9 items-center justify-center rounded text-muted hover:bg-quiet-surface hover:text-ink focus-visible:outline-accent enabled:cursor-grab active:cursor-grabbing"
+                        :draggable="canReorder"
+                        :disabled="!canReorder"
+                        :aria-label="`Reorder stock item ${item.id}`"
+                        aria-describedby="stock-order-help"
+                        aria-keyshortcuts="ArrowUp ArrowDown"
+                        title="Drag to reorder; Up/Down keys move one row"
+                        @click.stop
+                        @dragstart.stop="dragStart($event, item)"
+                        @dragend="clearDrag"
+                        @keydown.up.prevent.stop="moveBy(item, -1, $event)"
+                        @keydown.down.prevent.stop="moveBy(item, 1, $event)"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          class="size-4"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        ><circle
+                          v-for="(point, index) in [[9, 5], [15, 5], [9, 12], [15, 12], [9, 19], [15, 19]]"
+                          :key="index"
+                          :cx="point[0]"
+                          :cy="point[1]"
+                          r="1.5"
+                        /></svg>
+                      </button>
+                    </td>
                     <th
                       scope="row"
                       class="px-3 py-3 font-medium"

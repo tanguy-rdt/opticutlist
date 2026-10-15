@@ -36,6 +36,14 @@ async function inspect(repositories: Repositories, file: StockTransfer): Promise
     const contents = await repositories.savedPlanContents.list(); if (!contents.ok) return contents
     for (const plan of contents.value) for (const source of plan.sources) if (source.product.stockItemId) historicalIds.add(source.product.stockItemId)
   }
+  if (file.stockOrders?.length) {
+    const orders = await repositories.stockOrders.list(); if (!orders.ok) return orders
+    for (const imported of file.stockOrders) {
+      const existing = orders.value.find(order => order.id === imported.id)
+      const liveIds = existing?.stockItemIds.filter(id => stock.value.some(item => item.id === id && item.materialId === imported.id)) ?? []
+      if (existing && JSON.stringify(liveIds) !== JSON.stringify(imported.stockItemIds)) return conflict('Manual row order conflicts with this installation. Existing stock order will not be overwritten.')
+    }
+  }
   let reused = 0
   for (const item of file.stockItems) {
     const existing = stock.value.find(record => record.id === item.id)
@@ -66,7 +74,9 @@ export function createStockTransferService(persistence: LocalPersistence, json: 
       return persistence.transaction(async repositories => {
         const stock = await repositories.stockItems.list(); if (!stock.ok) return stock
         const materials = await repositories.materials.list(); if (!materials.ok) return materials
-        const file = validateStockTransfer({ format: 'opticutlist-stock', schemaVersion: 1, stockItems: stock.value, materials: materials.value.filter(material => stock.value.some(item => item.materialId === material.id)) })
+        const order = await repositories.stockOrders.list(); if (!order.ok) return order
+        const stockOrders = order.value.map(row => ({ ...row, stockItemIds: row.stockItemIds.filter(id => stock.value.some(item => item.id === id && item.materialId === row.id)) })).filter(row => row.stockItemIds.length)
+        const file = validateStockTransfer({ ...(stockOrders.length ? { stockOrders } : {}), format: 'opticutlist-stock', schemaVersion: 1, stockItems: stock.value, materials: materials.value.filter(material => stock.value.some(item => item.materialId === material.id)) })
         return file.ok ? { ok: true, value: json.stringify(file.value) } : file
       })
     },
@@ -84,6 +94,14 @@ export function createStockTransferService(persistence: LocalPersistence, json: 
         const existing = await repositories.stockItems.list(); if (!existing.ok) return existing
         for (const item of file.value.stockItems) {
           if (!existing.value.some(record => record.id === item.id)) { const created = await repositories.stockItems.create(item); if (!created.ok) return created }
+        }
+        if (file.value.stockOrders?.length) {
+          const orders = await repositories.stockOrders.list(); if (!orders.ok) return orders
+          for (const row of file.value.stockOrders) {
+            if (!orders.value.some(existing => existing.id === row.id)) {
+              const created = await repositories.stockOrders.create(row); if (!created.ok) return created
+            }
+          }
         }
         return file
       })

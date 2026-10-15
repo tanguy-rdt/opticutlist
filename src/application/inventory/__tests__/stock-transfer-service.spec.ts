@@ -1,3 +1,5 @@
+import { createStockRepository } from '../stock-repository'
+import { orderStockItems } from '../stock-order'
 // @vitest-environment node
 import { createProjectService } from '../../projects/project-service'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -161,5 +163,43 @@ describe('stock exchange', () => {
     const { service } = await setup()
     const offcut = stockItemSchema.parse({ ...stock, kind: 'offcut', provenance: { source: 'cutting', projectId: 'missing', savedPlanId: 'missing-plan', sourceStockItemId: 'source', panelIndex: 0, wasteIndex: 0 } })
     expect(await service.import(file([offcut]), true)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+  })
+})
+
+
+describe('stock order exchange', () => {
+  it('round-trips custom order without changing physical stock or movement history', async () => {
+    const source = await setup()
+    const a = { ...stock, id: 'a-stock' }; const b = { ...stock, id: 'b-stock' }
+    value(await source.persistence.stockItems.create(a)); value(await source.persistence.stockItems.create(b))
+    const repository = createStockRepository(source.persistence)
+    value(await repository.move(stockItemSchema.parse(b).id, stockItemSchema.parse(a).id, 'before'))
+    const exported = value(await source.service.export())
+    const target = await setup()
+    const preview = value(await target.service.preview(exported))
+    value(await target.service.import(preview.file, true))
+    expect(orderStockItems(value(await target.persistence.stockItems.list()), value(await target.persistence.stockOrders.list())).map(item => item.id)).toEqual(['b-stock', 'a-stock'])
+    expect(await target.persistence.stockItems.list()).toEqual(await source.persistence.stockItems.list())
+    expect(await target.persistence.projectStock.list()).toEqual({ ok: true, value: [] })
+    expect(await target.persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [] })
+    value(await target.service.import(preview.file, true))
+    expect(value(await target.persistence.stockOrders.list())).toHaveLength(1)
+  })
+  it('keeps local ordering for legacy files and blocks conflicting or cross-material order metadata', async () => {
+    const { persistence, service } = await setup()
+    value(await persistence.stockItems.create(stock))
+    value(await persistence.stockOrders.create({ id: stock.materialId, stockItemIds: [stock.id] }))
+    value(await service.import(file(), true))
+    expect(value(await persistence.stockOrders.list())).toHaveLength(1)
+    expect(await service.import({ ...file(), stockOrders: [{ id: stock.materialId, stockItemIds: [] }] }, true)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(await service.import({ ...file(), stockOrders: [{ id: 'another-material', stockItemIds: [stock.id] }] }, true)).toMatchObject({ ok: false, error: { kind: 'invalidRecord' } })
+  })
+  it('rolls back imported stock if order persistence fails', async () => {
+    const { persistence, service } = await setup()
+    const transaction = persistence.transaction.bind(persistence)
+    vi.spyOn(persistence, 'transaction').mockImplementation(work => transaction(repositories => work({ ...repositories, stockOrders: { ...repositories.stockOrders, create: () => Promise.resolve({ ok: false, error: { kind: 'storageFailure', message: 'Disk full' } }) } })))
+    expect(await service.import({ ...file(), stockOrders: [{ id: stock.materialId, stockItemIds: [stock.id] }] }, true)).toMatchObject({ ok: false })
+    expect(value(await persistence.stockItems.list())).toEqual([])
+    expect(value(await persistence.stockOrders.list())).toEqual([])
   })
 })

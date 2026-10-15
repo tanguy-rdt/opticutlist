@@ -50,3 +50,15 @@ Failures leave all existing data unchanged. Correct the reported dependency/conf
 ## Backup limitations
 
 This is **not a complete application backup**. Files exclude catalog products/suppliers, projects, cutting trees, movement receipts, project stock ledgers, PDFs and images. Material snapshots are dependency checks, not catalog imports. The file cannot restore project-generated stock/history to an empty installation or undo consumption in another project. These scenarios are rejected rather than guessing or resetting provenance. Transfer matching catalog dependencies separately before importing independent manual/purchased stock.
+
+## Optional manual row order
+
+Version 1 also accepts an optional `stockOrders` array. Each entry uses the material ID as `id` and lists its stock references in display order:
+
+```json
+"stockOrders": [
+  { "id": "oak", "stockItemIds": ["workshop-panel-1"] }
+]
+```
+
+These are presentation preferences, separate from StockItems and movement history. Every listed ID must appear in `stockItems` with that material; duplicates and cross-material references are rejected. Exports omit stale IDs. Without metadata, rows use deterministic ID order; importing an older file preserves any local order. Import inserts new order records atomically with stock and rejects conflicting existing orders without overwriting them. Replaying identical data/order is safe. This optional addition does not change stock quantities or backup limitations.

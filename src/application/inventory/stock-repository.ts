@@ -1,3 +1,4 @@
+import { orderStockItems, stockOrderSchema, type StockOrder } from './stock-order'
 import { isStockEligibleForProject } from './stock-eligibility'
 import type { CuttingProjectId } from '../../domain/model/ids'
 import { stockItemSchema, type StockItem } from '../../domain/model/stock-item'
@@ -6,6 +7,8 @@ import type { LocalPersistence, PersistenceResult, Repository } from '../persist
 import { resolvePresetMaterial } from '../catalog/resolve-preset-material'
 
 export interface StockRepository extends Repository<StockItem> {
+  ordering(): Promise<PersistenceResult<readonly StockOrder[]>>
+  move(id: StockItem['id'], targetId: StockItem['id'], position: 'before' | 'after'): Promise<PersistenceResult<StockOrder>>
   saveWithPreset(record: unknown, presetId: string, previous?: StockItem): Promise<PersistenceResult<StockItem>>
   update(id: StockItem['id'], record: unknown, previous?: StockItem): Promise<PersistenceResult<StockItem>>
   delete(id: StockItem['id'], previous?: StockItem): Promise<PersistenceResult<void>>
@@ -49,6 +52,24 @@ export function createStockRepository(persistence: LocalPersistence): StockRepos
     })
   }
   return {
+    ordering: () => persistence.stockOrders.list(),
+    move: (id, targetId, position) => persistence.transaction(async repositories => {
+      const items = await repositories.stockItems.list(); if (!items.ok) return items
+      const source = items.value.find(item => item.id === id)
+      const target = items.value.find(item => item.id === targetId)
+      if (!source || !target) return { ok: false, error: { kind: 'notFound', id: !source ? id : targetId } }
+      if (source.materialId !== target.materialId) return conflict('Stock can only be reordered within the same material.')
+      const orders = await repositories.stockOrders.list(); if (!orders.ok) return orders
+      const previous = orders.value.find(order => order.id === source.materialId)
+      const ids = orderStockItems(items.value.filter(item => item.materialId === source.materialId), orders.value).map(item => item.id)
+      if (id !== targetId) {
+        ids.splice(ids.indexOf(id), 1)
+        ids.splice(ids.indexOf(targetId) + (position === 'after' ? 1 : 0), 0, id)
+      }
+      const order = stockOrderSchema.parse({ id: source.materialId, stockItemIds: ids })
+      if (previous && JSON.stringify(previous) === JSON.stringify(order)) return { ok: true, value: order }
+      return previous ? repositories.stockOrders.update(order.id, order) : repositories.stockOrders.create(order)
+    }),
     planningStock: projectId => persistence.transaction(async repositories => {
       const records = await repositories.stockItems.list()
       if (!records.ok) return records

@@ -305,7 +305,7 @@ describe('Home and application navigation', () => {
     await vi.waitFor(() => { expect(wrapper.find('table').exists()).toBe(true) })
     expect(wrapper.text()).toContain(validMaterialInput.name)
     expect(wrapper.get('table').text()).toContain('800 × 400.5')
-    expect(wrapper.get('tbody tr').findAll('td')[1]?.text()).toBe('18')
+    expect(wrapper.get('tbody tr').findAll('td')[2]?.text()).toBe('18')
     expect(await persistence.stockItems.list()).toEqual(before)
   })
 

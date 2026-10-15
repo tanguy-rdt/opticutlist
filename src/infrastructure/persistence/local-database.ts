@@ -1,3 +1,4 @@
+import { stockOrderSchema } from '../../application/inventory/stock-order'
 import { projectStockSchema } from '../../domain/model/project-stock'
 import { currentCuttingResultSchema } from '../../domain/model/current-cutting-result'
 import { savedPlanContentsSchema, savedPlanSummarySchema } from '../../domain/model/saved-cutting-plan'
@@ -15,7 +16,7 @@ import { supplierSchema } from '../../domain/model/supplier'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 
 export const DATABASE_NAME = 'opticutlist'
-export const DATABASE_VERSION = 6
+export const DATABASE_VERSION = 7
 export const DATABASE_V1_STORES = {
   materials: 'id',
   parts: 'id',
@@ -28,7 +29,8 @@ export const DATABASE_V3_STORES = { ...DATABASE_V2_STORES, savedPlanSummaries: '
 export const DATABASE_V4_STORES = { ...DATABASE_V3_STORES, cuttingConfirmations: 'id, projectId' } as const
 
 export const DATABASE_V5_STORES = { ...DATABASE_V4_STORES, currentCuttingResults: 'id' } as const
-export const DATABASE_STORES = { ...DATABASE_V5_STORES, projectStock: 'id' } as const
+export const DATABASE_V6_STORES = { ...DATABASE_V5_STORES, projectStock: 'id' } as const
+export const DATABASE_STORES = { ...DATABASE_V6_STORES, stockOrders: 'id' } as const
 
 class PersistenceFailure extends Error {
   constructor(readonly detail: PersistenceError) {
@@ -122,6 +124,8 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
   db.version(4).stores(DATABASE_V4_STORES)
   // Add only a project-keyed reference; never select or delete legacy layouts during upgrade.
   db.version(5).stores(DATABASE_V5_STORES)
+  db.version(6).stores(DATABASE_V6_STORES)
+  // Presentation order is additive; inventory and audit records remain byte-for-byte unchanged.
   db.version(DATABASE_VERSION).stores(DATABASE_STORES)
   db.on('ready', () => {
     // Dexie versions are multiplied by ten in the native IndexedDB version.
@@ -197,6 +201,7 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
       parts: createRepository(tableFor('parts'), partSchema, partSchema.shape.id, run),
       suppliers: createRepository(tableFor('suppliers'), supplierSchema, supplierSchema.shape.id, run),
       supplierProducts: createRepository(tableFor('supplierProducts'), supplierProductSchema, supplierProductSchema.shape.id, run),
+      stockOrders: createRepository(tableFor('stockOrders'), stockOrderSchema, stockOrderSchema.shape.id, run),
       stockItems: createRepository(tableFor('stockItems'), stockItemSchema, stockItemSchema.shape.id, run),
     }
   }
