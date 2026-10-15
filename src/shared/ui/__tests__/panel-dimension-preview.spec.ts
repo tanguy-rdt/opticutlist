@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitPanelDimensionPreview, previewGrainPath } from '../panel-dimension-preview'
+import { fitPanelDimensionPreview, previewGrainIllustration } from '../panel-dimension-preview'
 
 describe('technical preview layout', () => {
   for (const size of ['small', 'default'] as const) {
@@ -44,9 +44,10 @@ describe('technical preview layout', () => {
   })
   it('only shows meaningful grain and follows the physical axes', () => {
     const { panel } = fitPanelDimensionPreview(800, 400)
-    expect(previewGrainPath(panel, 'none')).toBeNull()
-    expect(previewGrainPath(panel, 'length')).toContain('H ')
-    expect(previewGrainPath(panel, 'width')).toContain('V ')
-    expect(previewGrainPath({ width: 1, height: 100 }, 'width')).toBeNull()
+    expect(previewGrainIllustration(panel, 'none')).toBeNull()
+    expect(previewGrainIllustration(panel, 'length')?.transform).toBe(`scale(${String(panel.width / 1000)} ${String(panel.height / 400)})`)
+    expect(previewGrainIllustration(panel, 'width')?.transform).toBe(`rotate(90) scale(${String(panel.height / 1000)} ${String(panel.width / 400)})`)
+    expect(previewGrainIllustration(panel, 'width')).toEqual(previewGrainIllustration(panel, 'width'))
+    expect(previewGrainIllustration({ width: 1, height: 100 }, 'width')).toBeNull()
   })
 })

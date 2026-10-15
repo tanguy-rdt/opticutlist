@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import type { GrainDirection } from '../../domain/model/orientation'
-import { fitPanelDimensionPreview, previewGrainPath, type PanelPreviewSize } from './panel-dimension-preview'
+import { fitPanelDimensionPreview, previewGrainIllustration, type PanelPreviewSize } from './panel-dimension-preview'
 const props = withDefaults(defineProps<{ lengthMm: number; widthMm: number; grainDirection?: GrainDirection; size?: PanelPreviewSize; label?: string }>(), { grainDirection: 'none', size: 'default', label: 'Panel dimension preview' })
 const drawing = computed(() => {
   try { return fitPanelDimensionPreview(props.lengthMm, props.widthMm, props.size) }
   catch (cause) { if (cause instanceof RangeError) return null; throw cause }
 })
-const grainPath = computed(() => drawing.value ? previewGrainPath(drawing.value.panel, props.grainDirection) : null)
+const clipId = useId()
+const grainIllustration = computed(() => drawing.value ? previewGrainIllustration(drawing.value.panel, props.grainDirection) : null)
 </script>
 <template>
   <figure :aria-label="label">
@@ -25,6 +26,35 @@ const grainPath = computed(() => drawing.value ? previewGrainPath(drawing.value.
           data-panel-outline
           fill="var(--quiet-surface)"
         />
+        <defs v-if="grainIllustration">
+          <clipPath :id="clipId"><rect v-bind="drawing.panel" /></clipPath>
+        </defs>
+        <g
+          v-if="grainIllustration"
+          :data-grain="grainDirection"
+          :clip-path="`url(#${clipId})`"
+          fill="none"
+          stroke="currentColor"
+          stroke-opacity="0.55"
+          stroke-width="0.65"
+          aria-hidden="true"
+        >
+          <g :transform="grainIllustration.transform">
+            <path
+              v-for="(line, index) in grainIllustration.lines"
+              :key="`line-${index}`"
+              :d="line"
+              vector-effect="non-scaling-stroke"
+            />
+            <path
+              v-for="(knot, index) in grainIllustration.knots"
+              :key="`knot-${index}`"
+              :d="knot"
+              data-grain-knot
+              vector-effect="non-scaling-stroke"
+            />
+          </g>
+        </g>
         <rect
           v-bind="drawing.panel"
           fill="none"
@@ -75,14 +105,6 @@ const grainPath = computed(() => drawing.value ? previewGrainPath(drawing.value.
           data-dimension-arrow="width"
           :d="arrow"
           fill="currentColor"
-        />
-        <path
-          v-if="grainPath"
-          :data-grain="grainDirection"
-          :d="grainPath"
-          stroke="currentColor"
-          stroke-width="0.8"
-          fill="none"
         />
         <text
           :x="drawing.horizontalLabel.x"

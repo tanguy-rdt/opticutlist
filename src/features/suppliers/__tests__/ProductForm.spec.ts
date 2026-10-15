@@ -30,6 +30,8 @@ describe('product supplier context', () => {
       await wrapper.get('form').trigger('submit')
       const saved = supplierProductSchema.parse(wrapper.emitted('save')?.[0]?.[0])
       expect(saved.supplierId).toBe(otherSupplier.id)
+      expect(saved.availability).toBe('unknown')
+      expect(wrapper.find('#product-availability').exists()).toBe(false)
     } finally { wrapper.unmount() }
   })
   it('retains the original product supplier when editing from a different supplier context', async () => {
@@ -40,6 +42,15 @@ describe('product supplier context', () => {
       await wrapper.get('form').trigger('submit')
       expect(supplierProductSchema.parse(wrapper.emitted('save')?.[0]?.[0])).toEqual({ ...product, name: 'Renamed panel' })
     } finally { wrapper.unmount() }
+  })
+  it.each(['available', 'unavailable', 'unknown'] as const)('preserves legacy %s without offering an availability control', async availability => {
+    const wrapper = render(supplier.id, true)
+    await wrapper.setProps({ product: { ...product, availability } })
+    expect(wrapper.find('#product-availability').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Availability')
+    await wrapper.get('form').trigger('submit')
+    expect(supplierProductSchema.parse(wrapper.emitted('save')?.[0]?.[0]).availability).toBe(availability)
+    wrapper.unmount()
   })
   it.each(['', 'missing-supplier', 'invalid id'])('rejects missing or invalid fixed context %j without defaulting', async initialSupplierId => {
     const wrapper = render(initialSupplierId)

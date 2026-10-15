@@ -13,7 +13,6 @@ const material = computed(() => props.materials.find(item => item.id === props.p
 const materialName = computed(() => material.value?.name ?? 'Missing material')
 const ownedQuantity = computed(() => props.stock.reduce((quantity, item) => quantity + item.quantity, 0))
 function grain(product: SupplierProduct): string { return product.grainDirection === 'none' ? 'None' : product.grainDirection === 'length' ? 'Along length' : 'Along width' }
-function availability(product: SupplierProduct): string { return product.availability === 'available' ? 'Available' : product.availability === 'unavailable' ? 'Unavailable' : 'Unknown' }
 </script>
 <template>
   <aside
@@ -77,24 +76,17 @@ function availability(product: SupplierProduct): string { return product.availab
           <div><dt>Supplier</dt><dd>{{ suppliers.find(item => item.id === product?.supplierId)?.name ?? 'Missing supplier' }}</dd></div>
           <div><dt>Thickness</dt><dd>{{ product.thicknessMm }} mm</dd></div>
           <div><dt>Grain direction</dt><dd>{{ grain(product) }}</dd></div>
-          <div>
-            <dt>Availability</dt><dd>
-              <span
-                class="inline-flex rounded-md px-2 py-1 text-xs font-medium"
-                :class="product.availability === 'available' ? 'bg-success-surface text-success' : 'bg-quiet-surface text-muted'"
-              >{{ availability(product) }}</span>
-            </dd>
-          </div>
           <div v-if="product.productUrl">
             <dt>Product URL</dt>
             <dd>
               <a
                 :href="product.productUrl"
+                :title="product.productUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="inline-flex items-start gap-1 text-accent hover:underline [overflow-wrap:anywhere]"
+                class="flex min-w-0 max-w-full items-center gap-1 text-accent hover:underline"
               >
-                <AppIcon name="external" /><span>{{ product.productUrl }}</span><span class="sr-only"> (opens in new tab)</span>
+                <AppIcon name="external" /><span class="min-w-0 flex-1 truncate">{{ product.productUrl }}</span><span class="sr-only"> (opens in new tab)</span>
               </a>
             </dd>
           </div>

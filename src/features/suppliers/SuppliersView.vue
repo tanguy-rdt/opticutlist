@@ -35,7 +35,6 @@ const search = ref('')
 const supplierSearch = ref('')
 const categoryFilter = ref('')
 const materialFilter = ref('')
-const availabilityFilter = ref('')
 const formMode = ref<'supplier' | 'product' | null>(null)
 const addSupplierButton = ref<HTMLButtonElement | null>(null)
 let generation = 0
@@ -67,7 +66,7 @@ const sections = computed(() => {
   const grouped = new Map<string, SupplierProduct[]>()
   for (const product of products.value) {
     const material = materials.value.find(item => item.id === product.materialId)
-    if (product.supplierId !== selectedSupplierId.value || (categoryFilter.value && material?.category !== categoryFilter.value) || (materialFilter.value && product.materialId !== materialFilter.value) || (availabilityFilter.value && product.availability !== availabilityFilter.value)) continue
+    if (product.supplierId !== selectedSupplierId.value || (categoryFilter.value && material?.category !== categoryFilter.value) || (materialFilter.value && product.materialId !== materialFilter.value)) continue
     if (search.value && !`${product.name} ${material?.name ?? ''} ${material?.category ?? ''}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase().trim())) continue
     const group = grouped.get(product.materialId) ?? []; group.push(product); grouped.set(product.materialId, group)
   }
@@ -100,7 +99,6 @@ async function inspectProduct(id: string): Promise<void> {
 
 function linkedStock(product: SupplierProduct): readonly StockItem[] { return stock.value.filter(item => item.provenance.source === 'purchase' && item.provenance.supplierProductId === product.id) }
 function stockLabel(product: SupplierProduct): string { return !stockRepository ? 'Not available' : stockError.value ? 'Read error' : `${String(linkedStock(product).reduce((quantity, item) => quantity + item.quantity, 0))} owned` }
-function availability(product: SupplierProduct): string { return product.availability === 'available' ? 'Available' : product.availability === 'unavailable' ? 'Unavailable' : 'Unknown' }
 function closeForm(): void { if (!busy.value) { formMode.value = null; operationError.value = '' } }
 
 async function load(): Promise<void> {
@@ -428,7 +426,7 @@ onMounted(load)
               />
             </div>
           </div>
-          <div class="catalog-filters grid grid-cols-2 gap-2 xl:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+          <div class="catalog-filters grid grid-cols-2 gap-2 xl:grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))]">
             <div>
               <label
                 for="catalog-search"
@@ -486,26 +484,6 @@ onMounted(load)
                   :value="material.id"
                 >
                   {{ material.name }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label
-                for="catalog-availability"
-                class="sr-only"
-              >Availability</label><select
-                id="catalog-availability"
-                v-model="availabilityFilter"
-                class="field field-small"
-              >
-                <option value="">
-                  Any availability
-                </option><option value="available">
-                  Available
-                </option><option value="unavailable">
-                  Unavailable
-                </option><option value="unknown">
-                  Unknown
                 </option>
               </select>
             </div>
@@ -588,11 +566,6 @@ onMounted(load)
                     scope="col"
                     class="px-3 py-2"
                   >
-                    Availability
-                  </th><th
-                    scope="col"
-                    class="px-3 py-2"
-                  >
                     Owned stock
                   </th><th
                     scope="col"
@@ -640,12 +613,6 @@ onMounted(load)
                     {{ product.thicknessMm }}
                   </td><td class="whitespace-nowrap px-3 py-2.5 tabular-nums">
                     {{ product.price }} {{ product.currency }}
-                  </td>
-                  <td class="px-3 py-2.5">
-                    <span
-                      class="inline-flex rounded-md px-2 py-1 text-xs font-medium"
-                      :class="product.availability === 'available' ? 'bg-success-surface text-success' : 'bg-quiet-surface text-muted'"
-                    >{{ availability(product) }}</span>
                   </td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-xs text-muted">
                     {{ stockLabel(product) }}

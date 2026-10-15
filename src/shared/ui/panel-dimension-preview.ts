@@ -67,10 +67,30 @@ export function fitPanelDimensionPreview(lengthMm: number, widthMm: number, size
     verticalArrows: [arrow({ x: layout.vertical.start.x, y: layout.panel.y }, 'width', layout.verticalOutside ? -1 : 1), arrow({ x: layout.vertical.end.x, y: layout.panel.y + layout.panel.height }, 'width', layout.verticalOutside ? 1 : -1)],
   }
 }
-export function previewGrainPath(panel: { width: number; height: number }, direction: GrainDirection): string | null {
+// Fixed vector curves in a lengthwise 1000 × 400 drawing space. The gaps flow around two knots.
+const grainLines = [
+  'M -540 -174 C -350 -144 -210 -199 -40 -171 S 310 -142 540 -169',
+  'M -540 -129 C -370 -111 -310 -156 -172 -133 S 110 -88 258 -121 S 433 -141 540 -109',
+  'M -540 -80 C -360 -46 -285 -113 -150 -112 S 84 -46 250 -79 S 430 -96 540 -62',
+  'M -540 -34 C -390 -12 -270 -105 -145 -90 S 80 -2 230 -34 S 415 -64 540 -28',
+  'M -540 8 C -370 44 -255 55 -145 48 S 45 3 188 28 S 410 55 540 17',
+  'M -540 57 C -390 89 -252 75 -90 91 S 110 62 260 65 S 436 85 540 60',
+  'M -540 111 C -352 145 -177 109 15 129 S 175 151 278 150 S 430 112 540 123',
+  'M -540 170 C -359 151 -216 190 -37 169 S 140 182 293 180 S 423 160 540 174',
+] as const
+const grainKnots = [
+  'M -224 -24 C -209 -66 -92 -69 -62 -23 C -82 22 -205 25 -224 -24 Z',
+  'M -194 -23 C -182 -45 -117 -44 -94 -20 C -112 4 -179 7 -194 -23 Z',
+  'M 225 108 C 238 80 302 79 324 105 C 309 135 246 139 225 108 Z',
+  'M 249 109 C 260 94 286 94 299 108 C 287 122 260 124 249 109 Z',
+] as const
+export function previewGrainIllustration(panel: { width: number; height: number }, direction: GrainDirection) {
   if (direction === 'none' || Math.min(panel.width, panel.height) < 16) return null
-  const half = Math.min(24, (direction === 'length' ? panel.width : panel.height) / 4)
-  return direction === 'length'
-    ? `M ${String(-half)} 0 H ${String(half)} M ${String(half - 4)} -3 L ${String(half)} 0 L ${String(half - 4)} 3`
-    : `M 0 ${String(-half)} V ${String(half)} M -3 ${String(half - 4)} L 0 ${String(half)} L 3 ${String(half - 4)}`
+  return {
+    transform: direction === 'length'
+      ? `scale(${String(panel.width / 1000)} ${String(panel.height / 400)})`
+      : `rotate(90) scale(${String(panel.height / 1000)} ${String(panel.width / 400)})`,
+    lines: grainLines,
+    knots: grainKnots,
+  }
 }

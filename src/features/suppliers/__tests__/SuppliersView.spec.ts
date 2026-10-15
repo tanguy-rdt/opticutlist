@@ -79,7 +79,6 @@ async function fillProduct(wrapper: VueWrapper) {
   for (const field of ['lengthMm', 'widthMm', 'thicknessMm', 'price'] as const) await wrapper.get(`#product-${field}`).setValue(String(product[field]))
   await wrapper.get('#product-currency').setValue(product.currency)
   await wrapper.get('#product-grain').setValue(product.grainDirection)
-  await wrapper.get('#product-availability').setValue(product.availability)
   await wrapper.get('#product-url').setValue(product.productUrl ?? '')
 }
 async function submit(wrapper: VueWrapper, entity: 'supplier' | 'product') {
@@ -97,14 +96,17 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories); await flushPromises(); await openForm(wrapper, 'product')
     expect(wrapper.get('dialog h2').text()).toBe('New product')
     const form = wrapper.get('form[aria-label="Product editor"]')
-    expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing and availability', 'Additional information'])
-    for (const field of ['name', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain', 'availability']) {
+    expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing and grain', 'Additional information'])
+    for (const field of ['name', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain']) {
       const label = form.get(`label[for="product-${field}"]`)
       expect(label.get('span[aria-hidden="true"]').text()).toBe('*')
       expect(label.get('.sr-only').text()).toBe('(required)')
       expect(form.get(`#product-${field}`).attributes('required')).toBeDefined()
     }
     expect(form.get('#product-url').attributes('required')).toBeUndefined()
+    expect(form.find('#product-availability').exists()).toBe(false)
+    expect(wrapper.find('#catalog-availability').exists()).toBe(false)
+    expect(wrapper.findAll('thead th').some(cell => cell.text().includes('Availability'))).toBe(false)
     expect(form.get<HTMLInputElement>('#product-currency').element.value).toBe('EUR')
     await submit(wrapper, 'product')
     for (const dimension of ['lengthMm', 'widthMm', 'thicknessMm']) {
@@ -232,7 +234,6 @@ describe('SuppliersView', () => {
     await wrapper.get('#catalog-search').setValue(product.name)
     await wrapper.get('#catalog-category').setValue(material.category)
     await wrapper.get('#catalog-material').setValue(material.id)
-    await wrapper.get('#catalog-availability').setValue(product.availability)
     await wrapper.get(`button[aria-label="View product ${second.name}"]`).trigger('click')
     expect(repositories.suppliers.list).toHaveBeenCalledTimes(1)
     const stock = stockItemSchema.parse({ ...validStockItemInput, kind: 'fullPanel', quantity: 4, provenance: { source: 'purchase', supplierProductId: second.id } })
@@ -244,7 +245,6 @@ describe('SuppliersView', () => {
     expect(wrapper.get<HTMLInputElement>('#catalog-search').element.value).toBe(product.name)
     expect(wrapper.get<HTMLSelectElement>('#catalog-category').element.value).toBe(material.category)
     expect(wrapper.get<HTMLSelectElement>('#catalog-material').element.value).toBe(material.id)
-    expect(wrapper.get<HTMLSelectElement>('#catalog-availability').element.value).toBe(product.availability)
     expect(wrapper.get('[aria-label="Catalog summary"]').findAll('dd')[3]?.text()).toBe('4')
   })
   it('defers import refresh while a product draft is open and reloads once the user closes it', async () => {
@@ -261,7 +261,7 @@ describe('SuppliersView', () => {
     expect(wrapper.get('#product-details h3').text()).toBe(product.name)
   })
 
-  it('groups separate materials even with the same category and combines name, category, material and availability filters', async () => {
+  it('groups separate materials even with the same category and combines name, category and material filters', async () => {
     const repositories = setup()
     const otherMaterial = materialSchema.parse({ ...material, id: 'other-plywood', name: 'Oak plywood' })
     const otherProduct = supplierProductSchema.parse({ ...product, id: 'oak-panel', name: 'Oak panel', materialId: otherMaterial.id, availability: 'unavailable' })
@@ -271,8 +271,8 @@ describe('SuppliersView', () => {
     expect(wrapper.findAll('table')).toHaveLength(2)
     await wrapper.get('#catalog-material').setValue(otherMaterial.id)
     expect(wrapper.findAll('table')).toHaveLength(1); expect(wrapper.find(`button[aria-label="View product ${product.name}"]`).exists()).toBe(false)
-    await wrapper.get('#catalog-material').setValue(''); await wrapper.get('#catalog-availability').setValue('available')
-    expect(wrapper.find(`button[aria-label="View product ${otherProduct.name}"]`).exists()).toBe(false)
+    await wrapper.get('#catalog-material').setValue('')
+    expect(wrapper.find(`button[aria-label="View product ${otherProduct.name}"]`).exists()).toBe(true)
     await wrapper.get('#catalog-category').setValue(material.category); await wrapper.get('#catalog-search').setValue('birch')
     expect(wrapper.findAll('table')).toHaveLength(1)
     await wrapper.get('#catalog-search').setValue('no match'); expect(wrapper.text()).toContain('No products match')
@@ -381,7 +381,7 @@ describe('SuppliersView', () => {
     for (const [field, value] of [
       ['name', product.name], ['lengthMm', String(product.lengthMm)],
       ['widthMm', String(product.widthMm)], ['thicknessMm', String(product.thicknessMm)], ['price', String(product.price)],
-      ['currency', product.currency], ['grain', product.grainDirection], ['availability', product.availability], ['url', product.productUrl ?? ''],
+      ['currency', product.currency], ['grain', product.grainDirection], ['url', product.productUrl ?? ''],
     ]) {
       expect(wrapper.get<HTMLInputElement | HTMLSelectElement>(`#product-${field ?? ''}`).element.value).toBe(value)
     }
@@ -389,7 +389,7 @@ describe('SuppliersView', () => {
     if (mode === 'edit') expect(repositories.supplierProducts.update).toHaveBeenCalledExactlyOnceWith(product.id, { ...product, materialId: created.id })
     else {
       const saved = supplierProductSchema.parse(repositories.supplierProducts.create.mock.calls[0]?.[0])
-      expect(saved).toEqual({ ...product, id: saved.id, materialId: created.id })
+      expect(saved).toEqual({ ...product, id: saved.id, materialId: created.id, availability: 'unknown' })
     }
   })
 
@@ -771,7 +771,7 @@ describe('SuppliersView', () => {
     expect(wrapper.findAll('table')).toHaveLength(1)
     expect(wrapper.get('h3').text()).toBe(material.name)
     await selectProduct(wrapper)
-    for (const text of [product.name, '2500 × 1250 × 18 mm', 'Thickness18 mm', '89.9 EUR', 'Along length', 'Available']) expect(wrapper.text()).toContain(text)
+    for (const text of [product.name, '2500 × 1250 × 18 mm', 'Thickness18 mm', '89.9 EUR', 'Along length']) expect(wrapper.text()).toContain(text)
     expect(wrapper.get(`a[href="${product.productUrl ?? ''}"]`).attributes('rel')).toBe('noopener noreferrer')
     await wrapper.get(`button[aria-label="Select supplier ${secondSupplier.name}"]`).trigger('click')
     expect(wrapper.text()).toContain('Fiberboard'); expect(wrapper.text()).toContain(secondProduct.name)
@@ -787,7 +787,7 @@ describe('SuppliersView', () => {
     await fillProduct(wrapper)
     await submit(wrapper, 'product')
     const created = supplierProductSchema.parse(repositories.supplierProducts.create.mock.calls[0]?.[0])
-    expect(created).toEqual({ ...product, id: created.id })
+    expect(created).toEqual({ ...product, id: created.id, availability: 'unknown' })
     expect(repositories.supplierProducts.list).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[role="status"]').text()).toBe('Product created.')
     expect(wrapper.find('#product-name').exists()).toBe(false)
@@ -813,12 +813,11 @@ describe('SuppliersView', () => {
     await wrapper.get('#product-price').setValue('0')
     await wrapper.get('#product-currency').setValue('USD')
     await wrapper.get('#product-grain').setValue('width')
-    await wrapper.get('#product-availability').setValue('unavailable')
     await wrapper.get('#product-url').setValue('')
     await submit(wrapper, 'product')
     expect(repositories.supplierProducts.update).toHaveBeenCalledExactlyOnceWith(product.id, {
       id: product.id, name: 'Updated product', supplierId: supplier.id, materialId: alternateMaterial.id,
-      lengthMm: 2400, widthMm: 1200, thicknessMm: 18.5, price: 0, currency: 'USD', grainDirection: 'width', availability: 'unavailable',
+      lengthMm: 2400, widthMm: 1200, thicknessMm: 18.5, price: 0, currency: 'USD', grainDirection: 'width', availability: product.availability,
     })
     expect(wrapper.get('[role="status"]').text()).toBe('Product updated.')
   })

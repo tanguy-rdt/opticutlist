@@ -21,6 +21,18 @@ describe('product technical preview', () => {
     expect(preview.element.compareDocumentPosition(wrapper.get('[aria-label="Product specifications"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     wrapper.unmount()
   })
+  it('ellipsizes long URL text in a bounded flex link while preserving its target and tooltip', () => {
+    const url = `https://supplier.example/products/${'long-product-name'.repeat(30)}?variant=oak`
+    const wrapper = mount(ProductDetails, { props: { ...props, product: { ...product, productUrl: url } } })
+    const link = wrapper.get(`a[href="${url}"]`)
+    expect(link.attributes('title')).toBe(url)
+    expect(link.classes()).toEqual(expect.arrayContaining(['flex', 'min-w-0', 'max-w-full']))
+    expect(link.get('span').classes()).toEqual(expect.arrayContaining(['truncate', 'min-w-0']))
+    expect(link.get('span').text()).toBe(url)
+    expect(link.find('svg').exists()).toBe(true)
+    expect(wrapper.get('[aria-label="Product specifications"]').text()).not.toContain('Availability')
+    wrapper.unmount()
+  })
   it('orders the preview, identity, key values, specifications, stock and accessible actions', async () => {
     const stock = stockItemSchema.parse({ ...validStockItemInput, quantity: 4 })
     const wrapper = mount(ProductDetails, { props: { ...props, stock: [stock], materials: [materialSchema.parse({ ...material, libraryPresetId: 'pin' })] } })

@@ -4,7 +4,7 @@ import { computed, nextTick, reactive, ref, shallowRef } from 'vue'
 import { materialSchema, type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import { grainDirectionSchema } from '../../domain/model/orientation'
-import { supplierProductSchema, productAvailabilitySchema, type SupplierProduct } from '../../domain/model/supplier-product'
+import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
 import FormField from '../../shared/ui/FormField.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import MaterialPresetPicker from '../materials/MaterialPresetPicker.vue'
@@ -94,7 +94,6 @@ const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; 
 const currency = ref(props.product?.currency ?? 'EUR')
 const productUrl = ref(props.product?.productUrl ?? '')
 const grainDirection = ref(props.product?.grainDirection ?? 'none')
-const availability = ref(props.product?.availability ?? 'unknown')
 const errors = shallowRef<ReadonlyMap<string, string>>(new Map())
 const dimensionFields = [
   { key: 'lengthMm', label: 'Length (mm)' }, { key: 'widthMm', label: 'Width (mm)' },
@@ -108,7 +107,7 @@ async function submit(): Promise<void> {
   const result = supplierProductSchema.safeParse({
     id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: effectiveSupplierId.value, materialId: productPreset.value ? crypto.randomUUID() : materialId.value,
     lengthMm: numberInput(numbers.lengthMm), widthMm: numberInput(numbers.widthMm), thicknessMm: numberInput(numbers.thicknessMm), price: numberInput(numbers.price),
-    currency: currency.value.trim(), grainDirection: grainDirection.value, availability: availability.value,
+    currency: currency.value.trim(), grainDirection: grainDirection.value, availability: props.product?.availability ?? 'unknown',
     ...(productUrl.value.trim() ? { productUrl: productUrl.value.trim() } : {}),
   })
   const issues = new Map(result.success ? [] : result.error.issues.map((issue) => [String(issue.path[0]), issue.message]))
@@ -369,7 +368,7 @@ async function submit(): Promise<void> {
         id="product-pricing-heading"
         class="text-sm font-semibold"
       >
-        Pricing and availability
+        Pricing and grain
       </h3>
       <div class="grid gap-4 sm:grid-cols-2">
         <FormField
@@ -411,7 +410,7 @@ async function submit(): Promise<void> {
           </template>
         </FormField>
       </div>
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div class="grid gap-4">
         <FormField
           id="product-grain"
           required-indicator="asterisk"
@@ -432,30 +431,6 @@ async function submit(): Promise<void> {
                 :value="direction"
               >
                 {{ direction === 'none' ? 'No grain constraint' : (direction === 'length' ? 'Along length' : 'Along width') }}
-              </option>
-            </select>
-          </template>
-        </FormField>
-        <FormField
-          id="product-availability"
-          required-indicator="asterisk"
-          label="Availability"
-          required
-          :error="errors.get('availability') ?? ''"
-        >
-          <template #default="{ controlAttrs }">
-            <select
-              v-model="availability"
-              v-bind="controlAttrs"
-              class="field"
-              :disabled="disabled"
-            >
-              <option
-                v-for="value in productAvailabilitySchema.options"
-                :key="value"
-                :value="value"
-              >
-                {{ value === 'available' ? 'Available' : (value === 'unavailable' ? 'Unavailable' : 'Unknown') }}
               </option>
             </select>
           </template>
