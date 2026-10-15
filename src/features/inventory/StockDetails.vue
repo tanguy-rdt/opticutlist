@@ -4,7 +4,6 @@ import type { StockItem } from '../../domain/model/stock-item'
 import type { Material } from '../../domain/model/material'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
 import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
-import { materialPreview } from '../materials/material-library'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 
 defineProps<{ item: StockItem; material: Material | undefined; history: readonly CuttingConfirmation[]; historyLoading: boolean; historyError: string; writable: boolean; busy: boolean }>()
@@ -25,7 +24,6 @@ const emit = defineEmits<{ edit: []; delete: [] }>()
     <PanelDimensionPreview
       :length-mm="item.lengthMm"
       :width-mm="item.widthMm"
-      :texture-url="materialPreview(material?.libraryPresetId)"
       :grain-direction="item.grainDirection"
       size="small"
       label="Physical stock panel preview"

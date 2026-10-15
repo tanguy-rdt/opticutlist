@@ -1,19 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue'
+import { computed } from 'vue'
 import type { GrainDirection } from '../../domain/model/orientation'
 import { fitPanelDimensionPreview, previewGrainPath, type PanelPreviewSize } from './panel-dimension-preview'
-const props = withDefaults(defineProps<{ lengthMm: number; widthMm: number; textureUrl?: string | undefined; grainDirection?: GrainDirection; size?: PanelPreviewSize; label?: string }>(), { textureUrl: '', grainDirection: 'none', size: 'default', label: 'Panel dimension preview' })
-const clipId = useId()
-const failed = ref(false)
-watch(() => props.textureUrl, () => { failed.value = false })
+const props = withDefaults(defineProps<{ lengthMm: number; widthMm: number; grainDirection?: GrainDirection; size?: PanelPreviewSize; label?: string }>(), { grainDirection: 'none', size: 'default', label: 'Panel dimension preview' })
 const drawing = computed(() => {
   try { return fitPanelDimensionPreview(props.lengthMm, props.widthMm, props.size) }
   catch (cause) { if (cause instanceof RangeError) return null; throw cause }
 })
 const grainPath = computed(() => drawing.value ? previewGrainPath(drawing.value.panel, props.grainDirection) : null)
-function imageError(event: Event): void {
-  if (event.currentTarget instanceof SVGElement && event.currentTarget.getAttribute('href') === props.textureUrl) failed.value = true
-}
 </script>
 <template>
   <figure :aria-label="label">
@@ -26,21 +20,10 @@ function imageError(event: Event): void {
       :aria-label="`${label}: ${lengthMm} × ${widthMm} mm${grainDirection === 'none' ? '' : `, grain along ${grainDirection}`}`"
     >
       <g :transform="`translate(${drawing.translation.x} ${drawing.translation.y})`">
-        <defs><clipPath :id="clipId"><rect v-bind="drawing.panel" /></clipPath></defs>
         <rect
           v-bind="drawing.panel"
           data-panel-outline
-          fill="currentColor"
-          fill-opacity="0.08"
-        />
-        <image
-          v-if="textureUrl && !failed"
-          :key="textureUrl"
-          v-bind="drawing.panel"
-          :href="textureUrl"
-          preserveAspectRatio="xMidYMid slice"
-          :clip-path="`url(#${clipId})`"
-          @error="imageError"
+          fill="var(--quiet-surface)"
         />
         <rect
           v-bind="drawing.panel"

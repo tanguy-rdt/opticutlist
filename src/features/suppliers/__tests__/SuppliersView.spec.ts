@@ -462,7 +462,7 @@ describe('SuppliersView', () => {
     expect(wrapper.get<HTMLButtonElement>('#product-material').element.value).toBe(created.id)
   })
 
-  it('shows supplier favicons in navigation/header and updates material previews when products are selected', async () => {
+  it('shows supplier favicons in navigation/header and keeps technical previews uniform when products are selected', async () => {
     const repositories = setup()
     const pine = materialSchema.parse({ ...material, name: 'Pin Douglas', libraryPresetId: 'pin' })
     const custom = materialSchema.parse({ ...material, id: 'custom-material', name: 'Chêne' })
@@ -472,13 +472,15 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories); await flushPromises()
     expect(wrapper.get('nav[aria-label="Catalog suppliers"] img').attributes('src')).toBe('https://timber.example.com/favicon.ico')
     expect(wrapper.get('.catalog-supplier-header img').attributes('src')).toBe('https://timber.example.com/favicon.ico')
-    expect(wrapper.find('#product-details figure image').exists()).toBe(true)
+    expect(wrapper.find('#product-details figure image').exists()).toBe(false)
+    expect(wrapper.get('#product-details [data-panel-outline]').attributes('fill')).toBe('var(--quiet-surface)')
     const rows = wrapper.findAll('button[aria-label="View product ' + product.name + '"]')
     await rows[1]?.trigger('click')
     expect(wrapper.find('#product-details figure image').exists()).toBe(false)
     expect(wrapper.find('#product-details [data-panel-outline]').exists()).toBe(true)
     await rows[0]?.trigger('click')
-    expect(wrapper.find('#product-details figure image').exists()).toBe(true)
+    expect(wrapper.find('#product-details figure image').exists()).toBe(false)
+    expect(wrapper.get('#product-details [data-panel-outline]').attributes('fill')).toBe('var(--quiet-surface)')
   })
 
   it('offers the local presets without creating records, keeps a renamed thumbnail and the product draft', async () => {

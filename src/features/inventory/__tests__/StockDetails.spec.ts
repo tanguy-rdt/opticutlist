@@ -5,7 +5,6 @@ import { stockItemSchema } from '../../../domain/model/stock-item'
 import { materialSchema } from '../../../domain/model/material'
 import { cuttingConfirmationSchema } from '../../../domain/model/cutting-confirmation'
 import { validMaterialInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
-import { materialPreview } from '../../materials/material-library'
 
 const stock = stockItemSchema.parse(validStockItemInput)
 const material = materialSchema.parse({ ...validMaterialInput, name: 'Pine Douglas', libraryPresetId: 'pin' })
@@ -15,7 +14,8 @@ describe('stock details hierarchy', () => {
     const wrapper = mount(StockDetails, { props: defaults })
     expect(wrapper.get('section').element.firstElementChild?.tagName).toBe('HEADER')
     expect(wrapper.get('h3').text()).toBe('Pine Douglas')
-    expect(wrapper.get('image').attributes('href')).toBe(materialPreview('pin'))
+    expect(wrapper.find('image').exists()).toBe(false)
+    expect(wrapper.get('[data-panel-outline]').attributes('fill')).toBe('var(--quiet-surface)')
     expect(wrapper.get('svg').attributes('aria-label')).toContain('800 × 400.5 mm')
     expect(wrapper.findAll('[data-dimension-arrow]')).toHaveLength(4)
     expect(wrapper.text()).toContain('800 × 400.5 × 18 mm')
@@ -39,10 +39,11 @@ describe('stock details hierarchy', () => {
     for (const id of [item.id, 'internal-project-id', 'internal-plan-id', 'internal-source-id']) expect(wrapper.text()).not.toContain(id)
     wrapper.unmount()
   })
-  it('updates the material association on selection and keeps a useful preview without a texture', async () => {
+  it('updates material and dimensions on selection with a uniform fill', async () => {
     const wrapper = mount(StockDetails, { props: defaults })
     await wrapper.setProps({ material: materialSchema.parse({ ...material, libraryPresetId: 'chene', name: 'Renamed oak' }), item: { ...stock, lengthMm: 100 } })
-    expect(wrapper.get('image').attributes('href')).toBe(materialPreview('chene'))
+    expect(wrapper.find('image').exists()).toBe(false)
+    expect(wrapper.get('svg').attributes('aria-label')).toContain('100 × 400.5 mm')
     expect(wrapper.get('h3').text()).toBe('Renamed oak')
     await wrapper.setProps({ material: materialSchema.parse(validMaterialInput) })
     expect(wrapper.find('image').exists()).toBe(false)

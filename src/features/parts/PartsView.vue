@@ -14,7 +14,6 @@ import AppDialog from '../../shared/ui/AppDialog.vue'
 import { useCatalogRepositories } from '../suppliers/catalog-repositories'
 import PartsJsonTransfer from './PartsJsonTransfer.vue'
 import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
-import { materialPreview } from '../materials/material-library'
 import PartForm from './PartForm.vue'
 import { usePartRepository } from './part-repository'
 
@@ -447,7 +446,6 @@ onMounted(load)
             <PanelDimensionPreview
               :length-mm="selected.lengthMm"
               :width-mm="selected.widthMm"
-              :texture-url="materialPreview(materialFor(selected)?.libraryPresetId)"
               :grain-direction="selected.grainDirection"
               size="small"
               label="Part dimension preview"

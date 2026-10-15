@@ -4,18 +4,19 @@ import { materialSchema } from '../../../domain/model/material'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validMaterialInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { stockItemSchema } from '../../../domain/model/stock-item'
-import { materialPresets, materialPreview } from '../../materials/material-library'
+import { materialPresets } from '../../materials/material-library'
 import ProductDetails from '../ProductDetails.vue'
 const material = materialSchema.parse(validMaterialInput)
 const product = supplierProductSchema.parse(validSupplierProductInput)
 const props = { product, materials: [material], suppliers: [], stock: [], stockAvailable: true, stockError: '', disabled: false }
 
-describe('product material preview', () => {
-  it.each(materialPresets)('uses the associated $name preset without guessing from product names', preset => {
+describe('product technical preview', () => {
+  it.each(materialPresets)('uses the same neutral fill for $name without a material texture', preset => {
     const associated = materialSchema.parse({ ...material, name: preset.name, libraryPresetId: preset.id })
     const wrapper = mount(ProductDetails, { props: { ...props, materials: [associated] } })
     const preview = wrapper.get('figure[aria-label="Catalog panel preview"]')
-    expect(preview.get('image').attributes('href')).toBe(materialPreview(preset.id))
+    expect(preview.find('image').exists()).toBe(false)
+    expect(preview.get('[data-panel-outline]').attributes('fill')).toBe('var(--quiet-surface)')
     expect(preview.get('svg').attributes('aria-label')).toContain(`${String(product.lengthMm)} × ${String(product.widthMm)} mm`)
     expect(preview.element.compareDocumentPosition(wrapper.get('[aria-label="Product specifications"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     wrapper.unmount()
@@ -42,30 +43,30 @@ describe('product material preview', () => {
     expect(wrapper.get('[aria-label="Owned inventory"]').text()).toContain('0 owned units')
     wrapper.unmount()
   })
-  it('retains a renamed preset texture and immediately follows selected product material IDs', async () => {
+  it('retains material identity and a uniform fill when changing selected products', async () => {
     const pine = materialSchema.parse({ ...material, name: 'Pin Douglas', libraryPresetId: 'pin' })
     const oak = materialSchema.parse({ ...material, id: 'oak-material', name: 'Custom oak', libraryPresetId: 'chene' })
     const second = supplierProductSchema.parse({ ...product, id: 'second-product', materialId: oak.id, name: product.name })
     const wrapper = mount(ProductDetails, { props: { ...props, materials: [pine, oak] } })
-    expect(wrapper.get('figure image').attributes('href')).toBe(materialPreview('pin'))
+    expect(wrapper.find('figure image').exists()).toBe(false)
+    const fill = wrapper.get('[data-panel-outline]').attributes('fill')
     expect(wrapper.get('.catalog-product-header').text()).toContain('Pin Douglas')
-    const oldImage = wrapper.get('figure image')
-    await wrapper.setProps({ product: second }); await oldImage.trigger('error')
-    expect(wrapper.get('figure image').attributes('href')).toBe(materialPreview('chene'))
+    await wrapper.setProps({ product: second })
+    expect(wrapper.find('figure image').exists()).toBe(false)
+    expect(wrapper.get('[data-panel-outline]').attributes('fill')).toBe(fill)
     expect(wrapper.get('.catalog-product-header').text()).toContain('Custom oak')
     wrapper.unmount()
   })
-  it.each([undefined, 'unknown-preset'])('shows a neutral placeholder for a custom/unknown material (%s)', libraryPresetId => {
+  it.each([undefined, 'unknown-preset'])('shows a neutral drawing for a custom/unknown material (%s)', libraryPresetId => {
     const custom = materialSchema.parse({ ...material, name: 'Pin', libraryPresetId })
     const wrapper = mount(ProductDetails, { props: { ...props, materials: [custom], product: supplierProductSchema.parse({ ...product, name: 'Chêne' }) } })
     expect(wrapper.find('figure [data-panel-outline]').exists()).toBe(true)
     expect(wrapper.find('figure image').exists()).toBe(false)
     wrapper.unmount()
   })
-  it('handles unavailable textures and missing material references without broken images', async () => {
+  it('handles missing material references and empty product selection', async () => {
     const associated = materialSchema.parse({ ...material, libraryPresetId: 'pin' })
     const wrapper = mount(ProductDetails, { props: { ...props, materials: [associated] } })
-    await wrapper.get('figure image').trigger('error')
     expect(wrapper.find('figure image').exists()).toBe(false)
     expect(wrapper.find('figure [data-panel-outline]').exists()).toBe(true)
     await wrapper.setProps({ materials: [] })

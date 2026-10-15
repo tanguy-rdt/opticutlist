@@ -137,7 +137,8 @@ describe('editable physical inventory workspace', () => {
     await submitStock(wrapper)
     expect(await persistence.materials.list()).toMatchObject({ ok: true, value: [{ name: 'Pin', libraryPresetId: 'pin' }] })
     expect(await persistence.supplierProducts.list()).toEqual({ ok: true, value: [] })
-    expect(wrapper.get('[aria-label="Stock item details"] image').attributes('href')).toContain('/materials/textures/pin.webp')
+    expect(wrapper.find('[aria-label="Stock item details"] image').exists()).toBe(false)
+    expect(wrapper.get('[aria-label="Stock item details"] [data-panel-outline]').attributes('fill')).toBe('var(--quiet-surface)')
   })
   it('uses perspective samples only in material navigation, not inventory group headers', async () => {
     const textured = materialSchema.parse({ ...material, libraryPresetId: 'chene' })
@@ -147,7 +148,8 @@ describe('editable physical inventory workspace', () => {
     expect(sample.classes()).toContain('object-contain')
     const table = wrapper.get('table').element
     expect(table.closest('section')?.querySelector('header img')).toBeNull()
-    expect(wrapper.get('[aria-label="Stock item details"] image').attributes('href')).toContain('/textures/chene.webp')
+    expect(wrapper.find('[aria-label="Stock item details"] image').exists()).toBe(false)
+    expect(wrapper.get('[aria-label="Stock item details"] [data-panel-outline]').attributes('fill')).toBe('var(--quiet-surface)')
   })
   it('requires confirmation before deletion and preserves the item on refusal', async () => {
     const { wrapper, persistence } = await editable([item])
@@ -171,7 +173,8 @@ describe('editable physical inventory workspace', () => {
     await materialButton.trigger('click'); await flushPromises()
     expect(wrapper.findAll('table')).toHaveLength(1)
     expect(wrapper.get('table').text()).toContain('oak-panels')
-    expect(wrapper.get('[aria-label="Stock item details"] image').attributes('href')).toContain('textures/chene.webp')
+    expect(wrapper.find('[aria-label="Stock item details"] image').exists()).toBe(false)
+    expect(wrapper.get('[aria-label="Stock item details"] [data-panel-outline]').attributes('fill')).toBe('var(--quiet-surface)')
     await wrapper.get('#stock-type-filter').setValue('offcut')
     expect(wrapper.text()).toContain('No stock matches these filters.')
     await button(wrapper, 'All materials6').trigger('click')

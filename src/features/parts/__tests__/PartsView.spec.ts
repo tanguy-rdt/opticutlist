@@ -593,7 +593,7 @@ describe('PartsView', () => {
     expect(repositories.materials.create).not.toHaveBeenCalled()
   })
 
-  it('resolves material images by stable association and updates them on part selection', async () => {
+  it('keeps material list thumbnails and uniform technical drawings on part selection', async () => {
     const repositories = setup()
     const textured = materialSchema.parse({ ...material, libraryPresetId: 'contreplaque' })
     const second = materialSchema.parse({ ...material, id: 'mat-mdf', name: 'Custom renamed MDF', libraryPresetId: 'mdf' })
@@ -602,12 +602,15 @@ describe('PartsView', () => {
     repositories.parts.list.mockResolvedValue({ ok: true, value: [part, secondPart] })
     const wrapper = render(repositories)
     await flushPromises()
-    expect(wrapper.get('aside image').attributes('href')).toContain('/textures/contreplaque.webp')
+    expect(wrapper.find('aside image').exists()).toBe(false)
+    const fill = wrapper.get('aside [data-panel-outline]').attributes('fill')
+    expect(fill).toBe('var(--quiet-surface)')
     expect(wrapper.get('aside svg').attributes('aria-label')).toContain(`${String(part.lengthMm)} × ${String(part.widthMm)} mm`)
     expect(wrapper.findAll('aside [data-dimension-arrow]')).toHaveLength(4)
     expect(wrapper.get('tbody img').attributes('src')).toContain('/previews/contreplaque.webp')
     await wrapper.get('button[aria-label="Select Drawer bottom"]').trigger('click')
-    expect(wrapper.get('aside image').attributes('href')).toContain('/textures/mdf.webp')
+    expect(wrapper.find('aside image').exists()).toBe(false)
+    expect(wrapper.get('aside [data-panel-outline]').attributes('fill')).toBe(fill)
     expect(wrapper.get('aside').text()).toContain('Custom renamed MDF')
     expect(repositories.parts.update).not.toHaveBeenCalled()
   })
