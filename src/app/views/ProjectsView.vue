@@ -156,21 +156,12 @@ onMounted(load)
     </div>
     <div
       v-if="!loading && !error && projects.length === 0"
-      class="space-y-5"
+      class="grid gap-5 md:grid-cols-2 pt-10"
     >
-      <div>
-        <h2 class="text-xl font-semibold">
-          Make room for your next idea.
-        </h2><p class="mt-2 text-muted">
-          No projects yet. Start a new build or bring one from another workshop.
-        </p>
-      </div>
-      <div class="grid gap-5 md:grid-cols-2">
-        <ProjectStartTiles
-          interactive
-          @create="openForm()"
-        />
-      </div>
+      <ProjectStartTiles
+        interactive
+        @create="openForm()"
+      />
     </div>
     <section
       v-else-if="!loading && !error && projects.length"

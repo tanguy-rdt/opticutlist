@@ -108,6 +108,8 @@ describe('Project manager', () => {
     expect(wrapper.find('form').exists()).toBe(false)
     expect(wrapper.find('table').exists()).toBe(false)
     expect(wrapper.findAll('.home-card')).toHaveLength(2)
+    expect(wrapper.text()).not.toContain('Make room for your next idea.')
+    expect(wrapper.text()).not.toContain('No projects yet. Start a new build or bring one from another workshop.')
     const tile = wrapper.get('button[aria-labelledby="new-project-title"]')
     expect(tile.attributes('type')).toBe('button')
     await tile.trigger('click')
