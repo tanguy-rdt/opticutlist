@@ -318,7 +318,7 @@ onMounted(load)
                   scope="col"
                   class="whitespace-nowrap px-3 py-3 text-right"
                 >
-                  Length × width (mm)
+                  Dimensions (mm)
                 </th>
                 <th
                   scope="col"
