@@ -125,15 +125,24 @@ describe('PartsView', () => {
     expect(wrapper.text()).toContain('No parts yet')
   })
 
-  it('renders every dimension, quantity, material and orientation constraint', async () => {
+  it('keeps the table compact while preserving dimensions and orientation constraints in details', async () => {
     const repositories = setup()
     repositories.parts.list.mockResolvedValue({ ok: true, value: [part] })
     const wrapper = render(repositories)
     await flushPromises()
     const table = wrapper.get('table')
-    for (const text of [part.name, material.name, '720 × 560', '18', '2', 'Along length', 'Forbidden']) {
+    for (const text of [part.name, material.name, '720 × 560', '18', '2']) {
       expect(table.text()).toContain(text)
     }
+    expect(table.findAll('thead th').map(cell => cell.text())).toEqual(['Part', 'Material', 'Dimensions (mm)', 'Thickness (mm)', 'Quantity', 'Actions'])
+    expect(table.findAll('tbody tr')[0]?.findAll('th, td')).toHaveLength(6)
+    expect(table.text()).not.toContain('Along length')
+    expect(table.text()).not.toContain('Forbidden')
+    const details = wrapper.get('[aria-label="Part details"]')
+    expect(details.text()).toContain('Grain direction')
+    expect(details.text()).toContain('Along length')
+    expect(details.text()).toContain('90° rotation')
+    expect(details.text()).toContain('Forbidden')
     expect(wrapper.get('[role="region"]').attributes('tabindex')).toBe('0')
   })
 

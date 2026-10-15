@@ -313,7 +313,7 @@ onMounted(load)
               <tr>
                 <th
                   scope="col"
-                  class="px-4 py-3"
+                  class="w-[30%] px-4 py-3"
                 >
                   Part
                 </th><th
@@ -324,36 +324,25 @@ onMounted(load)
                 </th>
                 <th
                   scope="col"
-                  class="whitespace-nowrap px-3 py-3 text-right"
+                  class="w-px whitespace-nowrap px-3 py-3 text-right"
                 >
                   Dimensions (mm)
                 </th>
                 <th
                   scope="col"
-                  class="px-3 py-3 text-right"
+                  class="w-px whitespace-nowrap px-3 py-3 text-right"
                 >
                   Thickness (mm)
                 </th>
                 <th
                   scope="col"
-                  class="px-3 py-3 text-right"
+                  class="w-px whitespace-nowrap px-3 py-3 text-right"
                 >
                   Quantity
                 </th>
                 <th
                   scope="col"
-                  class="px-3 py-3"
-                >
-                  Grain
-                </th><th
-                  scope="col"
-                  class="px-3 py-3"
-                >
-                  90° rotation
-                </th>
-                <th
-                  scope="col"
-                  class="px-3 py-3 text-right"
+                  class="w-px whitespace-nowrap px-3 py-3 text-right"
                 >
                   Actions
                 </th>
@@ -396,11 +385,6 @@ onMounted(load)
                   {{ part.thicknessMm }}
                 </td><td class="px-3 py-3 text-right tabular-nums">
                   {{ part.quantity }}
-                </td>
-                <td class="whitespace-nowrap px-3 py-3">
-                  {{ grain(part) }}
-                </td><td class="px-3 py-3">
-                  {{ part.rotation === 'allowed' ? 'Allowed' : 'Forbidden' }}
                 </td>
                 <td class="px-3 py-3">
                   <div class="flex justify-end gap-1">
