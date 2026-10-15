@@ -692,15 +692,31 @@ onMounted(load)
                     {{ stockLabel(product) }}
                   </td>
                   <td class="px-3 py-2.5">
-                    <button
-                      type="button"
-                      class="button button-compact"
-                      :disabled="disabled"
-                      :aria-label="`Edit panel ${product.name}`"
-                      @click.stop="editProduct(product)"
-                    >
-                      <AppIcon name="edit" /><span class="sr-only">Edit</span>
-                    </button>
+                    <div class="flex items-center gap-1">
+                      <AppButton
+                        variant="ghost"
+                        size="small"
+                        icon-only
+                        label="Edit product"
+                        title="Edit product"
+                        :disabled="disabled"
+                        @click.stop="editProduct(product)"
+                      >
+                        <AppIcon name="edit" />
+                      </AppButton>
+                      <AppButton
+                        variant="ghost"
+                        size="small"
+                        icon-only
+                        label="Delete product"
+                        title="Delete product"
+                        class="text-danger"
+                        :disabled="disabled"
+                        @click.stop="removeProduct(product)"
+                      >
+                        <AppIcon name="delete" />
+                      </AppButton>
+                    </div>
                   </td>
                 </tr>
               </tbody>

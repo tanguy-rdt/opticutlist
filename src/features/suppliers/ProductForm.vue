@@ -420,7 +420,6 @@ async function submit(): Promise<void> {
           required-indicator="asterisk"
           label="Currency"
           required
-          hint="Three uppercase letters, e.g. EUR or USD."
           :error="errors.get('currency') ?? ''"
         >
           <template #default="{ controlAttrs }">
