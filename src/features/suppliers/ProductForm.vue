@@ -335,7 +335,7 @@ async function submit(): Promise<void> {
       >
         Panel dimensions
       </h3>
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 sm:grid-cols-2">
         <FormField
           v-for="field in dimensionFields"
           :id="`product-${field.key}`"
@@ -358,6 +358,30 @@ async function submit(): Promise<void> {
             >
           </template>
         </FormField>
+        <FormField
+          id="product-grain"
+          required-indicator="asterisk"
+          label="Grain direction"
+          required
+          :error="errors.get('grainDirection') ?? ''"
+        >
+          <template #default="{ controlAttrs }">
+            <select
+              v-model="grainDirection"
+              v-bind="controlAttrs"
+              class="field"
+              :disabled="disabled"
+            >
+              <option
+                v-for="direction in grainDirectionSchema.options"
+                :key="direction"
+                :value="direction"
+              >
+                {{ direction === 'none' ? 'No grain constraint' : (direction === 'length' ? 'Along length' : 'Along width') }}
+              </option>
+            </select>
+          </template>
+        </FormField>
       </div>
     </section>
     <section
@@ -368,7 +392,7 @@ async function submit(): Promise<void> {
         id="product-pricing-heading"
         class="text-sm font-semibold"
       >
-        Pricing and grain
+        Pricing
       </h3>
       <div class="grid gap-4 sm:grid-cols-2">
         <FormField
@@ -407,32 +431,6 @@ async function submit(): Promise<void> {
               maxlength="3"
               :disabled="disabled"
             >
-          </template>
-        </FormField>
-      </div>
-      <div class="grid gap-4">
-        <FormField
-          id="product-grain"
-          required-indicator="asterisk"
-          label="Grain direction"
-          required
-          :error="errors.get('grainDirection') ?? ''"
-        >
-          <template #default="{ controlAttrs }">
-            <select
-              v-model="grainDirection"
-              v-bind="controlAttrs"
-              class="field"
-              :disabled="disabled"
-            >
-              <option
-                v-for="direction in grainDirectionSchema.options"
-                :key="direction"
-                :value="direction"
-              >
-                {{ direction === 'none' ? 'No grain constraint' : (direction === 'length' ? 'Along length' : 'Along width') }}
-              </option>
-            </select>
           </template>
         </FormField>
       </div>

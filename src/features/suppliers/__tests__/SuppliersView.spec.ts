@@ -96,7 +96,7 @@ describe('SuppliersView', () => {
     const wrapper = render(repositories); await flushPromises(); await openForm(wrapper, 'product')
     expect(wrapper.get('dialog h2').text()).toBe('New product')
     const form = wrapper.get('form[aria-label="Product editor"]')
-    expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing and grain', 'Additional information'])
+    expect(form.findAll('h3').map(heading => heading.text())).toEqual(['General information', 'Panel dimensions', 'Pricing', 'Additional information'])
     for (const field of ['name', 'material', 'lengthMm', 'widthMm', 'thicknessMm', 'price', 'currency', 'grain']) {
       const label = form.get(`label[for="product-${field}"]`)
       expect(label.get('span[aria-hidden="true"]').text()).toBe('*')
@@ -407,6 +407,11 @@ describe('SuppliersView', () => {
       await vi.waitFor(() => { expect(button(wrapper, '+ Add Product').attributes('disabled')).toBeUndefined() })
       if (mode === 'edit') { await selectProduct(wrapper); await wrapper.get(`button[aria-label="Edit product ${product.name}"]`).trigger('click') }
       else await openForm(wrapper, 'product')
+      const dimensions = wrapper.get('section[aria-labelledby="product-dimensions-heading"]')
+      expect(dimensions.findAll('input, select').map(control => control.attributes('id'))).toEqual(['product-lengthMm', 'product-widthMm', 'product-thicknessMm', 'product-grain'])
+      const pricing = wrapper.get('section[aria-labelledby="product-pricing-heading"]')
+      expect(pricing.get('h3').text()).toBe('Pricing')
+      expect(pricing.find('#product-grain').exists()).toBe(false)
       await wrapper.get('#product-material').trigger('click')
       expect(wrapper.findAll('[role="option"][data-value^="preset:"]')).toHaveLength(20)
       await wrapper.get('input[aria-label="Search materials"]').trigger('keydown', { key: 'Escape' })
