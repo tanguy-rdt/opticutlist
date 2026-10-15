@@ -3,6 +3,10 @@ import AppButton from '../../shared/ui/AppButton.vue'
 import { nextTick, ref, shallowRef } from 'vue'
 import { supplierSchema, type Supplier } from '../../domain/model/supplier'
 import FormField from '../../shared/ui/FormField.vue'
+import { supplierWebsiteInputSchema } from './supplier-website'
+
+const supplierInputSchema = supplierSchema.extend({ websiteUrl: supplierWebsiteInputSchema })
+  .transform(({ websiteUrl, ...record }): Supplier => ({ ...record, ...(websiteUrl ? { websiteUrl } : {}) }))
 
 const props = defineProps<{ supplier: Supplier | null; disabled: boolean }>()
 const emit = defineEmits<{ save: [supplier: Supplier]; cancel: [] }>()
@@ -14,7 +18,7 @@ function focusName(): void { form.value?.querySelector<HTMLInputElement>('input'
 defineExpose({ focusName })
 async function submit(): Promise<void> {
   if (props.disabled) return
-  const result = supplierSchema.safeParse({ id: props.supplier?.id ?? crypto.randomUUID(), name: name.value, ...(websiteUrl.value.trim() ? { websiteUrl: websiteUrl.value.trim() } : {}) })
+  const result = supplierInputSchema.safeParse({ id: props.supplier?.id ?? crypto.randomUUID(), name: name.value, websiteUrl: websiteUrl.value })
   errors.value = new Map(result.success ? [] : result.error.issues.map((issue) => [String(issue.path[0]), issue.message]))
   if (result.success) emit('save', result.data)
   else {
@@ -67,8 +71,12 @@ async function submit(): Promise<void> {
             v-model="websiteUrl"
             v-bind="controlAttrs"
             class="field"
-            type="url"
-            placeholder="https://supplier.example"
+            type="text"
+            inputmode="url"
+            autocomplete="url"
+            autocapitalize="none"
+            :spellcheck="false"
+            placeholder="supplier.example"
             :disabled="disabled"
           >
         </template>

@@ -672,7 +672,7 @@ describe('SuppliersView', () => {
     await wrapper.get('#supplier-name').setValue(` ${supplier.name} `)
     await submit(wrapper, 'supplier')
     const created = supplierSchema.parse(repositories.suppliers.create.mock.calls[0]?.[0])
-    expect(created).toEqual({ ...supplier, id: created.id })
+    expect(created).toEqual({ ...supplier, id: created.id, websiteUrl: new URL(supplier.websiteUrl ?? '').href })
     expect(repositories.suppliers.list).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[role="status"]').text()).toBe('Supplier created.')
     expect(wrapper.find('#supplier-name').exists()).toBe(false)
@@ -691,6 +691,23 @@ describe('SuppliersView', () => {
     await controls[0]?.trigger('click')
     expect(wrapper.find('#product-name').exists()).toBe(true)
     expect(wrapper.find('#supplier-name').exists()).toBe(false)
+  })
+
+  it.each(['supplier-create', 'supplier-edit'])('saves a bare website domain through the existing %s workflow', async mode => {
+    const repositories = setup()
+    const wrapper = render(repositories); await flushPromises()
+    if (mode === 'supplier-edit') {
+      await wrapper.get('button[aria-label="Supplier actions"]').trigger('click')
+      await wrapper.get('[role="menuitem"]').trigger('click')
+    } else await openForm(wrapper, 'supplier')
+    await wrapper.get('#supplier-name').setValue(supplier.name)
+    await wrapper.get('#supplier-website').setValue(' www.leroymerlin.fr ')
+    await submit(wrapper, 'supplier')
+    if (mode === 'supplier-edit') {
+      expect(repositories.suppliers.update).toHaveBeenCalledExactlyOnceWith(supplier.id, { ...supplier, websiteUrl: 'https://www.leroymerlin.fr/' })
+    } else {
+      expect(repositories.suppliers.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: supplier.name, websiteUrl: 'https://www.leroymerlin.fr/' }))
+    }
   })
 
   it('edits a supplier, clears an optional URL, and retains its ID', async () => {
