@@ -14,20 +14,17 @@ async function closeCreation(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-8 md:space-y-10">
-    <div class="max-w-3xl space-y-4">
-      <p class="eyebrow text-accent">
-        From board to build
-      </p>
+  <section class="home-page grid w-full flex-1 gap-8 md:gap-10">
+    <div class="home-welcome max-w-3xl self-start space-y-4 pt-6 md:pt-8">
       <h1 class="text-4xl font-semibold tracking-tight md:text-5xl">
-        Your next build starts here.
+        Welcome to OptiCutList.
       </h1>
       <p class="max-w-2xl text-lg leading-relaxed text-muted">
-        A little planning. A lot of possibility. Keep your panel catalogue ready for whatever takes shape in your workshop.
+        Your workspace for planning projects, organizing materials, and making every cut count.
       </p>
     </div>
 
-    <div class="grid gap-5 md:grid-cols-2 md:grid-rows-2 lg:gap-6">
+    <div class="home-actions grid w-full gap-5 md:grid-cols-2 md:grid-rows-2 lg:gap-6">
       <ProjectStartTiles />
 
       <RouterLink
@@ -121,9 +118,30 @@ async function closeCreation(): Promise<void> {
       v-if="creating"
       @close="closeCreation"
     />
-
-    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-sm text-muted">
-      <p>Made for the workshop. Stored on your device.</p>
-    </div>
   </section>
 </template>
+
+<style>
+/* Scope the full-height layout to Home without changing the application shell. */
+#main-content:has(> .home-page) {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-page {
+  grid-template-rows: auto auto;
+  align-content: start;
+}
+
+@media (min-width: 64rem) {
+  .home-page {
+    /* Equal flexible tracks center the cards in the whole main viewport.
+       The welcome minimum takes precedence only when needed to prevent overlap. */
+    grid-template-rows: minmax(max-content, 1fr) auto minmax(0, 1fr);
+  }
+
+  .home-actions {
+    grid-row: 2;
+  }
+}
+</style>
