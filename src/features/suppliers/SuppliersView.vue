@@ -10,6 +10,8 @@ import { useMaterialRepository } from '../materials/material-repository'
 import { useCatalogRepositories, useCatalogStockRepository } from './catalog-repositories'
 import SupplierForm from './SupplierForm.vue'
 import ProductForm from './ProductForm.vue'
+import AddProductStockDialog from './AddProductStockDialog.vue'
+import { useStockRepository } from '../inventory/stock-repository'
 import MaterialThumbnail from '../materials/MaterialThumbnail.vue'
 import { useDataImportRefresh } from '../../app/settings/use-data-import-refresh'
 import ProductDetails from './ProductDetails.vue'
@@ -22,6 +24,14 @@ import { useToastStore } from '../../shared/ui/toast-store'
 
 const repositories = useCatalogRepositories()
 const stockRepository = useCatalogStockRepository()
+const stockWriter = useStockRepository()
+const stockProduct = shallowRef<SupplierProduct | null>(null)
+function stockAdded(panels: readonly StockItem[]): void {
+  const addedIds = new Set(panels.map(panel => panel.id))
+  stock.value = [...stock.value.filter(item => !addedIds.has(item.id)), ...panels]
+  stockProduct.value = null
+  toasts.success(`Added ${String(panels.length)} ${panels.length === 1 ? 'panel' : 'panels'} to stock`)
+}
 const stock = shallowRef<readonly StockItem[]>([])
 const stockError = ref('')
 const selectedSupplierId = ref('')
@@ -58,7 +68,7 @@ const productVersion = ref(0)
 const initialSupplierId = ref('')
 const supplierForm = ref<InstanceType<typeof SupplierForm> | null>(null)
 const productForm = ref<InstanceType<typeof ProductForm> | null>(null)
-useDataImportRefresh(() => { void load() }, () => !loading.value && !busy.value && formMode.value === null)
+useDataImportRefresh(() => { void load() }, () => !loading.value && !busy.value && formMode.value === null && stockProduct.value === null)
 const disabled = computed(() => loading.value || busy.value || Boolean(loadError.value))
 const supplierNavigation = computed(() => [...new Set([...suppliers.value.map(item => item.id), ...products.value.map(item => item.supplierId)])].map(id => ({ id, supplier: suppliers.value.find(item => item.id === id), name: suppliers.value.find(item => item.id === id)?.name ?? 'Missing supplier', count: products.value.filter(item => item.supplierId === id).length })))
 const selectedSupplier = computed(() => suppliers.value.find(item => item.id === selectedSupplierId.value))
@@ -697,6 +707,17 @@ onMounted(load)
                         variant="ghost"
                         size="small"
                         icon-only
+                        label="Add to stock"
+                        title="Add to stock"
+                        :disabled="disabled || !stockWriter"
+                        @click.stop="stockProduct = product"
+                      >
+                        <AppIcon name="package-plus" />
+                      </AppButton>
+                      <AppButton
+                        variant="ghost"
+                        size="small"
+                        icon-only
                         label="Edit product"
                         title="Edit product"
                         :disabled="disabled"
@@ -750,6 +771,14 @@ onMounted(load)
         :stock-error="stockError"
       />
     </AppDialog>
+    <AddProductStockDialog
+      v-if="stockProduct"
+      :product="stockProduct"
+      :supplier-name="suppliers.find(supplier => supplier.id === stockProduct?.supplierId)?.name ?? 'Missing supplier'"
+      :material-name="materials.find(material => material.id === stockProduct?.materialId)?.name ?? 'Missing material'"
+      @close="stockProduct = null"
+      @added="stockAdded"
+    />
     <AppDialog
       v-if="formMode"
       :title="formMode === 'supplier' ? 'Supplier information' : (editingProduct ? 'Edit product' : 'New product')"

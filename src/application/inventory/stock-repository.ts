@@ -1,12 +1,16 @@
 import { orderStockItems, stockOrderSchema, type StockOrder } from './stock-order'
 import { isStockEligibleForProject } from './stock-eligibility'
+import { quantitySchema } from '../../domain/model/common'
+import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
+import { stockItemIdSchema, type StockItemId } from '../../domain/model/ids'
 import type { CuttingProjectId } from '../../domain/model/ids'
 import { stockItemSchema, type StockItem } from '../../domain/model/stock-item'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
-import type { LocalPersistence, PersistenceResult, Repository } from '../persistence/repositories'
+import type { LocalPersistence, PersistenceResult, Repository, Repositories } from '../persistence/repositories'
 import { resolvePresetMaterial } from '../catalog/resolve-preset-material'
 
 export interface StockRepository extends Repository<StockItem> {
+  addFromProduct(product: SupplierProduct, quantity: unknown): Promise<PersistenceResult<readonly StockItem[]>>
   ordering(): Promise<PersistenceResult<readonly StockOrder[]>>
   move(id: StockItem['id'], targetId: StockItem['id'], position: 'before' | 'after'): Promise<PersistenceResult<StockOrder>>
   saveWithPreset(record: unknown, presetId: string, previous?: StockItem): Promise<PersistenceResult<StockItem>>
@@ -17,6 +21,17 @@ export interface StockRepository extends Repository<StockItem> {
 }
 function conflict(message: string): Extract<PersistenceResult<never>, { ok: false }> { return { ok: false, error: { kind: 'referenceConflict', message } } }
 function sameRecord(a: StockItem, b: StockItem): boolean { return JSON.stringify(a) === JSON.stringify(b) }
+
+async function checkNewStockIds(repositories: Repositories, ids: readonly StockItemId[]): Promise<PersistenceResult<void>> {
+  const receipts = await repositories.cuttingConfirmations.list()
+  if (!receipts.ok) return receipts
+  const projectStock = await repositories.projectStock.list()
+  if (!projectStock.ok) return projectStock
+  const candidates = new Set(ids)
+  if (projectStock.value.some(state => state.entries.some(entry => entry.stock && candidates.has(entry.stock.id)) || state.movements.some(movement => [...movement.added, ...movement.removed, ...movement.consumed.map(item => item.stock), ...movement.restored.map(item => item.stock)].some(item => candidates.has(item.id))))) return conflict('This stock ID belongs to project inventory history. Create a new stock reference instead.')
+  if (receipts.value.some(receipt => receipt.consumed.some(movement => candidates.has(movement.stock.id)) || receipt.offcuts.some(offcut => candidates.has(offcut.id)))) return conflict('This stock ID belongs to historical inventory. Create a new stock reference instead.')
+  return { ok: true, value: undefined }
+}
 
 /** Manual corrections use existing stores/transactions; cutting receipts are immutable snapshots. */
 export function createStockRepository(persistence: LocalPersistence): StockRepository {
@@ -33,12 +48,8 @@ export function createStockRepository(persistence: LocalPersistence): StockRepos
         if (JSON.stringify(stock.provenance) !== JSON.stringify(current.value.provenance)) return conflict('The original stock provenance cannot be changed.')
       } else {
         if (stock.provenance.source !== 'manual') return conflict('New manual stock must use manual provenance; cutting offcuts are created only through finalization.')
-        const receipts = await repositories.cuttingConfirmations.list()
-        if (!receipts.ok) return receipts
-        const projectStock = await repositories.projectStock.list()
-        if (!projectStock.ok) return projectStock
-        if (projectStock.value.some(state => state.entries.some(entry => entry.stock?.id === stock.id) || state.movements.some(movement => [...movement.added, ...movement.removed, ...movement.consumed.map(item => item.stock), ...movement.restored.map(item => item.stock)].some(item => item.id === stock.id)))) return conflict('This stock ID belongs to project inventory history. Create a new stock reference instead.')
-        if (receipts.value.some(receipt => receipt.consumed.some(movement => movement.stock.id === stock.id) || receipt.offcuts.some(offcut => offcut.id === stock.id))) return conflict('This stock ID belongs to historical inventory. Create a new stock reference instead.')
+        const identities = await checkNewStockIds(repositories, [stock.id])
+        if (!identities.ok) return identities
       }
       if (presetId !== undefined) {
         const material = await resolvePresetMaterial(repositories, presetId)
@@ -52,6 +63,34 @@ export function createStockRepository(persistence: LocalPersistence): StockRepos
     })
   }
   return {
+    async addFromProduct(product, quantity) {
+      const parsedProduct = supplierProductSchema.safeParse(product)
+      const parsedQuantity = quantitySchema.safeParse(quantity)
+      if (!parsedProduct.success) return { ok: false, error: { kind: 'invalidRecord', issues: parsedProduct.error.issues } }
+      if (!parsedQuantity.success) return { ok: false, error: { kind: 'invalidRecord', issues: parsedQuantity.error.issues } }
+      return persistence.transaction(async repositories => {
+        const current = await repositories.supplierProducts.get(parsedProduct.data.id)
+        if (!current.ok) return current
+        if (JSON.stringify(current.value) !== JSON.stringify(parsedProduct.data)) return conflict('The product changed. Reopen the Catalog page to load its current characteristics, then try again.')
+        const material = await repositories.materials.get(current.value.materialId)
+        if (!material.ok) return material
+        const supplier = await repositories.suppliers.get(current.value.supplierId)
+        if (!supplier.ok) return supplier
+        const panels: StockItem[] = []
+        for (let index = 0; index < parsedQuantity.data; index++) {
+          const { materialId, lengthMm, widthMm, thicknessMm, grainDirection, id } = current.value
+          panels.push(stockItemSchema.parse({ id: stockItemIdSchema.parse(crypto.randomUUID()), kind: 'fullPanel', materialId, lengthMm, widthMm, thicknessMm, grainDirection, quantity: 1, provenance: { source: 'purchase', supplierProductId: id } }))
+        }
+        if (new Set(panels.map(panel => panel.id)).size !== panels.length) return conflict('Could not generate distinct panel identities. Try again; nothing was added.')
+        const identities = await checkNewStockIds(repositories, panels.map(panel => panel.id))
+        if (!identities.ok) return identities
+        for (const panel of panels) {
+          const created = await repositories.stockItems.create(panel)
+          if (!created.ok) return created
+        }
+        return { ok: true, value: panels }
+      })
+    },
     ordering: () => persistence.stockOrders.list(),
     move: (id, targetId, position) => persistence.transaction(async repositories => {
       const items = await repositories.stockItems.list(); if (!items.ok) return items

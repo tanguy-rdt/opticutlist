@@ -18,6 +18,8 @@ import { createLocalPersistence } from '../../../infrastructure/persistence/loca
 import { materialRepositoryKey } from '../../materials/material-repository'
 import { supplierRepositoryKey, supplierProductRepositoryKey, catalogStockRepositoryKey } from '../catalog-repositories'
 import SuppliersView from '../SuppliersView.vue'
+import { stockRepositoryKey } from '../../inventory/stock-repository'
+import type { StockRepository } from '../../../application/inventory/stock-repository'
 
 const supplier = supplierSchema.parse(validSupplierInput)
 const material = materialSchema.parse(validMaterialInput)
@@ -1214,5 +1216,81 @@ describe('manual Catalog row order', () => {
     expect(wrapper.text()).toContain('Clear product search and filters to reorder products.')
     await handle.trigger('keydown', { key: 'ArrowUp' })
     expect(repositories.supplierProducts.move).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+describe('Catalog Add to stock', () => {
+  function purchasePanels(quantity: number, source = product) {
+    return Array.from({ length: quantity }, (_, index) => stockItemSchema.parse({ id: `purchased-${String(index)}`, kind: 'fullPanel', quantity: 1, materialId: source.materialId, lengthMm: source.lengthMm, widthMm: source.widthMm, thicknessMm: source.thicknessMm, grainDirection: source.grainDirection, provenance: { source: 'purchase', supplierProductId: source.id } }))
+  }
+  it('places the stock action before Edit/Delete and opens prefilled details without selecting its row', async () => {
+    const repositories = setup()
+    const second = supplierProductSchema.parse({ ...product, id: 'second-product', name: 'Second panel', lengthMm: 1234, grainDirection: 'width' })
+    repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product, second] })
+    const addFromProduct = vi.fn<StockRepository['addFromProduct']>()
+    const wrapper = render(repositories, { [stockRepositoryKey]: { addFromProduct } }); await flushPromises()
+    const row = wrapper.findAll('tbody tr').find(row => row.text().includes(second.name))
+    if (!row) throw new Error('Missing row')
+    const actions = row.findAll('td:last-child button')
+    expect(actions.map(action => action.attributes('aria-label'))).toEqual(['Add to stock', 'Edit product', 'Delete product'])
+    expect(actions[0]?.attributes('title')).toBe('Add to stock')
+    expect(actions[0]?.attributes('type')).toBe('button')
+    await row.get('button[aria-label="Add to stock"]').trigger('click')
+    expect(wrapper.get(`button[aria-label="View product ${product.name}"]`).attributes('aria-pressed')).toBe('true')
+    const form = wrapper.get('#add-product-stock')
+    expect(form.text()).toContain(second.name)
+    expect(form.text()).toContain(supplier.name)
+    expect(form.text()).toContain(material.name)
+    expect(form.text()).toContain('1234 mm')
+    expect(form.text()).toContain(`${String(second.widthMm)} mm`)
+    expect(form.text()).toContain(`${String(second.thicknessMm)} mm`)
+    expect(form.text()).toContain('Along width')
+    expect(form.findAll('input')).toHaveLength(1)
+    expect(form.get('#add-stock-quantity').element).toHaveProperty('value', '1')
+    expect(addFromProduct).not.toHaveBeenCalled()
+    await form.findAll('button').find(button => button.text() === 'Cancel')?.trigger('click')
+    expect(wrapper.find('#add-product-stock').exists()).toBe(false)
+    expect(addFromProduct).not.toHaveBeenCalled()
+  })
+  it.each([1, 5])('confirms %s panels, updates linked stock and shows only a shared toast', async quantity => {
+    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    const addFromProduct = vi.fn<StockRepository['addFromProduct']>().mockResolvedValue({ ok: true, value: purchasePanels(quantity) })
+    const inventory = fakeRepository(purchasePanels(1)[0] ?? stockItemSchema.parse(validStockItemInput), [])
+    const wrapper = render(repositories, { [stockRepositoryKey]: { addFromProduct }, [catalogStockRepositoryKey]: inventory }); await flushPromises()
+    await wrapper.get('button[aria-label="Add to stock"]').trigger('click')
+    if (quantity !== 1) await wrapper.get('#add-stock-quantity').setValue(quantity)
+    await wrapper.get('#add-product-stock').trigger('submit'); await flushPromises()
+    expect(addFromProduct).toHaveBeenCalledExactlyOnceWith(product, quantity)
+    expect(wrapper.find('#add-product-stock').exists()).toBe(false)
+    expect(wrapper.get('table').text()).toContain(`${String(quantity)} owned`)
+    expect(wrapper.findComponent(AppToastHost).text()).toContain(`Added ${String(quantity)} ${quantity === 1 ? 'panel' : 'panels'} to stock`)
+    expect(repositories.supplierProducts.update).not.toHaveBeenCalled()
+  })
+  it('rejects invalid quantities, preserves failed drafts and prevents duplicate submissions', async () => {
+    const repositories = setup(); repositories.supplierProducts.list.mockResolvedValue({ ok: true, value: [product] })
+    let finish: (result: Awaited<ReturnType<StockRepository['addFromProduct']>>) => void = () => { throw new Error('Not started') }
+    const addFromProduct = vi.fn<StockRepository['addFromProduct']>().mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = render(repositories, { [stockRepositoryKey]: { addFromProduct } }); await flushPromises()
+    await wrapper.get('button[aria-label="Add to stock"]').trigger('click')
+    for (const quantity of ['', 0, -1, 1.5, 'invalid']) {
+      await wrapper.get('#add-stock-quantity').setValue(quantity)
+      await wrapper.get('#add-product-stock').trigger('submit')
+      expect(wrapper.get('#add-stock-quantity').attributes('aria-invalid')).toBe('true')
+    }
+    expect(addFromProduct).not.toHaveBeenCalled()
+    await wrapper.get('#add-stock-quantity').setValue(5)
+    await wrapper.get('#add-product-stock').trigger('submit')
+    expect(wrapper.get('#add-stock-quantity').attributes('disabled')).toBeDefined()
+    await wrapper.get('#add-product-stock').trigger('submit')
+    expect(addFromProduct).toHaveBeenCalledTimes(1)
+    finish(failure); await flushPromises()
+    expect(wrapper.get('#add-product-stock').text()).toContain('Could not access local storage')
+    expect(wrapper.get('#add-stock-quantity').element).toHaveProperty('value', '5')
+    expect(wrapper.findComponent(AppToastHost).text()).not.toContain('Added')
+    addFromProduct.mockResolvedValueOnce({ ok: true, value: purchasePanels(5) })
+    await wrapper.get('#add-product-stock').trigger('submit'); await flushPromises()
+    expect(wrapper.find('#add-product-stock').exists()).toBe(false)
+    expect(wrapper.findComponent(AppToastHost).text()).toContain('Added 5 panels to stock')
   })
 })

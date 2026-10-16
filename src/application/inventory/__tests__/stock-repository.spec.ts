@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
 import { createStockRepository } from '../stock-repository'
+import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { stockItemSchema } from '../../../domain/model/stock-item'
-import { validMaterialInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validStockItemInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
 import { materialSchema } from '../../../domain/model/material'
 import { cuttingConfirmationSchema } from '../../../domain/model/cutting-confirmation'
 
@@ -91,6 +92,78 @@ describe('guarded manual inventory', () => {
     await repository.delete(stock.id, edited)
     expect(await repository.history(stock.id)).toEqual({ ok: true, value: [receipt] })
     expect(await repository.create(stock)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(await persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [receipt] })
+  })
+})
+
+
+async function purchaseSetup() {
+  const fixture = await setup()
+  const product = supplierProductSchema.parse(validSupplierProductInput)
+  await fixture.persistence.suppliers.create(validSupplierInput)
+  await fixture.persistence.supplierProducts.create(product)
+  return { ...fixture, product }
+}
+describe('Catalog-to-stock additions', () => {
+  it.each([1, 5])('creates %s distinct physical panels with purchase provenance and preserves catalog data', async quantity => {
+    const { repository, persistence, indexedDB, product } = await purchaseSetup()
+    const result = await repository.addFromProduct(product, quantity)
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('Expected panels')
+    expect(result.value).toHaveLength(quantity)
+    expect(new Set(result.value.map(item => item.id)).size).toBe(quantity)
+    for (const item of result.value) expect(item).toEqual({ id: item.id, kind: 'fullPanel', quantity: 1, materialId: product.materialId, lengthMm: product.lengthMm, widthMm: product.widthMm, thicknessMm: product.thicknessMm, grainDirection: product.grainDirection, provenance: { source: 'purchase', supplierProductId: product.id } })
+    expect(await persistence.supplierProducts.get(product.id)).toEqual({ ok: true, value: product })
+    expect(await persistence.materials.list()).toEqual({ ok: true, value: [validMaterialInput] })
+    expect(await persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [] })
+    expect(await persistence.projectStock.list()).toEqual({ ok: true, value: [] })
+    const reopened = createLocalPersistence('stock-test', { indexedDB, IDBKeyRange }); connections.push(reopened)
+    const stored = await reopened.stockItems.list()
+    expect(stored.ok && stored.value.length).toBe(quantity)
+    for (const panel of result.value) expect(stored.ok && stored.value.find(item => item.id === panel.id)).toEqual(panel)
+    expect(stored.ok && stored.value.reduce((total, item) => total + item.quantity, 0)).toBe(quantity)
+  })
+  it.each([0, -1, 1.5, NaN, Infinity, '', '2', null, Number.MAX_SAFE_INTEGER + 1])('rejects invalid purchase quantity %j without writing', async quantity => {
+    const { repository, product } = await purchaseSetup()
+    expect(await repository.addFromProduct(product, quantity)).toMatchObject({ ok: false, error: { kind: 'invalidRecord' } })
+    expect(await repository.list()).toEqual({ ok: true, value: [] })
+  })
+  it('rechecks product snapshots and required material/supplier references before adding stock', async () => {
+    const { repository, persistence, product } = await purchaseSetup()
+    expect(await repository.addFromProduct({ ...product, lengthMm: 0 }, 1)).toMatchObject({ ok: false, error: { kind: 'invalidRecord' } })
+    expect(await repository.addFromProduct({ ...product, widthMm: product.widthMm + 1 }, 1)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    await persistence.suppliers.delete(product.supplierId)
+    expect(await repository.addFromProduct(product, 1)).toMatchObject({ ok: false, error: { kind: 'notFound' } })
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.materials.delete(product.materialId)
+    expect(await repository.addFromProduct(product, 1)).toMatchObject({ ok: false, error: { kind: 'notFound' } })
+    await persistence.supplierProducts.delete(product.id)
+    expect(await repository.addFromProduct(product, 1)).toMatchObject({ ok: false, error: { kind: 'notFound' } })
+    expect(await repository.list()).toEqual({ ok: true, value: [] })
+  })
+  it('rolls back the whole batch when the second physical panel cannot be written', async () => {
+    const { repository, persistence, product } = await purchaseSetup()
+    const transaction = persistence.transaction.bind(persistence)
+    let calls = 0
+    vi.spyOn(persistence, 'transaction').mockImplementation(work => transaction(repositories => work({ ...repositories, stockItems: { ...repositories.stockItems, create: record => {
+      calls++
+      return calls === 2 ? Promise.resolve({ ok: false, error: { kind: 'storageFailure', message: 'Disk full' } }) : repositories.stockItems.create(record)
+    } } })))
+    expect(await repository.addFromProduct(product, 5)).toMatchObject({ ok: false, error: { kind: 'storageFailure' } })
+    expect(calls).toBe(2)
+    expect(await repository.list()).toEqual({ ok: true, value: [] })
+    expect(await persistence.supplierProducts.get(product.id)).toEqual({ ok: true, value: product })
+  })
+  it('rejects duplicate generated IDs and IDs reserved by immutable inventory history', async () => {
+    const { repository, persistence, product } = await purchaseSetup()
+    const id = '11111111-1111-4111-8111-111111111111'
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(id)
+    expect(await repository.addFromProduct(product, 2)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    const previous = stockItemSchema.parse({ ...stock, id })
+    const receipt = cuttingConfirmationSchema.parse({ id: 'previous-cut', projectId: 'previous-project', confirmedAt: '2026-10-11T12:00:00.000Z', consumed: [{ stock: previous, quantity: 1, panelIndices: [0] }], offcuts: [] })
+    await persistence.cuttingConfirmations.create(receipt)
+    expect(await repository.addFromProduct(product, 1)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    expect(await repository.list()).toEqual({ ok: true, value: [] })
     expect(await persistence.cuttingConfirmations.list()).toEqual({ ok: true, value: [receipt] })
   })
 })
