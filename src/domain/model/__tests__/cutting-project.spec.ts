@@ -40,3 +40,12 @@ describe('project panel quantities', () => {
     ]) expect(cuttingProjectSchema.safeParse({ ...record, panelQuantities }).success).toBe(false)
   })
 })
+
+
+describe('saved technical cutting settings', () => {
+  it('preserves legacy records and validates optional kerf and margin settings', () => {
+    expect(cuttingProjectSchema.parse(record)).not.toHaveProperty('cuttingSettings')
+    expect(cuttingProjectSchema.parse({ ...record, cuttingSettings: { kerfMm: 2.5, edgeMarginMm: 5 } }).cuttingSettings).toEqual({ kerfMm: 2.5, edgeMarginMm: 5 })
+    for (const cuttingSettings of [{ kerfMm: -1, edgeMarginMm: 0 }, { kerfMm: '', edgeMarginMm: 0 }, { kerfMm: 1 }, { kerfMm: 1, edgeMarginMm: Infinity }]) expect(cuttingProjectSchema.safeParse({ ...record, cuttingSettings }).success).toBe(false)
+  })
+})

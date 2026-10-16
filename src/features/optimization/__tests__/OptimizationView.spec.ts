@@ -1,4 +1,6 @@
 import { ref } from 'vue'
+import { createPinia } from 'pinia'
+import { useToastStore } from '../../../shared/ui/toast-store'
 import { cuttingWorkspaceStateKey, type CuttingWorkspaceState } from '../../projects/cutting-workspace-state'
 import { createCurrentResultService } from '../../../application/plans/current-result-service'
 import { currentResultServiceKey } from '../../../features/optimization/current-result-service'
@@ -105,7 +107,7 @@ async function setup() {
     const cuttingState = { available: ref(false), invalidated: ref(false) }
     const view = mount(OptimizationView, {
     attachTo: document.body,
-    global: { plugins: [router], provide: {
+    global: { plugins: [router, createPinia()], provide: {
       [cuttingWorkspaceStateKey]: cuttingState,
       [currentResultServiceKey]: { forProject: () => current }, [projectIdKey]: project.id, [projectServiceKey]: service,
       [stockRepositoryKey]: createStockRepository(persistence), [materialRepositoryKey]: catalog.materials, [supplierRepositoryKey]: catalog.suppliers,
@@ -135,6 +137,11 @@ async function setup() {
     return worker
   }
   return { wrapper, reopen, mountView, persistence, catalog, service, project, other, product, part, workers, start, pdfGenerate, indexedDB, plans, current, router }
+}
+async function saveSettings(wrapper: VueWrapper): Promise<void> {
+  await wrapper.get('#cutting-settings').trigger('submit')
+  await vi.waitFor(() => { expect(wrapper.get('#cutting-settings button[type="submit"]').attributes('disabled')).toBeUndefined() })
+  expect(wrapper.get('#cutting-settings').element.closest('dialog')?.hasAttribute('open')).toBe(false)
 }
 describe('Automatic project optimization', () => {
   it('synchronizes sidebar and inline copy selection without changing the plan', async () => {
@@ -192,7 +199,7 @@ describe('Automatic project optimization', () => {
     await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Cutting settings')?.trigger('click')
     expect(wrapper.get('dialog').attributes('open')).toBeDefined()
     await wrapper.get('#optimization-kerf').setValue(-1)
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('#cutting-settings').trigger('submit')
     expect(wrapper.get('dialog').attributes('open')).toBeDefined()
     expect(wrapper.get('#optimization-kerf').attributes('aria-invalid')).toBe('true')
     expect(workers).toHaveLength(0)
@@ -212,6 +219,41 @@ describe('Automatic project optimization', () => {
     expect(await persistence.projects.get(project.id)).toMatchObject({ ok: true, value: { stockItemIds: [own.id] } })
   })
 
+  it('cancels cutting settings drafts without changing the project or starting optimization', async () => {
+    const { wrapper, workers, service, project } = await setup()
+    const original = await service.projects.get(project.id)
+    await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
+    await wrapper.get('#optimization-kerf').setValue(12)
+    await wrapper.get('#cutting-settings').findAll('button').find(button => button.text() === 'Cancel')?.trigger('click')
+    expect(await service.projects.get(project.id)).toEqual(original)
+    expect(workers).toHaveLength(0)
+    await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
+    expect(wrapper.get('#optimization-kerf').element).toHaveProperty('value', '3')
+  })
+  it('caps stock-only runs by real inventory, reports shortages and avoids duplicate consumption on rerun', async () => {
+    const { wrapper, persistence, service, project, part, start, current } = await setup()
+    const owner = await service.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    const stock = stockItemSchema.parse({ ...validStockItemInput, lengthMm: 100, widthMm: 100, quantity: 1, grainDirection: 'none' })
+    await persistence.stockItems.update(stock.id, stock)
+    await service.projects.update(project.id, { ...owner.value, supplierProductIds: [], stockItemIds: [stock.id] })
+    await service.parts(project.id).update(part.id, { ...part, lengthMm: 80, widthMm: 80, quantity: 3, grainDirection: 'none' })
+    const worker = await start()
+    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels).toEqual([{ product: stockPanel(stock), quantity: 1 }])
+    worker.complete()
+    await vi.waitFor(async () => { expect(await persistence.stockItems.get(stock.id)).toEqual({ ok: false, error: { kind: 'notFound', id: stock.id } }) })
+    await vi.waitFor(async () => { const loaded = await current.load(); expect(loaded.ok && loaded.value.result?.plan.metrics.unplacedCount).toBe(2) })
+    expect(wrapper.get('#unplaced-parts-heading').text()).toContain('2')
+    expect(wrapper.text()).toContain('Available panel supply is insufficient')
+    const before = await persistence.projectStock.find(project.id)
+    const rerun = await start()
+    expect(rerun.request.type === 'optimizeProject' && rerun.request.input.panels[0]?.quantity).toBe(1)
+    rerun.complete()
+    await vi.waitFor(() => { expect(exportReady(wrapper)).toBe(true) })
+    expect(await persistence.stockItems.get(stock.id)).toEqual({ ok: false, error: { kind: 'notFound', id: stock.id } })
+    const after = await persistence.projectStock.find(project.id)
+    expect(after.ok && after.value?.movements).toEqual(before.ok && before.value?.movements)
+  })
   it('uses exact owned-stock sources and consumes the current plan allocation automatically', async () => {
     const { wrapper, persistence, service, project, start, current } = await setup()
     const owner = await service.projects.get(project.id)
@@ -293,12 +335,12 @@ describe('Automatic project optimization', () => {
   })
   it('loads only active-project parts and selected catalog products', async () => {
     const { wrapper, start, product, part } = await setup()
-    expect(wrapper.text()).toContain(product.name)
+    expect(wrapper.find('[data-panel-id]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Unselected panel')
     const worker = await start()
     expect(worker.request.input.parts).toEqual([part])
     expect(worker.request.type).toBe('optimizeProject')
-    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels).toEqual([{ product, quantity: 1 }])
+    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels).toEqual([{ product, quantity: part.quantity }])
     expect(worker.request.input.settings).toEqual({ kerfMm: 3, edgeMarginMm: 0 })
     expect(wrapper.text()).toContain('Optimization running')
   })
@@ -380,14 +422,18 @@ describe('Automatic project optimization', () => {
     expect(pdfGenerate.mock.calls.at(-1)?.[0].unplaced).toEqual(expect.arrayContaining([expect.objectContaining({ count: 2, reason: 'constraintsPreventPlacement' })]))
     await showOptimization(wrapper)
   })
-  it('reports quantities that exceed the capacity of one panel', async () => {
-    const { wrapper, pdfGenerate, service, project, part, start } = await setup()
+  it('supplies multiple catalog panels automatically without consuming physical stock', async () => {
+    const { wrapper, pdfGenerate, service, project, part, start, persistence } = await setup()
+    const stock = await persistence.stockItems.list()
     await service.parts(project.id).update(part.id, { ...part, quantity: 50 })
     const worker = await start(); worker.complete(); await flushPromises()
+    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels[0]?.quantity).toBe(50)
     await showExport(wrapper)
-    expect(pdfGenerate.mock.calls.at(-1)?.[0].unplaced).toEqual(expect.arrayContaining([expect.objectContaining({ reason: 'panelLimitReached' })]))
+    expect(pdfGenerate.mock.calls.at(-1)?.[0].unplaced).toEqual([])
+    expect(pdfGenerate.mock.calls.at(-1)?.[0].panels.length).toBeGreaterThan(1)
+    expect(await persistence.stockItems.list()).toEqual(stock)
     await showOptimization(wrapper)
-    expect(wrapper.get('#unplaced-parts-heading').text()).toContain('Unplaced parts')
+    expect(wrapper.text()).toContain('All parts placed.')
   })
   it('cancels and ignores a late reply before starting a newer request', async () => {
     const { wrapper, start, workers } = await setup()
@@ -416,13 +462,15 @@ describe('Automatic project optimization', () => {
     const worker = await start(); worker.complete(); await flushPromises()
     await vi.waitFor(() => { expect(wrapper.get('#optimization-kerf').attributes('disabled')).toBeUndefined() })
     await wrapper.get('#optimization-kerf').setValue(4)
+    await saveSettings(wrapper)
     expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(false)
   })
   it.each(['optimization-kerf', 'optimization-margin'])('validates empty and negative %s without starting a worker', async id => {
     const { wrapper, workers } = await setup()
+    await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
     for (const value of ['', -1]) {
       await wrapper.get(`#${id}`).setValue(value)
-      await wrapper.get('form').trigger('submit')
+      await wrapper.get('#cutting-settings').trigger('submit')
       expect(wrapper.get(`#${id}`).attributes('aria-invalid')).toBe('true')
       expect(wrapper.get('dialog').attributes('open')).toBeDefined()
     }
@@ -431,6 +479,7 @@ describe('Automatic project optimization', () => {
   it('reports margins that prevent placement without allocating an empty panel', async () => {
     const { wrapper, pdfGenerate, start } = await setup()
     await wrapper.get('#optimization-margin').setValue(2000)
+    await saveSettings(wrapper)
     const worker = await start(); worker.complete(); await flushPromises()
     await showExport(wrapper)
     expect(pdfGenerate.mock.calls.at(-1)?.[0].unplaced).toEqual(expect.arrayContaining([expect.objectContaining({ reason: 'constraintsPreventPlacement' })]))
@@ -547,17 +596,20 @@ describe('Automatic project optimization', () => {
     await showOptimization(wrapper)
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(0)
   })
-  it('uses entered kerf and margins and clears the plan when changing availability', async () => {
-    const { wrapper, start } = await setup()
+  it('saves only technical parameters without running optimization and uses them on the next Optimize', async () => {
+    const { wrapper, start, workers } = await setup()
+    await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
+    expect(wrapper.get('#cutting-settings').findAll('input')).toHaveLength(2)
+    expect(wrapper.get('#cutting-settings').text()).not.toMatch(/Stock|supplier|Available quantity|planning limit/i)
     await wrapper.get('#optimization-kerf').setValue(4.5)
     await wrapper.get('#optimization-margin').setValue(10)
+    await saveSettings(wrapper)
+    expect(workers).toHaveLength(0)
+    expect(useToastStore().notifications.at(-1)?.title).toBe('Cutting settings saved')
     const worker = await start()
     expect(worker.request.input.settings).toEqual({ kerfMm: 4.5, edgeMarginMm: 10 })
     worker.complete(); await flushPromises()
-    expect(worker.request.input.settings).toEqual({ kerfMm: 4.5, edgeMarginMm: 10 })
-    await vi.waitFor(() => { expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeUndefined() })
-    await wrapper.get('[data-panel-id]').setValue(0)
-    expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(false)
+    expect(wrapper.find('[data-panel-id]').exists()).toBe(false)
   })
   it('disables unavailable and broken catalog panels without repairing records', async () => {
     const fixture = await setup()
@@ -566,11 +618,11 @@ describe('Automatic project optimization', () => {
     await catalog.supplierProducts.update(product.id, { ...product, availability: 'unavailable' })
     wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Unavailable') })
-    expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-panel-id]').exists()).toBe(false)
     await persistence.suppliers.delete(product.supplierId)
     wrapper = await reopen(wrapper)
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Missing catalog reference') })
-    expect(wrapper.get('[data-panel-id]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-panel-id]').exists()).toBe(false)
     expect(workers).toHaveLength(0)
     expect((await persistence.supplierProducts.get(product.id)).ok).toBe(true)
   })
@@ -599,53 +651,42 @@ describe('automatic workflow and per-panel integration', () => {
     expect(wrapper.findAll('[data-panel-index]')).toHaveLength(1)
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(2)
   })
-  it.each(['', -1, 1.5, '9007199254740992'])('rejects invalid availability %s without starting a worker', async value => {
-    const { wrapper, workers } = await setup()
-    await wrapper.get('[data-panel-id]').setValue(value)
-    await wrapper.get('form').trigger('submit')
-    await vi.waitFor(() => { expect(wrapper.get('[data-panel-id]').attributes('aria-invalid')).toBe('true') })
-    expect(workers).toHaveLength(0)
-  })
-  it('persists quantities independently per project and reopens them without modifying legacy records or catalog data', async () => {
+  it('ignores legacy catalog quantity limits, preserving stored fields and other projects unchanged', async () => {
     const fixture = await setup()
-    const { indexedDB, persistence, service, project, other, start, catalog, reopen } = fixture
-    let { wrapper } = fixture
+    const { wrapper, reopen, persistence, service, project, other, part, start } = fixture
     const stock = await persistence.stockItems.list()
-    const parts = await service.parts(project.id).list()
-    const materials = await catalog.materials.list()
-    const products = await catalog.supplierProducts.list()
     const untouched = await service.projects.get(other.id)
-    await wrapper.get('[data-panel-id]').setValue(3)
+    const owner = await service.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    await service.projects.update(project.id, { ...owner.value, panelQuantities: [{ supplierProductId: validSupplierProductInput.id, quantity: 0 }] })
+    const configured = await service.projects.get(project.id)
     const worker = await start(); worker.complete(); await flushPromises()
-    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels[0]?.quantity).toBe(3)
-    const reopened = createLocalPersistence('optimization-ui', { indexedDB, IDBKeyRange })
-    connections.push(reopened)
-    const saved = await reopened.projects.get(project.id)
-    expect(saved.ok && saved.value.panelQuantities).toEqual([{ supplierProductId: validSupplierProductInput.id, quantity: 3 }])
+    expect(worker.request.type === 'optimizeProject' && worker.request.input.panels[0]?.quantity).toBe(part.quantity)
+    expect(await service.projects.get(project.id)).toEqual(configured)
     expect(await service.projects.get(other.id)).toEqual(untouched)
     expect(await persistence.stockItems.list()).toEqual(stock)
-    expect(await service.parts(project.id).list()).toEqual(parts)
-    expect(await catalog.materials.list()).toEqual(materials)
-    expect(await catalog.supplierProducts.list()).toEqual(products)
-    wrapper = await reopen(wrapper)
-    await vi.waitFor(() => { expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '3') })
+    const restored = await reopen(wrapper)
+    await vi.waitFor(() => { expect(restored.find('[aria-label="Panel cutting workspace"]').exists()).toBe(true) })
+    expect(restored.find('[data-panel-id]').exists()).toBe(false)
   })
-  it('shows quantity persistence failures and preserves the draft for retry', async () => {
+  it('preserves failed settings drafts for retry without launching optimization or success toast', async () => {
     const { wrapper, service, workers } = await setup()
     vi.spyOn(service.projects, 'update').mockResolvedValueOnce({ ok: false, error: { kind: 'storageFailure', message: 'Cannot save' } })
-    await wrapper.get('[data-panel-id]').setValue(2)
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
+    await wrapper.get('#optimization-kerf').setValue(5)
+    await wrapper.get('#cutting-settings').trigger('submit')
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Could not access local storage') })
     expect(workers).toHaveLength(0)
-    expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '2')
-    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
+    expect(useToastStore().notifications).toEqual([])
+    expect(wrapper.get('#optimization-kerf').element).toHaveProperty('value', '5')
+    await saveSettings(wrapper)
+    expect(workers).toHaveLength(0)
   })
   it('navigates layouts and preserves independent edits, undo, viewport and complete-result PDF exports', async () => {
     const { wrapper, catalog, service, project, product, part, start, pdfGenerate, persistence } = await setup()
     await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 1443, widthMm: 560 })
     await service.parts(project.id).update(part.id, { ...part, quantity: 4 })
     const stock = await persistence.stockItems.list()
-    await wrapper.get('[data-panel-id]').setValue(2)
     const worker = await start()
     const snapshot = structuredClone(worker.request.input)
     worker.complete(); await flushPromises()
@@ -714,13 +755,18 @@ describe('automatic workflow and per-panel integration', () => {
     expect(worker.request.input).toEqual(snapshot)
     expect(await persistence.stockItems.list()).toEqual(stock)
   })
-  it('reports zero availability without allocating a panel or exposing an export action', async () => {
-    const { wrapper, start } = await setup()
-    await wrapper.get('[data-panel-id]').setValue(0)
-    const worker = await start(); worker.complete(); await flushPromises()
-    expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(0)
-    expect(wrapper.text()).toContain('No panels allocated')
-    expect(wrapper.findAll('button').some(button => button.text() === 'Download PDF')).toBe(false)
+  it('restores saved cutting parameters after reopening without changing legacy quantity fields', async () => {
+    const { wrapper, reopen, service, project, workers } = await setup()
+    await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
+    await wrapper.get('#optimization-kerf').setValue(6)
+    await wrapper.get('#optimization-margin').setValue(12)
+    await saveSettings(wrapper)
+    expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { cuttingSettings: { kerfMm: 6, edgeMarginMm: 12 } } })
+    const restored = await reopen(wrapper)
+    await restored.get('[aria-label="Cutting settings"]').trigger('click')
+    expect(restored.get('#optimization-kerf').element).toHaveProperty('value', '6')
+    expect(restored.get('#optimization-margin').element).toHaveProperty('value', '12')
+    expect(workers).toHaveLength(0)
   })
 })
 
@@ -752,7 +798,6 @@ describe('automatic current result in the optimization workspace', () => {
     await catalog.supplierProducts.update(product.id, { ...product, lengthMm: 1443, widthMm: 560 })
     await service.parts(project.id).update(part.id, { ...part, quantity: 4 })
     const stock = await persistence.stockItems.list()
-    await wrapper.get('[data-panel-id]').setValue(2)
     const worker = await start(); worker.complete(); await flushPromises()
     await persisted(current)
     for (const text of ['Save Plan', 'Open Plan', 'Validate Plan', 'Saved plans', 'Unsaved result']) expect(wrapper.text()).not.toContain(text)
@@ -787,11 +832,10 @@ describe('automatic current result in the optimization workspace', () => {
     await vi.waitFor(() => { expect(wrapper.text()).toContain('Could not access local storage') })
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await wrapper.get('#optimization-kerf').setValue(7)
+    await wrapper.get('#cutting-settings').trigger('submit')
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Discard unsaved manual'))
-    expect(wrapper.get('#optimization-kerf').element).toHaveProperty('value', '3')
+    expect(wrapper.get('#optimization-kerf').element).toHaveProperty('value', '7')
     expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(true)
-    await wrapper.get('[data-panel-id]').setValue(3)
-    expect(wrapper.get('[data-panel-id]').element).toHaveProperty('value', '1')
     await click(wrapper, 'Reset to Optimized Plan')
     expect(wrapper.find('[aria-label="Panel cutting workspace"]').exists()).toBe(true)
     const unload = new Event('beforeunload', { cancelable: true })

@@ -71,6 +71,22 @@ describe('portable project transfer', () => {
     expect(await reopened.projects.get(project.id)).toEqual(imported)
   })
 
+  it('round-trips optional saved cutting settings with legacy catalog quantities intact', async () => {
+    const original = await source()
+    const owner = await original.persistence.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    const configured = { ...owner.value, cuttingSettings: { kerfMm: 2.5, edgeMarginMm: 8 } }
+    expect((await original.persistence.projects.update(project.id, configured)).ok).toBe(true)
+    const exported = await original.transfer.export(project.id)
+    if (!exported.ok) throw new Error('Export failed')
+    const target = database()
+    const preview = await target.transfer.preview(exported.value.text)
+    if (!preview.ok) throw new Error('Invalid preview')
+    const imported = await target.transfer.import(preview.value.file, true)
+    expect(imported).toMatchObject({ ok: true, value: { cuttingSettings: configured.cuttingSettings, panelQuantities: configured.panelQuantities } })
+    expect(preview.value.file.schemaVersion).toBe(1)
+  })
+
   it('preserves stock selections and historical stock layouts without transferring inventory or remapping them as catalog products', async () => {
     const original = await source()
     const owner = await original.persistence.projects.get(project.id)

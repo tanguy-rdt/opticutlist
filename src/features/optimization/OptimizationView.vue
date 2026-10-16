@@ -5,7 +5,8 @@ import { copyLabel } from './viewer/copy-label'
 import { stockPanel } from '../../domain/optimizer/panel-source'
 import { useStockRepository } from '../inventory/stock-repository'
 import { isCompatible } from '../../domain/compatibility'
-import { panelQuantitySchema } from '../../domain/model/cutting-project'
+import { catalogPanelSupply } from '../../application/optimization/catalog-panel-supply'
+import { useToastStore } from '../../shared/ui/toast-store'
 import { cuttingSettingsSchema, type CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
 import type { PanelSnapshot, SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
@@ -40,6 +41,10 @@ const stockRepository = useStockRepository()
 const optimizer = useOptimizationService()
 const currentResults = useCurrentResultService()?.forProject(projectId)
 const settingsOpen = ref(false)
+const settingsSaving = ref(false)
+const settingsError = ref('')
+const toasts = useToastStore()
+const savedSettings = shallowRef<CuttingSettings>({ kerfMm: 3, edgeMarginMm: 0 })
 const planBusy = ref(false)
 const planError = ref('')
 const planNotice = ref('')
@@ -47,7 +52,7 @@ const savedSummary = shallowRef<SavedPlanSummary | null>(null)
 const savedFingerprint = ref<string | null>(null)
 const editedPlans = shallowRef<ReadonlyMap<number, PanelCuttingPlan>>(new Map())
 type State = 'loading' | 'ready' | 'running' | 'success' | 'failure' | 'cancelled'
-interface PanelChoice { stockQuantity?: number; product: PanelSnapshot; materialName: string; label: string; problem: string; broken: boolean; supplierName: string; availability: 'available' | 'unavailable' | 'unknown' }
+interface PanelChoice { stockQuantity?: number; product: PanelSnapshot; materialName: string; problem: string; broken: boolean; supplierName: string; }
 interface RunResult {
   requestId: number
   selection: Extract<OptimizeProjectResult, { ok: true }>
@@ -62,8 +67,6 @@ const state = ref<State>('loading')
 const parts = shallowRef<readonly Part[]>([])
 const panels = shallowRef<readonly PanelChoice[]>([])
 const missingIds = shallowRef<readonly string[]>([])
-const quantities = ref<Record<string, number | string>>({})
-const quantityErrors = ref<Record<string, string>>({})
 const kerf = ref<number | string>(3)
 const margin = ref<number | string>(0)
 const error = ref('')
@@ -76,7 +79,7 @@ const unplacedCount = computed(() => result.value?.selection.plan.unplaced.reduc
 const unplacedReasons = {
   noCompatiblePanel: 'No compatible selected panel.',
   constraintsPreventPlacement: 'Panel constraints prevent placement.',
-  panelLimitReached: 'Selected panel quantities are insufficient.',
+  panelLimitReached: 'Available panel supply is insufficient. Review selected sources in Materials.',
 } as const
 watch(result, () => { inspectedUnplaced.value = null })
 const panelIndex = ref(0)
@@ -87,7 +90,7 @@ const activeChoice = computed(() => result.value?.choices.find(choice => choice.
 let generation = 0
 let persistenceController = new AbortController()
 let persistenceQueue: Promise<void> = Promise.resolve()
-const busy = computed(() => planBusy.value || state.value === 'running' || state.value === 'loading')
+const busy = computed(() => settingsSaving.value || planBusy.value || state.value === 'running' || state.value === 'loading')
 const fingerprint = computed(() => result.value === null ? '' : JSON.stringify(result.value.selection.plan.panels.map((panel, index) => (editedPlans.value.get(index) ?? panel.plan).tree)))
 const displayedInput = computed<SavePlanInput | null>(() => result.value === null ? null : {
   plan: { ...result.value.selection.plan, panels: result.value.selection.plan.panels.map((panel, index) => ({ ...panel, plan: editedPlans.value.get(index) ?? panel.plan })) },
@@ -139,26 +142,37 @@ function invalidate(markStale = true): void {
   planError.value = ''; planNotice.value = ''
   error.value = ''
 }
-function inputChanged(): void {
-  if (state.value === 'loading') return
-  invalidate()
-  fieldErrors.value = {}
-  quantityErrors.value = {}
-  state.value = 'ready'
+function openSettings(): void {
+  kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm
+  fieldErrors.value = {}; settingsError.value = ''; settingsOpen.value = true
 }
-let restoringDraft = false
-let previousQuantities: Record<string, number | string> = {}
-watch([kerf, margin], (_next, previous) => {
-  if (restoringDraft) return
-  if (!canDiscard()) { restoringDraft = true; [kerf.value, margin.value] = previous; restoringDraft = false; return }
-  inputChanged()
-}, { flush: 'sync' })
-watch(quantities, () => {
-  if (restoringDraft) return
-  if (!canDiscard()) { restoringDraft = true; quantities.value = { ...previousQuantities }; restoringDraft = false; return }
-  previousQuantities = { ...quantities.value }
-  inputChanged()
-}, { deep: true, flush: 'sync' })
+async function saveSettings(): Promise<void> {
+  if (busy.value) return
+  const parsed = cuttingSettingsSchema.safeParse({ kerfMm: kerf.value, edgeMarginMm: margin.value })
+  fieldErrors.value = {}; settingsError.value = ''
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      if (issue.path[0] === 'kerfMm') fieldErrors.value.kerfMm = issue.message
+      if (issue.path[0] === 'edgeMarginMm') fieldErrors.value.edgeMarginMm = issue.message
+    }
+    return
+  }
+  if (!canDiscard()) return
+  const current = generation
+  settingsSaving.value = true
+  try {
+    const project = await projects.projects.get(projectId)
+    const saved = project.ok ? await projects.projects.update(projectId, { ...project.value, cuttingSettings: parsed.data }) : project
+    if (current !== generation) return
+    if (!saved.ok) { settingsError.value = persistenceErrorMessage(saved.error, 'Project'); return }
+    const changed = JSON.stringify(savedSettings.value) !== JSON.stringify(parsed.data)
+    savedSettings.value = parsed.data
+    if (changed) { invalidate(); state.value = 'ready' }
+    settingsOpen.value = false
+    toasts.success('Cutting settings saved')
+  } catch { if (current === generation) settingsError.value = 'Could not save cutting settings. Try again.' }
+  finally { settingsSaving.value = false }
+}
 
 async function readInputs() {
   const [project, scopedParts, products, supplierRecords, materialRecords, stockRecords] = await Promise.all([
@@ -180,13 +194,13 @@ async function readInputs() {
     const problem = broken ? 'Missing catalog reference'
       : product.availability === 'unavailable' ? 'Unavailable'
         : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : ''
-    return { product, materialName: material?.name ?? product.materialId, label: `${supplier?.name ?? 'Missing supplier'} / ${material?.name ?? 'Missing material'} / ${product.name}`, problem, broken, supplierName: supplier?.name ?? 'Missing supplier', availability: product.availability }
+    return { product, materialName: material?.name ?? product.materialId, problem, broken, supplierName: supplier?.name ?? 'Missing supplier' }
   })
   for (const item of stockRecords.value.filter(item => project.value.stockItemIds?.includes(item.id))) {
     const product = stockPanel(item)
     if (products.value.some(catalogProduct => catalogProduct.id === product.id)) throw new Error('A catalog ID conflicts with a stock allocation key. No optimization was started.')
     const material = materialRecords.value.find(record => record.id === item.materialId)
-    choices.push({ product, stockQuantity: item.quantity, materialName: material?.name ?? item.materialId, label: `Stock / ${material?.name ?? 'Missing material'} / ${product.name}`, problem: !material ? 'Missing stock material' : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : '', broken: !material, supplierName: 'Owned stock', availability: 'available' })
+    choices.push({ product, stockQuantity: item.quantity, materialName: material?.name ?? item.materialId, problem: !material ? 'Missing stock material' : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : '', broken: !material, supplierName: 'Owned stock' })
   }
   return {
     catalogProducts: products.value, project: project.value, parts: scopedParts.value, panels: choices,
@@ -204,12 +218,12 @@ async function load(): Promise<void> {
   const current = generation
   state.value = 'loading'
   inputError.value = ''
-  quantityErrors.value = {}
   try {
     const inputs = await readInputs()
     if (current !== generation) return
     applyInputs(inputs)
-    quantities.value = Object.fromEntries(inputs.panels.map(choice => [choice.product.id, choice.stockQuantity ?? inputs.project.panelQuantities?.find(item => item.supplierProductId === choice.product.id)?.quantity ?? 1]))
+    savedSettings.value = inputs.project.cuttingSettings ?? { kerfMm: 3, edgeMarginMm: 0 }
+    kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm
     state.value = 'ready'
   } catch (cause) {
     if (current !== generation) return
@@ -222,45 +236,23 @@ async function start(): Promise<void> {
   if (busy.value || inputError.value || !canDiscard()) return
   invalidate()
   const current = generation
-  const settings = cuttingSettingsSchema.safeParse({ kerfMm: kerf.value, edgeMarginMm: margin.value })
-  fieldErrors.value = {}
-  quantityErrors.value = {}
-  if (!settings.success) {
-    for (const issue of settings.error.issues) {
-      if (issue.path[0] === 'kerfMm') fieldErrors.value.kerfMm = issue.message
-      if (issue.path[0] === 'edgeMarginMm') fieldErrors.value.edgeMarginMm = issue.message
-    }
-    settingsOpen.value = true
-    state.value = 'ready'
-    return
-  }
-  settingsOpen.value = false
   state.value = 'running'
   try {
     const inputs = await readInputs()
     if (current !== generation) return
     applyInputs(inputs)
+    const settings = inputs.project.cuttingSettings ?? savedSettings.value
+    savedSettings.value = settings
+    if (inputs.missingIds.length) throw new Error('Some selected panel sources are missing. Review Materials before optimizing.')
     if (inputs.parts.length === 0) throw new Error('Add project parts before optimizing.')
     if (inputs.panels.length === 0) throw new Error('Select catalog or stock panels in this project’s Materials section.')
+    const catalogSupply = catalogPanelSupply(inputs.parts)
     const available = inputs.panels.map(choice => {
-      const parsed = panelQuantitySchema.safeParse(choice.stockQuantity ?? quantities.value[choice.product.id] ?? inputs.project.panelQuantities?.find(item => item.supplierProductId === choice.product.id)?.quantity ?? 1)
-      if (!parsed.success) quantityErrors.value[choice.product.id] = parsed.error.issues[0]?.message ?? 'Enter a non-negative safe integer.'
       const product = choice.product.stockItemId === undefined ? inputs.catalogProducts.find(product => product.id === choice.product.id) : { ...choice.product, stockItemId: choice.product.stockItemId, availability: 'available' as const }
-      if (!product) throw new Error('Missing panel source')
-      return { product, quantity: parsed.success ? parsed.data : 0 }
+      if (!product) throw new Error('Missing panel source. Review Materials before optimizing.')
+      return { product, quantity: choice.stockQuantity ?? catalogSupply }
     })
-    if (Object.keys(quantityErrors.value).length) { settingsOpen.value = true; state.value = 'ready'; return }
-    const catalogAvailable = available.filter(source => !('stockItemId' in source.product))
-    const changed = catalogAvailable.some(source => source.quantity !== (inputs.project.panelQuantities?.find(item => item.supplierProductId === source.product.id)?.quantity ?? 1))
-    if (changed) {
-      const saved = await projects.projects.update(projectId, { ...inputs.project, panelQuantities: [
-        ...catalogAvailable.map(source => ({ supplierProductId: source.product.id, quantity: source.quantity })),
-        ...(inputs.project.panelQuantities?.filter(item => inputs.missingIds.includes(item.supplierProductId)) ?? []),
-      ] })
-      if (current !== generation) return
-      if (!saved.ok) throw new Error(persistenceErrorMessage(saved.error, 'Project'))
-    }
-    const outcome = await optimizer.optimizeProject({ panels: available.filter(source => !inputs.panels.find(choice => choice.product.id === source.product.id)?.broken), parts: inputs.parts, settings: settings.data })
+    const outcome = await optimizer.optimizeProject({ panels: available.filter(source => !inputs.panels.find(choice => choice.product.id === source.product.id)?.broken), parts: inputs.parts, settings })
     if (current !== generation) return
     if (outcome.status === 'cancelled') state.value = 'cancelled'
     else if (outcome.status === 'failed') {
@@ -271,7 +263,7 @@ async function start(): Promise<void> {
       state.value = 'failure'
     } else {
       panelIndex.value = 0
-      result.value = { requestId: outcome.requestId, selection: outcome.selection, choices: inputs.panels, parts: inputs.parts, settings: settings.data, sources: available.filter(source => outcome.selection.ok && outcome.selection.plan.panels.some(panel => panel.supplierProductId === source.product.id)).map(source => {
+      result.value = { requestId: outcome.requestId, selection: outcome.selection, choices: inputs.panels, parts: inputs.parts, settings, sources: available.filter(source => outcome.selection.ok && outcome.selection.plan.panels.some(panel => panel.supplierProductId === source.product.id)).map(source => {
         const choice = inputs.panels.find(choice => choice.product.id === source.product.id)
         const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = source.product
         return { product: panelSnapshotSchema.parse({ id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection, ...('stockItemId' in source.product ? { stockItemId: source.product.stockItemId } : {}) }), quantity: source.quantity, materialName: choice?.materialName ?? materialId, supplierName: choice?.supplierName ?? 'Missing supplier' }
@@ -327,10 +319,15 @@ async function restoreCurrent(current: number): Promise<void> {
     const { contents, plan, summary } = opened.value.result
     editedPlans.value = new Map()
     panelIndex.value = 0
-    restoringDraft = true
-    kerf.value = contents.settings.kerfMm; margin.value = contents.settings.edgeMarginMm
-    restoringDraft = false
-    result.value = { requestId: -current, selection: { ok: true, plan }, sources: contents.sources, parts: contents.parts, settings: contents.settings, savedBaseline: true, savedEdited: contents.panels.flatMap((panel, index) => panel.edited ? [index] : []), choices: contents.sources.map(source => ({ product: source.product, materialName: source.materialName, supplierName: source.supplierName, label: `${source.supplierName} / ${source.materialName} / ${source.product.name}`, problem: '', broken: false, availability: 'unknown' })) }
+    const project = await projects.projects.get(projectId)
+    if (current !== generation || !project.ok) return
+    if (project.value.cuttingSettings && JSON.stringify(project.value.cuttingSettings) !== JSON.stringify(contents.settings)) {
+      planNotice.value = 'Cutting settings changed. Optimize again to create a current layout.'
+      return
+    }
+    savedSettings.value = project.value.cuttingSettings ?? contents.settings
+    kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm
+    result.value = { requestId: -current, selection: { ok: true, plan }, sources: contents.sources, parts: contents.parts, settings: contents.settings, savedBaseline: true, savedEdited: contents.panels.flatMap((panel, index) => panel.edited ? [index] : []), choices: contents.sources.map(source => ({ product: source.product, materialName: source.materialName, supplierName: source.supplierName, problem: '', broken: false })) }
     savedSummary.value = summary
     savedFingerprint.value = fingerprint.value
     state.value = 'success'
@@ -416,62 +413,25 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           title="Cutting settings"
           class="ml-auto"
           :disabled="busy"
-          @click="settingsOpen = true"
+          @click="openSettings"
         >
           <AppIcon name="settings" />
         </AppButton>
       </form>
       <AppDialog
+        size="small"
         :open="settingsOpen"
         title="Cutting settings"
         close-label="Close cutting settings"
         :busy="busy"
         @close="settingsOpen = false"
       >
-        <div class="space-y-4">
-          <p class="text-xs text-muted">
-            Catalog quantities are planning limits. Stock quantities reflect owned inventory.
-          </p>
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <div
-              v-for="choice in panels"
-              :key="choice.product.id"
-              class="space-y-2 rounded-lg bg-canvas p-3"
-            >
-              <p class="font-semibold">
-                {{ choice.label }}
-              </p>
-              <p class="text-sm text-muted">
-                {{ choice.product.lengthMm }} × {{ choice.product.widthMm }} × {{ choice.product.thicknessMm }} mm · Grain: {{ choice.product.grainDirection }} · {{ choice.availability }}
-              </p>
-              <p
-                v-if="choice.problem"
-                class="text-sm text-muted"
-              >
-                {{ choice.problem }}
-              </p>
-              <FormField
-                :id="`panel-quantity-${choice.product.id}`"
-                :label="`Available quantity: ${choice.product.name}`"
-                :error="quantityErrors[choice.product.id] ?? ''"
-                required
-              >
-                <template #default="{ controlAttrs }">
-                  <input
-                    v-bind="controlAttrs"
-                    v-model.number="quantities[choice.product.id]"
-                    form="optimization-controls"
-                    :data-panel-id="choice.product.id"
-                    type="number"
-                    min="0"
-                    step="1"
-                    class="field"
-                    :disabled="busy || choice.stockQuantity !== undefined || choice.broken || choice.availability === 'unavailable'"
-                  >
-                </template>
-              </FormField>
-            </div>
-          </div>
+        <form
+          id="cutting-settings"
+          class="space-y-4"
+          novalidate
+          @submit.prevent="saveSettings"
+        >
           <div class="grid max-w-xl gap-3 sm:grid-cols-2">
             <FormField
               id="optimization-kerf"
@@ -483,7 +443,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
                 <input
                   v-bind="controlAttrs"
                   v-model.number="kerf"
-                  form="optimization-controls"
+                  form="cutting-settings"
                   type="number"
                   min="0"
                   step="any"
@@ -494,7 +454,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             </FormField>
             <FormField
               id="optimization-margin"
-              label="Margin on every edge (mm)"
+              label="Edge margin (mm)"
               :error="fieldErrors.edgeMarginMm ?? ''"
               required
             >
@@ -502,7 +462,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
                 <input
                   v-bind="controlAttrs"
                   v-model.number="margin"
-                  form="optimization-controls"
+                  form="cutting-settings"
                   type="number"
                   min="0"
                   step="any"
@@ -513,15 +473,29 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             </FormField>
           </div>
 
-          <button
-            type="submit"
-            form="optimization-controls"
-            class="button button-primary"
-            :disabled="busy || !!inputError || !parts.length || !panels.length"
+          <p
+            v-if="settingsError"
+            role="alert"
+            class="text-sm text-danger"
           >
-            Optimize with these settings
-          </button>
-        </div>
+            {{ settingsError }}
+          </p>
+          <div class="dialog-actions">
+            <AppButton
+              :disabled="settingsSaving"
+              @click="settingsOpen = false"
+            >
+              Cancel
+            </AppButton>
+            <AppButton
+              type="submit"
+              variant="primary"
+              :disabled="busy"
+            >
+              Save settings
+            </AppButton>
+          </div>
+        </form>
       </AppDialog>
       <p
         v-if="inputError"
@@ -559,6 +533,13 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         >
           Select panels in Materials
         </RouterLink>.
+      </p>
+      <p
+        v-for="choice in panels.filter(choice => choice.problem)"
+        :key="choice.product.id"
+        class="text-xs text-muted"
+      >
+        {{ choice.product.name }} · {{ choice.problem }}
       </p>
       <p
         v-if="missingIds.length"
