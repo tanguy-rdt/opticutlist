@@ -34,6 +34,7 @@
   --cutting-ink: #302c25;
   --cutting-line: #87745c;
   --cutting-kerf: #795a3c;
+  --cutting-cut: #9b3430;
   --canvas: #f6f5f1;
   --surface: #ffffff;
   --subtle: #e9f0ea;
@@ -58,6 +59,7 @@
     --cutting-ink: #211e19;
     --cutting-line: #5f513d;
     --cutting-kerf: #654b34;
+    --cutting-cut: #7d2420;
     color-scheme: dark;
     --dialog-backdrop: color-mix(in srgb, var(--canvas) 75%, transparent);
     --canvas: #171d19;
@@ -84,6 +86,7 @@
   --cutting-ink: #211e19;
   --cutting-line: #5f513d;
   --cutting-kerf: #654b34;
+  --cutting-cut: #7d2420;
   color-scheme: dark;
   --dialog-backdrop: color-mix(in srgb, var(--canvas) 75%, transparent);
   --canvas: #171d19;

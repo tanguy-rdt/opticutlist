@@ -1057,7 +1057,7 @@ it('navigates the current edited result to Export and blocks stale documents aft
   expect(undo?.attributes('disabled')).toBeUndefined()
   await undo?.trigger('click')
   await vi.waitFor(() => { expect(wrapper.find('nav[aria-label="Project"] a[href$="/cutting-plans"]').exists()).toBe(true) })
-  await wrapper.findAll('button').find(button => button.text() === 'Cutting settings')?.trigger('click')
+  await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Cutting settings')?.trigger('click')
   await wrapper.get('#optimization-kerf').setValue(7)
   expect(wrapper.find('nav a[href$="/cutting-plans"]').exists()).toBe(false)
   await router.push('/projects/export-workflow/export')

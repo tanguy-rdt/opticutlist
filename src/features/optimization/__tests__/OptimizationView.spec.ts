@@ -189,7 +189,7 @@ describe('Automatic project optimization', () => {
   })
   it('opens compact settings and reveals invalid fields without starting a worker', async () => {
     const { wrapper, workers } = await setup()
-    await wrapper.findAll('button').find(button => button.text() === 'Cutting settings')?.trigger('click')
+    await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Cutting settings')?.trigger('click')
     expect(wrapper.get('dialog').attributes('open')).toBeDefined()
     await wrapper.get('#optimization-kerf').setValue(-1)
     await wrapper.get('form').trigger('submit')
@@ -358,7 +358,15 @@ describe('Automatic project optimization', () => {
     await showExport(wrapper)
     expect(pdfGenerate.mock.calls.at(-1)?.[0].unplaced).toEqual(expect.arrayContaining([expect.objectContaining({ count: 3, reason: 'noCompatiblePanel' })]))
     await showOptimization(wrapper)
-    expect(wrapper.text()).toContain('Incomplete cutting result')
+    expect(wrapper.get('#unplaced-parts-heading').text()).toContain('3')
+    const unplaced = wrapper.get('[aria-label="Inspect unplaced part Thick part"]')
+    expect(unplaced.text()).toContain('720 × 560 × 19 mm')
+    expect(unplaced.text()).toContain('No compatible selected panel.')
+    await unplaced.trigger('click')
+    const details = wrapper.get('[aria-label="Unplaced part details"]')
+    expect(details.text()).toContain('Thick part')
+    expect(details.text()).toContain('Unplaced quantity 3')
+    expect(wrapper.findAll('[data-copy-key]').every(row => !row.attributes('data-copy-key')?.includes('thick-part'))).toBe(true)
   })
   it('reports oversized parts and grain with forbidden rotation as impossible placements', async () => {
     const { wrapper, pdfGenerate, service, project, part, start } = await setup()
@@ -379,7 +387,7 @@ describe('Automatic project optimization', () => {
     await showExport(wrapper)
     expect(pdfGenerate.mock.calls.at(-1)?.[0].unplaced).toEqual(expect.arrayContaining([expect.objectContaining({ reason: 'panelLimitReached' })]))
     await showOptimization(wrapper)
-    expect(wrapper.text()).toContain('Incomplete cutting result')
+    expect(wrapper.get('#unplaced-parts-heading').text()).toContain('Unplaced parts')
   })
   it('cancels and ignores a late reply before starting a newer request', async () => {
     const { wrapper, start, workers } = await setup()
@@ -528,7 +536,7 @@ describe('Automatic project optimization', () => {
     const worker = await start(); worker.complete(); await flushPromises()
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(0)
     expect(wrapper.find('table').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Incomplete cutting result')
+    expect(wrapper.get('#unplaced-parts-heading').text()).toContain('Unplaced parts')
   })
   it('respects kerf feasibility rather than placing a part with an uncuttable remainder', async () => {
     const { wrapper, pdfGenerate, catalog, product, start } = await setup()
@@ -643,6 +651,15 @@ describe('automatic workflow and per-panel integration', () => {
     worker.complete(); await flushPromises()
     expect(wrapper.findAll('[aria-label="Panels used"] [data-copy-key]')).toHaveLength(4)
     expect(wrapper.findAll('[data-panel-index]')).toHaveLength(2)
+    expect(wrapper.text()).toContain('All parts placed.')
+    const bars = wrapper.findAll('[role="progressbar"]')
+    expect(bars).toHaveLength(2)
+    for (const bar of bars) {
+      const utilization = Number(bar.attributes('aria-valuenow'))
+      expect(utilization).toBeGreaterThan(99)
+      expect(utilization).toBeLessThanOrEqual(100)
+      expect(bar.get('span').attributes('style')).toContain(`width: ${String(utilization)}%`)
+    }
     async function click(label: string): Promise<void> {
       if (label === 'Optimization') { await showOptimization(wrapper); return }
       const button = wrapper.findAll('button').find(button => button.text() === label)

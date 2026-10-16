@@ -91,7 +91,7 @@ let paused = false
 function palette(): PlanPalette {
   const style = getComputedStyle(document.documentElement)
   const token = (name: string) => style.getPropertyValue(`--${name}`).trim()
-  return { surface: token('cutting-panel'), margin: token('cutting-waste'), ink: token('cutting-ink'), muted: token('cutting-line'), part: token('cutting-part'), partBorder: token('cutting-line'), selected: token('cutting-selection'), kerf: token('cutting-kerf') }
+  return { surface: token('cutting-panel'), margin: token('cutting-waste'), ink: token('cutting-ink'), muted: token('cutting-line'), part: token('cutting-part'), partBorder: token('cutting-line'), selected: token('cutting-selection'), kerf: token('cutting-cut') }
 }
 function setView(next: Viewport): void { view.value = next; canvas?.setViewport(next) }
 function fit(): void { isFitted = true; setView(fittedView.value) }
@@ -196,7 +196,7 @@ onBeforeUnmount(() => {
   >
     <div class="canvas-toolbar">
       <p
-        v-if="!selectedPart && projection.status === 'valid'"
+        v-if="projection.status === 'valid'"
         class="panel-context text-xs text-muted"
         aria-label="Current panel dimensions"
       >
@@ -529,15 +529,16 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .canvas-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .5rem .65rem; border-bottom: 1px solid var(--line); }
-.selected-strip { display: flex; align-items: center; gap: .65rem; flex: 1; }
+.selected-strip { display: flex; align-items: center; gap: .65rem; order: 3; flex-basis: 100%; min-width: 0; padding-top: .5rem; border-top: 1px solid var(--line); }
 .canvas-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-left: auto; }
 .tool-group { display: flex; align-items: center; gap: .2rem; }
 .tool-group + .tool-group { border-left: 1px solid var(--line); padding-left: .5rem; }
 .swap-options { position: absolute; z-index: 5; right: 0; top: calc(100% + .5rem); display: flex; gap: .35rem; padding: .5rem; background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 12%, transparent); }
-.panel-context { margin-right: auto; }
-.tool { display: inline-flex; align-items: center; justify-content: center; width: var(--control-height-small); height: var(--control-height-small); border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); }
+.panel-context { margin-right: auto; min-width: 0; overflow-wrap: anywhere; }
+.tool { display: inline-flex; align-items: center; justify-content: center; width: var(--control-height-small); height: var(--control-height-small); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; }
 .tool:hover:not(:disabled) { background: var(--quiet-surface); color: var(--ink); }
-.tool:disabled { opacity: .6; }
+.tool:disabled { opacity: .45; cursor: not-allowed; }
+.tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tool :deep(svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .copy-picker { width: 12rem; max-width: 60vw; }
 .graph-paper { background-color: var(--canvas); background-image: linear-gradient(color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px); background-size: 20px 20px; }

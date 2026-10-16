@@ -15,8 +15,11 @@ import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy
 import { useCurrentResultService } from './current-result-service'
 import CuttingPlansWorkspace from './CuttingPlansWorkspace.vue'
 import AppDialog from '../../shared/ui/AppDialog.vue'
+import AppButton from '../../shared/ui/AppButton.vue'
+import AppIcon from '../../shared/ui/AppIcon.vue'
+import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
 import { useCuttingWorkspaceState } from '../projects/cutting-workspace-state'
-import type { OptimizeProjectResult } from '../../domain/optimizer/project-plan'
+import type { ProjectUnplacedParts, OptimizeProjectResult } from '../../domain/optimizer/project-plan'
 import FormField from '../../shared/ui/FormField.vue'
 import PanelPlanView from './PanelPlanView.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
@@ -67,6 +70,15 @@ const error = ref('')
 const inputError = ref('')
 const fieldErrors = ref<{ kerfMm?: string; edgeMarginMm?: string }>({})
 const result = shallowRef<RunResult | null>(null)
+const inspectedUnplaced = shallowRef<ProjectUnplacedParts | null>(null)
+const inspectedPart = computed(() => result.value?.parts.find(part => part.id === inspectedUnplaced.value?.partId))
+const unplacedCount = computed(() => result.value?.selection.plan.unplaced.reduce((count, item) => count + item.count, 0) ?? 0)
+const unplacedReasons = {
+  noCompatiblePanel: 'No compatible selected panel.',
+  constraintsPreventPlacement: 'Panel constraints prevent placement.',
+  panelLimitReached: 'Selected panel quantities are insufficient.',
+} as const
+watch(result, () => { inspectedUnplaced.value = null })
 const panelIndex = ref(0)
 const panelFitRequest = ref(0)
 watch(panelIndex, () => { panelFitRequest.value += 1 })
@@ -370,7 +382,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       <form
         id="optimization-controls"
         novalidate
-        class="flex flex-wrap items-center gap-3 border-b border-line pb-3"
+        class="optimization-header panel flex flex-wrap items-center gap-3 px-3 py-2.5"
         @submit.prevent="start"
       >
         <h1 class="mr-2 text-xl font-semibold">
@@ -378,7 +390,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         </h1>
         <button
           type="submit"
-          class="button button-primary"
+          class="button button-primary button-compact"
           :disabled="busy || !!inputError || !parts.length || !panels.length"
         >
           Optimize
@@ -394,16 +406,20 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         <output
           v-if="result"
           aria-label="Overall utilization"
-          class="text-sm font-semibold tabular-nums text-accent"
+          class="rounded-md bg-quiet-surface px-2 py-1 text-sm font-medium tabular-nums text-accent"
         >{{ result.selection.plan.metrics.utilizationPercent.toFixed(2) }}% utilization</output>
-        <button
-          type="button"
-          class="button button-compact ml-auto"
+        <AppButton
+          variant="ghost"
+          size="small"
+          icon-only
+          label="Cutting settings"
+          title="Cutting settings"
+          class="ml-auto"
           :disabled="busy"
           @click="settingsOpen = true"
         >
-          Cutting settings
-        </button>
+          <AppIcon name="settings" />
+        </AppButton>
       </form>
       <AppDialog
         :open="settingsOpen"
@@ -572,20 +588,13 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       >
         {{ error }}
       </p>
-      <p
-        v-if="result?.selection.plan.unplaced.length"
-        role="status"
-        class="text-sm text-danger"
-      >
-        Incomplete cutting result — some parts remain unplaced. Review them in Cutting Plans.
-      </p>
     </template>
     <div
       v-show="!cuttingPlansStep"
       class="cutting-workspace-grid items-start gap-3"
     >
       <aside
-        class="min-w-0 space-y-2 py-2 lg:max-h-[70dvh] lg:overflow-y-auto"
+        class="panel panel-navigation min-w-0 space-y-3 p-3 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-11rem)] lg:overflow-y-auto"
         aria-label="Panels used"
       >
         <h2 class="text-sm font-semibold">
@@ -601,7 +610,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           >
             <button
               type="button"
-              class="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm"
+              class="block w-full space-y-2 rounded-lg p-2 text-left text-sm"
               :class="panelIndex === index ? 'bg-subtle text-accent' : 'hover:bg-subtle'"
               :data-panel-index="index"
               :aria-pressed="panelIndex === index"
@@ -609,10 +618,23 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
               :aria-controls="`panel-parts-${index}`"
               @click="panelIndex = index"
             >
-              <span class="min-w-0 flex-1"><span
-                class="block font-semibold"
-              >Panel {{ index + 1 }}</span><span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.lengthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.widthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.thicknessMm }} mm</span></span>
-              <span class="text-xs tabular-nums text-muted">{{ allocation.plan.metrics.utilizationPercent.toFixed(1) }}%</span>
+              <span class="flex items-center justify-between gap-2">
+                <span class="min-w-0 flex-1"><span
+                  class="block font-semibold"
+                >Panel {{ index + 1 }}</span><span class="block text-xs text-muted">{{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.lengthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.widthMm }} × {{ result.choices.find(choice => choice.product.id === allocation.supplierProductId)?.product.thicknessMm }} mm</span></span>
+                <span class="text-xs tabular-nums text-muted">{{ (panelPlan(index) ?? allocation.plan).metrics.utilizationPercent.toFixed(1) }}%</span>
+              </span>
+              <span
+                role="progressbar"
+                :aria-label="`Panel ${index + 1} utilization`"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="(panelPlan(index) ?? allocation.plan).metrics.utilizationPercent"
+                class="block h-1 overflow-hidden rounded-full bg-line"
+              ><span
+                class="block h-full rounded-full bg-accent"
+                :style="{ width: `${(panelPlan(index) ?? allocation.plan).metrics.utilizationPercent}%` }"
+              /></span>
             </button>
             <ul
               v-show="panelIndex === index"
@@ -645,6 +667,44 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
         >
           No panels allocated yet.
         </p>
+        <section
+          aria-labelledby="unplaced-parts-heading"
+          class="space-y-2 border-t border-line pt-3"
+        >
+          <h2
+            id="unplaced-parts-heading"
+            class="flex items-center justify-between gap-2 text-sm font-semibold"
+          >
+            Unplaced parts <span class="text-xs font-medium tabular-nums text-muted">{{ unplacedCount }}</span>
+          </h2>
+          <ul
+            v-if="unplacedCount"
+            class="space-y-1"
+          >
+            <li
+              v-for="item in result?.selection.plan.unplaced ?? []"
+              :key="JSON.stringify([item.partId, item.firstCopyIndex])"
+            >
+              <button
+                type="button"
+                class="w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-subtle"
+                :aria-label="`Inspect unplaced part ${partName(item.partId)}`"
+                aria-haspopup="dialog"
+                @click="inspectedUnplaced = item"
+              >
+                <span class="flex justify-between gap-2 font-medium"><span>{{ partName(item.partId) }}</span><span class="shrink-0 tabular-nums">× {{ item.count }}</span></span>
+                <span class="mt-1 block text-muted">{{ result?.parts.find(part => part.id === item.partId)?.lengthMm }} × {{ result?.parts.find(part => part.id === item.partId)?.widthMm }} × {{ result?.parts.find(part => part.id === item.partId)?.thicknessMm }} mm</span>
+                <span class="mt-1 block text-muted">{{ unplacedReasons[item.reason] }}</span>
+              </button>
+            </li>
+          </ul>
+          <p
+            v-else
+            class="px-2 text-xs text-muted"
+          >
+            {{ result ? 'All parts placed.' : 'Optimize to review unplaced parts.' }}
+          </p>
+        </section>
       </aside>
       <div class="min-w-0">
         <KeepAlive
@@ -670,20 +730,61 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
           />
         </KeepAlive>
         <div
-          v-if="!result"
+          v-if="!result || !activePanel || !activeChoice"
           class="panel flex min-h-80 items-center justify-center p-6 text-center"
           aria-label="Empty cutting workspace"
         >
           <div class="max-w-sm space-y-2">
             <h2 class="font-semibold">
-              Your cutting layout will appear here
+              {{ result ? 'No panels used' : 'Your cutting layout will appear here' }}
             </h2><p class="text-sm text-muted">
-              Select panels in Materials, add Parts, then Optimize.
+              {{ result ? 'Review unplaced parts or adjust the cutting settings.' : 'Select panels in Materials, add Parts, then Optimize.' }}
             </p>
           </div>
         </div>
       </div>
     </div>
+    <AppDialog
+      v-if="!cuttingPlansStep && inspectedUnplaced && inspectedPart"
+      title="Unplaced part"
+      :busy="false"
+      size="small"
+      @close="inspectedUnplaced = null"
+    >
+      <div
+        class="space-y-4"
+        aria-label="Unplaced part details"
+      >
+        <div>
+          <h3 class="font-semibold">
+            {{ inspectedPart.name }}
+          </h3><p class="mt-1 text-sm text-muted">
+            {{ result?.choices.find(choice => choice.product.materialId === inspectedPart?.materialId)?.materialName ?? 'Material unavailable' }}
+          </p>
+        </div>
+        <PanelDimensionPreview
+          :length-mm="inspectedPart.lengthMm"
+          :width-mm="inspectedPart.widthMm"
+          :grain-direction="inspectedPart.grainDirection"
+          size="small"
+          label="Unplaced part dimension preview"
+        />
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <dt class="text-muted">
+            Dimensions
+          </dt><dd>{{ inspectedPart.lengthMm }} × {{ inspectedPart.widthMm }} × {{ inspectedPart.thicknessMm }} mm</dd>
+          <dt class="text-muted">
+            Unplaced quantity
+          </dt><dd>{{ inspectedUnplaced.count }}</dd>
+          <dt class="text-muted">
+            Grain direction
+          </dt><dd>{{ inspectedPart.grainDirection === 'none' ? 'No grain constraint' : inspectedPart.grainDirection === 'length' ? 'Along length' : 'Along width' }}</dd>
+        </dl>
+        <p class="text-sm text-muted">
+          {{ unplacedReasons[inspectedUnplaced.reason] }}
+        </p>
+      </div>
+    </AppDialog>
     <CuttingPlansWorkspace
       v-if="cuttingPlansStep && displayedInput && cuttingPlansAvailable"
       :input="displayedInput"
@@ -713,6 +814,6 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
 .optimization-workspace :deep(.field) { height: var(--control-height-small); min-height: var(--control-height-small); }
 .cutting-workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1024px) {
-  .cutting-workspace-grid { grid-template-columns: 200px minmax(0, 1fr); }
+  .cutting-workspace-grid { grid-template-columns: minmax(200px, 230px) minmax(0, 1fr); }
 }
 </style>

@@ -125,6 +125,19 @@ describe('Konva read-only canvas adapter', () => {
     expect(fake.nodes.some(node => node.kind === 'Arrow')).toBe(false)
     zero.destroy()
   })
+  it.each([0.5, 2, 4])('scales red physical cuts at zoom %s without recoloring piece borders', scale => {
+    const { canvas, stage, part } = setup()
+    canvas.setPalette({ ...palette, kerf: '#9b3430' })
+    canvas.setViewport({ x: 24, y: 24, scale })
+    expect(stage.attrs.scale).toBe(scale)
+    const cuts = fake.nodes.filter(node => node.attrs.name === 'saw-kerf')
+    expect(cuts.map(node => node.attrs)).toEqual([
+      expect.objectContaining({ x: 35, y: 5, width: 2, height: 70, fill: '#9b3430', strokeWidth: 0 }),
+      expect.objectContaining({ x: 5, y: 55, width: 30, height: 2, fill: '#9b3430', strokeWidth: 0 }),
+    ])
+    expect(part.attrs.stroke).toBe('part-border')
+    canvas.destroy()
+  })
   it('keeps grain markings small, follows rotated grain and hides them at low zoom', () => {
     const { canvas } = setup()
     canvas.setViewport({ x: 0, y: 0, scale: 2 })

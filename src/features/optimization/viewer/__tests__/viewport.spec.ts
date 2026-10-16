@@ -10,6 +10,14 @@ describe('Millimeter-to-canvas transforms', () => {
     expect(fitViewport({ lengthMm: 100, widthMm: 80 }, { width: 248, height: 248 })).toEqual({ scale: 2, x: 24, y: 44 })
     expect(fitViewport({ lengthMm: 80, widthMm: 100 }, { width: 248, height: 248 })).toEqual({ scale: 2, x: 44, y: 24 })
   })
+  it.each([
+    [{ lengthMm: 10000, widthMm: 10 }, { width: 1048, height: 248 }, { scale: 0.1, x: 24, y: 123.5 }],
+    [{ lengthMm: 10, widthMm: 10000 }, { width: 248, height: 1048 }, { scale: 0.1, x: 123.5, y: 24 }],
+    [{ lengthMm: 1, widthMm: 1 }, { width: 248, height: 248 }, { scale: 200, x: 24, y: 24 }],
+    [{ lengthMm: 200, widthMm: 100 }, { width: 448, height: 248 }, { scale: 2, x: 24, y: 24 }],
+  ])('centers extreme and small panels within the measured viewport: %j', (panel, size, expected) => {
+    expect(fitViewport(panel, size)).toEqual(expected)
+  })
   it('zooms around a stationary anchor and respects relative limits', () => {
     const view = { scale: 2, x: 24, y: 44 }
     expect(zoomViewport(view, 2, { x: 124, y: 124 }, 0.5, 8)).toEqual({ scale: 4, x: -76, y: -36 })
