@@ -181,9 +181,26 @@ describe('independent project accounting', () => {
 })
 
 
-describe('bounded owned-stock preference', () => {
+describe('lexicographic owned-stock preference', () => {
   const owned = stockItemSchema.parse({ ...validStockItemInput, id: 'owned-panel', lengthMm: 100, widthMm: 100, quantity: 2, grainDirection: 'none' })
   const source = stockPanel(owned)
+  it.each([true, false])('reproduces 800 × 400 Catalog versus two distinct 800 × 600 StockItems (preference %s)', preferStockPanels => {
+    const catalog = supplierProductSchema.parse({ ...product, lengthMm: 800, widthMm: 400 })
+    const first = stockPanel({ ...owned, id: stockItemSchema.shape.id.parse('first-physical-panel'), lengthMm: 800, widthMm: 600, quantity: 1 })
+    const second = stockPanel({ ...owned, id: stockItemSchema.shape.id.parse('second-physical-panel'), lengthMm: 800, widthMm: 600, quantity: 1 })
+    const request = {
+      parts: ['first-part', 'second-part'].map(id => partSchema.parse({ ...part, id, lengthMm: 200, widthMm: 400, quantity: 1 })),
+      panels: [{ product: catalog, quantity: 2 }, { product: first, quantity: 1 }, { product: second, quantity: 1 }],
+      settings: { kerfMm: 3, edgeMarginMm: 0, preferStockPanels },
+    }
+    const snapshot = structuredClone(request)
+    const plan = run(request)
+    expect(plan.metrics).toMatchObject({ placedCount: 2, unplacedCount: 0, panelCount: 1 })
+    expect(plan.panels.map(panel => panel.supplierProductId)).toEqual([preferStockPanels ? first.id : catalog.id])
+    expect(plan.panels[0]?.panelCopyIndex).toBe(0)
+    expect(run(request)).toEqual(plan)
+    expect(request).toEqual(snapshot)
+  })
   it.each([undefined, true, false])('prefers equivalent Stock, including offcuts, only when enabled (%j)', preferStockPanels => {
     const settings = { ...input.settings, ...(preferStockPanels === undefined ? {} : { preferStockPanels }) }
     const request = { ...input, settings, panels: [{ product, quantity: 2 }, { product: source, quantity: 2 }] }
@@ -204,19 +221,39 @@ describe('bounded owned-stock preference', () => {
     const limited = run({ ...input, settings: { ...input.settings, preferStockPanels }, panels: [{ product: source, quantity: 1 }] })
     expect(limited.metrics).toMatchObject({ placedCount: 1, unplacedCount: 1, panelCount: 1 })
   })
-  it.each([110, 110.001, 150])('allows at most ten percent extra panel area, with an exact boundary (%s mm)', lengthMm => {
+  it.each([110, 110.001, 150])('prefers zero Catalog panels regardless of the extra Stock area (%s mm)', lengthMm => {
     const stockSource = stockPanel({ ...owned, lengthMm, quantity: 1 })
     const plan = run({ ...input, parts: [{ ...part, quantity: 1 }], panels: [{ product, quantity: 1 }, { product: stockSource, quantity: 1 }] })
-    expect(plan.panels[0]?.supplierProductId).toBe(lengthMm === 110 ? stockSource.id : product.id)
+    expect(plan.panels[0]?.supplierProductId).toBe(stockSource.id)
   })
-  it('does not add extra panels just to avoid Catalog and considers owned full panels too', () => {
+  it('accepts extra owned panels to avoid Catalog and considers owned full panels too', () => {
     const full = stockPanel({ ...owned, kind: 'fullPanel' })
     const large = { ...product, lengthMm: 200 }
     const plan = run({ ...input, panels: [{ product: large, quantity: 1 }, { product: full, quantity: 2 }] })
-    expect(plan.panels.map(panel => panel.supplierProductId)).toEqual([large.id])
+    expect(plan.panels.map(panel => panel.supplierProductId)).toEqual([full.id, full.id])
     const equivalent = run({ ...input, panels: [{ product, quantity: 2 }, { product: full, quantity: 2 }] })
     expect(equivalent.panels.map(panel => panel.supplierProductId)).toEqual([full.id, full.id])
   })
+  it('keeps maximum coverage ahead of Catalog count when a Stock-first schedule strands demand', () => {
+    const largePart = partSchema.parse({ ...part, id: 'large', lengthMm: 200, widthMm: 100, quantity: 1, rotation: 'forbidden' })
+    const smallPart = partSchema.parse({ ...part, id: 'small', lengthMm: 100, widthMm: 100, quantity: 2 })
+    const catalog = { ...product, lengthMm: 100, widthMm: 100 }
+    const stock = stockPanel({ ...owned, lengthMm: 200, widthMm: 100, quantity: 1 })
+    const plan = run({ parts: [smallPart, largePart], panels: [{ product: catalog, quantity: 2 }, { product: stock, quantity: 1 }], settings: input.settings })
+    expect(plan.metrics).toMatchObject({ placedCount: 3, unplacedCount: 0, panelCount: 3 })
+    expect(plan.panels.filter(panel => panel.supplierProductId === stock.id)).toHaveLength(1)
+    expect(plan.panels.filter(panel => panel.supplierProductId === catalog.id)).toHaveLength(2)
+  })
+
+  it('uses existing panel-count and waste ranking among equal Catalog counts', () => {
+    const small = stockPanel({ ...owned, id: stockItemSchema.shape.id.parse('small-owned'), quantity: 2 })
+    const oversized = stockPanel({ ...owned, id: stockItemSchema.shape.id.parse('oversized-owned'), lengthMm: 300, quantity: 1 })
+    const sufficient = stockPanel({ ...owned, id: stockItemSchema.shape.id.parse('sufficient-owned'), lengthMm: 200, quantity: 1 })
+    const plan = run({ ...input, panels: [{ product, quantity: 2 }, { product: small, quantity: 2 }, { product: oversized, quantity: 1 }, { product: sufficient, quantity: 1 }] })
+    expect(plan.panels.map(panel => panel.supplierProductId)).toEqual([sufficient.id])
+    expect(plan.metrics.wasteAreaMm2).toBe(0)
+  })
+
   it('uses Catalog when stock cannot satisfy grain, thickness, kerf or margins', () => {
     const constrained = partSchema.parse({ ...part, lengthMm: 100, widthMm: 50, quantity: 1, grainDirection: 'length', rotation: 'allowed' })
     const catalog = supplierProductSchema.parse({ ...product, lengthMm: 104, widthMm: 54, grainDirection: 'length' })

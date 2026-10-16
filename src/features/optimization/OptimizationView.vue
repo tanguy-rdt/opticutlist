@@ -198,7 +198,11 @@ async function readInputs() {
         : !scopedParts.value.some(part => isCompatible(part, product)) ? 'No matching material and exact thickness' : ''
     return { product, materialName: material?.name ?? product.materialId, problem, broken, supplierName: supplier?.name ?? 'Missing supplier' }
   })
-  for (const item of stockRecords.value.filter(item => project.value.stockItemIds?.includes(item.id))) {
+  // Planning availability appends this project's consumed units after live stock.
+  // Keep source tie-breaks stable across reruns without changing inventory or its display order.
+  const selectedStock = stockRecords.value.filter(item => project.value.stockItemIds?.includes(item.id))
+    .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  for (const item of selectedStock) {
     const product = stockPanel(item)
     if (products.value.some(catalogProduct => catalogProduct.id === product.id)) throw new Error('A catalog ID conflicts with a stock allocation key. No optimization was started.')
     const material = materialRecords.value.find(record => record.id === item.materialId)

@@ -276,6 +276,52 @@ describe('Automatic project optimization', () => {
     await vi.waitFor(() => { expect(workers).toHaveLength(1) })
     expect(workers[0]?.request.input.settings).toEqual({ kerfMm: 3, edgeMarginMm: 0, preferStockPanels: false })
   })
+  it.each([undefined, true, false])('uses the saved Stock preference through reload, worker evaluation and reconciliation (%j)', async preference => {
+    const { wrapper, reopen, workers, persistence, service, project, product, part, current } = await setup()
+    const catalog = supplierProductSchema.parse({ ...product, lengthMm: 800, widthMm: 400, grainDirection: 'none' })
+    expect((await persistence.supplierProducts.update(catalog.id, catalog)).ok).toBe(true)
+    expect((await service.parts(project.id).update(part.id, { ...part, lengthMm: 200, widthMm: 400, quantity: 2, grainDirection: 'none', rotation: 'allowed' })).ok).toBe(true)
+    const first = stockItemSchema.parse({ ...validStockItemInput, kind: 'fullPanel', lengthMm: 800, widthMm: 600, grainDirection: 'none', quantity: 1 })
+    const second = stockItemSchema.parse({ ...first, id: 'z-second-owned-panel' })
+    expect((await persistence.stockItems.update(first.id, first)).ok).toBe(true)
+    expect((await persistence.stockItems.create(second)).ok).toBe(true)
+    const owner = await service.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    expect((await service.projects.update(project.id, { ...owner.value, stockItemIds: [first.id, second.id] })).ok).toBe(true)
+    if (preference !== undefined) {
+      await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
+      await wrapper.get('#optimization-prefer-stock').setValue(preference)
+      await saveSettings(wrapper)
+      expect(workers).toHaveLength(0)
+    }
+    const restored = await reopen(wrapper)
+    await restored.get('#optimization-controls').trigger('submit')
+    await vi.waitFor(() => { expect(workers).toHaveLength(1) })
+    const worker = workers[0]
+    if (!worker || worker.request.type !== 'optimizeProject') throw new Error('Missing project request')
+    expect(worker.request.input.settings).toEqual({ kerfMm: 3, edgeMarginMm: 0, preferStockPanels: preference ?? true })
+    expect(worker.request.input.panels).toEqual([{ product: catalog, quantity: 2 }, { product: stockPanel(first), quantity: 1 }, { product: stockPanel(second), quantity: 1 }])
+    worker.complete()
+    const expectedId = preference === false ? catalog.id : stockPanel(first).id
+    await vi.waitFor(async () => {
+      const saved = await current.load()
+      expect(saved.ok && saved.value.result?.plan.panels.map(panel => panel.supplierProductId)).toEqual([expectedId])
+      if (saved.ok && preference !== false) expect(saved.value.result?.contents.sources[0]?.product.stockItemId).toBe(first.id)
+    })
+    expect(await persistence.stockItems.get(second.id)).toEqual({ ok: true, value: second })
+    expect(await persistence.stockItems.get(first.id)).toEqual(preference === false ? { ok: true, value: first } : { ok: false, error: { kind: 'notFound', id: first.id } })
+    const before = await persistence.projectStock.find(project.id)
+    await restored.get('#optimization-controls').trigger('submit')
+    await vi.waitFor(() => { expect(workers.reduce((count, worker) => count + worker.requests.length, 0)).toBe(2) })
+    workers.at(-1)?.complete()
+    await vi.waitFor(() => { expect(exportReady(restored)).toBe(true) })
+    await vi.waitFor(async () => {
+      const after = await persistence.projectStock.find(project.id)
+      expect(after.ok && after.value?.movements).toEqual(before.ok && before.value?.movements)
+    })
+    expect(await persistence.stockItems.get(second.id)).toEqual({ ok: true, value: second })
+  })
+
   it('uses exact owned-stock sources and consumes the current plan allocation automatically', async () => {
     const { wrapper, persistence, service, project, start, current } = await setup()
     const owner = await service.projects.get(project.id)
