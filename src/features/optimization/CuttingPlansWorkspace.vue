@@ -1,14 +1,63 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, toRaw, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, toRaw, watch } from 'vue'
+import { pdfSettingsSchema, type PdfSettings } from '../../domain/model/pdf-settings'
+import FormField from '../../shared/ui/FormField.vue'
+import AppButton from '../../shared/ui/AppButton.vue'
 import type { PdfOrientation, PdfPageSize } from '../../application/export/cutting-plan-pdf-service'
 import type { SavePlanInput } from '../../application/plans/saved-plan-service'
-import { downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-service'
+import { readCoverImage, downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-service'
 import { loadPdfPreview, type PdfPreviewDocument } from './pdf-preview'
 
-const props = defineProps<{ input: SavePlanInput; title: string }>()
+const props = defineProps<{ input: SavePlanInput; title: string; settings?: PdfSettings; settingsError?: string }>()
+const emit = defineEmits<{ settingsChange: [settings: PdfSettings] }>()
+const configuration = ref<PdfSettings>(pdfSettingsSchema.parse(props.settings ?? {}))
+const imageError = ref('')
+const imageBusy = ref(false)
+const imageInput = ref<HTMLInputElement | null>(null)
+let imageRevision = 0
+const coverImageUrl = computed(() => configuration.value.coverImage ? `data:${configuration.value.coverImage.mimeType};base64,${configuration.value.coverImage.data}` : undefined)
+function updateSettings(next: PdfSettings): void {
+  const parsed = pdfSettingsSchema.safeParse(next)
+  if (!parsed.success) { imageError.value = parsed.error.issues.map(issue => issue.message).join('; '); return }
+  imageError.value = ''; configuration.value = parsed.data; emit('settingsChange', parsed.data)
+}
+function updateText(event: Event, field: 'titleOverride' | 'description'): void {
+  if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return
+  const next = { ...configuration.value }
+  const value = event.target.value.trim()
+  if (!value || (field === 'titleOverride' && value === props.title)) {
+    if (field === 'titleOverride') delete next.titleOverride
+    else delete next.description
+  }
+  else next[field] = value
+  updateSettings(next)
+  if (field === 'titleOverride' && !next.titleOverride) event.target.value = props.title
+}
+async function selectImage(event: Event): Promise<void> {
+  if (!(event.target instanceof HTMLInputElement)) return
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  const current = ++imageRevision
+  imageBusy.value = true; imageError.value = ''
+  try {
+    const image = await readCoverImage(file)
+    if (!disposed && current === imageRevision) updateSettings({ ...configuration.value, coverImage: image })
+  } catch (cause) { if (!disposed && current === imageRevision) imageError.value = cause instanceof Error ? cause.message : 'Could not read this image.' }
+  finally { if (current === imageRevision) imageBusy.value = false }
+}
+function removeImage(): void {
+  imageRevision++; imageBusy.value = false
+  const next = { ...configuration.value }; delete next.coverImage
+  updateSettings(next)
+}
+watch(() => props.settings, settings => {
+  if (JSON.stringify(settings ?? {}) !== JSON.stringify(configuration.value)) configuration.value = pdfSettingsSchema.parse(settings ?? {})
+})
+
 const service = useCuttingPlanPdfService()
-const pageSize = ref<PdfPageSize>('A4')
-const orientation = ref<PdfOrientation>('landscape')
+const pageSize = computed<PdfPageSize>(() => configuration.value.pageSize ?? 'A4')
+const orientation = computed<PdfOrientation>(() => configuration.value.orientation ?? 'portrait')
 const page = ref(1)
 const pageCount = ref(0)
 const zoom = ref(1)
@@ -100,7 +149,11 @@ async function regenerate(): Promise<void> {
   const signal = loading.signal
   if (!service) { error.value = 'PDF generation is unavailable.'; generating.value = false; return }
   try {
-    const result = await service.exportProject({ ...toRaw(props.input), title: props.title, pageSize: pageSize.value, orientation: orientation.value })
+    const result = await service.exportProject({ ...toRaw(props.input), title: props.title, cover: {
+      ...(configuration.value.titleOverride ? { title: configuration.value.titleOverride } : {}),
+      ...(configuration.value.description ? { description: configuration.value.description } : {}),
+      ...(configuration.value.coverImage ? { image: toRaw(configuration.value.coverImage) } : {}),
+    }, pageSize: pageSize.value, orientation: orientation.value })
     if (!isCurrent(current)) return
     if (!result.ok) { error.value = result.error.message; return }
     bytes.value = result.bytes
@@ -118,7 +171,7 @@ function download(): void {
   try { downloadCuttingPlanPdf(bytes.value); feedback.value = 'PDF download started.' }
   catch (cause) { error.value = cause instanceof Error ? cause.message : 'PDF download failed.' }
 }
-watch([() => props.input, () => props.title, pageSize, orientation], () => { void regenerate() }, { immediate: true, flush: 'sync' })
+watch([() => props.input, () => props.title, configuration], () => { void regenerate() }, { immediate: true, deep: true })
 watch(zoom, () => { void renderPages() })
 function sizeWorkspace(): void {
   const root = workspace.value
@@ -233,6 +286,124 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
         >
           Document settings
         </h2>
+        <section
+          class="cover-settings space-y-3"
+          aria-labelledby="cover-page-title"
+        >
+          <h3
+            id="cover-page-title"
+            class="text-sm font-semibold"
+          >
+            Cover page
+          </h3>
+          <FormField
+            id="pdf-document-title"
+            label="Document title"
+          >
+            <template #default="{ controlAttrs }">
+              <input
+                v-bind="controlAttrs"
+                :value="configuration.titleOverride ?? title"
+                maxlength="300"
+                class="field field-small"
+                @change="updateText($event, 'titleOverride')"
+              >
+            </template>
+          </FormField>
+          <FormField
+            id="pdf-description"
+            label="Description (optional)"
+          >
+            <template #default="{ controlAttrs }">
+              <textarea
+                v-bind="controlAttrs"
+                :value="configuration.description ?? ''"
+                maxlength="2000"
+                rows="4"
+                class="field"
+                @change="updateText($event, 'description')"
+              />
+            </template>
+          </FormField>
+          <FormField
+            id="pdf-cover-image-picker"
+            label="Cover image (optional)"
+            :error="imageError"
+          >
+            <template #default="{ controlAttrs }">
+              <input
+                id="pdf-cover-image"
+                ref="imageInput"
+                type="file"
+                accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                class="hidden"
+                aria-hidden="true"
+                tabindex="-1"
+                :disabled="imageBusy"
+                @change="selectImage"
+              >
+              <div
+                v-if="coverImageUrl"
+                class="space-y-2"
+              >
+                <img
+                  :src="coverImageUrl"
+                  alt="Selected cover image"
+                  class="max-h-28 w-full rounded object-contain"
+                  @error="imageError = 'The saved cover image cannot be displayed. Replace or remove it.'"
+                >
+                <div class="flex items-center gap-2">
+                  <AppButton
+                    v-bind="controlAttrs"
+                    size="small"
+                    label="Replace cover image"
+                    :disabled="imageBusy"
+                    @click="imageInput?.click()"
+                  >
+                    Replace
+                  </AppButton>
+                  <AppButton
+                    size="small"
+                    variant="ghost"
+                    label="Remove cover image"
+                    @click="removeImage"
+                  >
+                    Remove
+                  </AppButton>
+                </div>
+              </div>
+              <AppButton
+                v-else
+                v-bind="controlAttrs"
+                size="small"
+                :disabled="imageBusy"
+                @click="imageInput?.click()"
+              >
+                Choose image
+              </AppButton>
+            </template>
+          </FormField>
+          <p
+            v-if="imageBusy"
+            role="status"
+            class="text-xs text-muted"
+          >
+            Reading image…
+          </p>
+          <div
+            v-if="settingsError"
+            role="alert"
+            class="text-xs text-danger"
+          >
+            {{ settingsError }}
+            <AppButton
+              size="small"
+              @click="emit('settingsChange', configuration)"
+            >
+              Retry save
+            </AppButton>
+          </div>
+        </section>
         <fieldset
           class="setting"
           aria-label="Page size"
@@ -244,7 +415,7 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
               :key="size"
               type="button"
               :aria-pressed="pageSize === size"
-              @click="pageSize = size"
+              @click="updateSettings({ ...configuration, pageSize: size })"
             >
               {{ size }}
             </button>
@@ -261,7 +432,7 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
               :key="direction"
               type="button"
               :aria-pressed="orientation === direction"
-              @click="orientation = direction"
+              @click="updateSettings({ ...configuration, orientation: direction })"
             >
               {{ direction === 'portrait' ? 'Portrait' : 'Landscape' }}
             </button>
@@ -291,7 +462,7 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
 </template>
 <style scoped>
 .document-workspace { width: 100%; max-width: 1440px; margin-inline: auto; min-width: 0; min-height: 0; height: calc(100dvh - 240px); display: flex; flex-direction: column; gap: .5rem; overflow: hidden; }
-.document-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 1.25rem; align-items: start; }
+.document-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 270px; grid-template-rows: minmax(0, 1fr); gap: 1.25rem; align-items: start; }
 .preview-column { height: 100%; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line) 75%, var(--canvas)); border-radius: .75rem; background: var(--canvas); box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 4%, transparent); }
 .preview-toolbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .5rem .9rem; background: color-mix(in srgb, var(--surface) 65%, var(--canvas)); border-bottom: 1px solid var(--line); }
 .page-indicator { margin-left: auto; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
@@ -303,7 +474,8 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
 .paper { width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
 .paper :deep(.pdf-page) { flex: none; background: white; box-shadow: 0 1px 3px rgb(0 0 0 / .07), 0 5px 16px rgb(0 0 0 / .08); }
 .paper :deep(canvas) { display: block; }
-.document-settings { padding: 1.25rem; background: color-mix(in srgb, var(--surface) 92%, var(--canvas)); border: 1px solid var(--line); border-radius: .75rem; box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 4%, transparent); }
+.document-settings { max-height: 100%; overflow-y: auto; padding: 1.25rem; background: color-mix(in srgb, var(--surface) 92%, var(--canvas)); border: 1px solid var(--line); border-radius: .75rem; box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 4%, transparent); }
+.cover-settings { margin-top: 1rem; min-width: 0; }
 .setting { margin-top: 1.25rem; min-width: 0; }
 .setting legend, .setting-label { margin-bottom: .5rem; font-size: .75rem; color: var(--muted); font-weight: 600; }
 .options { display: flex; gap: .25rem; padding: .2rem; background: var(--canvas); border-radius: .45rem; }
@@ -311,6 +483,7 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
 .options button[aria-pressed='true'] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
 .options button:hover { color: var(--accent); }
 .document-action { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
-@media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .75rem; } .document-settings { grid-row: 1; display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; padding: 1rem; } .document-settings h2 { flex-basis: 100%; } .setting { margin-top: 0; } .document-action { margin: 0 0 0 auto; padding: 0; border: 0; } }
+@media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .75rem; } .document-settings { grid-row: 1; max-height: min(45dvh, 24rem); display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; padding: 1rem; } .document-settings h2, .cover-settings { flex-basis: 100%; } .cover-settings { margin-top: 1rem; min-width: 0; }
+.setting { margin-top: 0; } .document-action { margin: 0 0 0 auto; padding: 0; border: 0; } }
 @media (max-width: 640px) { .document-viewport { padding: 1rem; } .paper { gap: 1.25rem; } .document-settings { gap: .75rem 1rem; } }
 </style>

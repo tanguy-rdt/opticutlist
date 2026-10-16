@@ -1,3 +1,4 @@
+import { pngCover } from '../../../infrastructure/pdf/__tests__/cover-image-fixtures'
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
@@ -69,6 +70,23 @@ describe('portable project transfer', () => {
     expect(imported.value).toEqual({ ...before.value, ...(description === undefined ? {} : { description }) })
     const reopened = createLocalPersistence('project-transfer', { indexedDB: target.indexedDB, IDBKeyRange }); connections.push(reopened)
     expect(await reopened.projects.get(project.id)).toEqual(imported)
+  })
+
+  it.each([undefined, 'portrait', 'landscape'] as const)('round-trips optional PDF cover data and explicit orientation %s', async orientation => {
+    const original = await source()
+    const owner = await original.persistence.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    const pdfSettings = { titleOverride: 'Fabrication package', description: 'First line\nSecond line', coverImage: pngCover, ...(orientation ? { orientation } : {}) }
+    expect((await original.persistence.projects.update(project.id, { ...owner.value, pdfSettings })).ok).toBe(true)
+    const exported = await original.transfer.export(project.id)
+    if (!exported.ok) throw new Error('Export failed')
+    const target = database()
+    const preview = await target.transfer.preview(exported.value.text)
+    if (!preview.ok) throw new Error('Preview failed')
+    expect(preview.value.file.schemaVersion).toBe(1)
+    const imported = await target.transfer.import(preview.value.file, true)
+    expect(imported).toMatchObject({ ok: true, value: { pdfSettings } })
+    if (imported.ok) expect(await target.persistence.projects.get(imported.value.id)).toEqual(imported)
   })
 
   it.each([undefined, true, false])('round-trips saved stock preference %j with legacy catalog quantities intact', async preferStockPanels => {

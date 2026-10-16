@@ -7,7 +7,7 @@ import { downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-s
 
 const props = defineProps<{ input: SavePlanInput; title: string; workspace?: boolean }>()
 const service = useCuttingPlanPdfService()
-const orientation = ref<PdfOrientation>('landscape')
+const orientation = ref<PdfOrientation>('portrait')
 const exporting = ref(false)
 const error = ref('')
 const feedback = ref('')

@@ -1,3 +1,4 @@
+import { pngCover } from './cover-image-fixtures'
 import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
 import { generateCuttingPlanPdf, generateProjectCuttingPdf, wrapPdfText } from '../cutting-plan-pdf'
@@ -28,6 +29,25 @@ async function exportPdf(request = pdfRequest) {
   return PDFDocument.load(result.bytes)
 }
 describe('Vector cutting plan PDF', () => {
+  it.each(['portrait', 'landscape'] as const)('preserves all sheet geometry and project title blocks with a custom cover in %s', async orientation => {
+    const request = { ...multiPanelPdfRequest(), orientation, cover: { title: 'Custom cover title', description: 'Fabrication notes', image: pngCover } }
+    const before = structuredClone(request)
+    const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+    if (!result.ok) throw new Error(result.error.message)
+    const pdf = await PDFDocument.load(result.bytes)
+    expect(pdf.getTitle()).toBe('Custom cover title')
+    expect(hasText(pageOperators(pdf, 0), 'Custom cover title')).toBe(true)
+    expect(pageOperators(pdf, 0)).toMatch(/\bDo\b/u)
+    for (const [index, page] of pdf.getPages().entries()) {
+      expect(page.getWidth() < page.getHeight()).toBe(orientation === 'portrait')
+      if (index) {
+        expect(hasText(pageOperators(pdf, index), 'Custom cover title')).toBe(false)
+        expect(pageOperators(pdf, index)).not.toMatch(/\bDo\b/u)
+      }
+    }
+    expect(hasText(pageOperators(pdf, 1), 'Project: Workshop project')).toBe(true)
+    expect(request).toEqual(before)
+  })
   it.each(['portrait', 'landscape'] as const)('exports every multi-panel page in %s A3 with vector paths', async orientation => {
     const request = { ...multiPanelPdfRequest(), pageSize: 'A3' as const, orientation }
     const before = structuredClone(request)
@@ -257,7 +277,7 @@ function printedText(pdf: PDFDocument, page: number) {
   return [...pageOperators(pdf, page).matchAll(/1 0 0 1 ([\d.]+) ([\d.]+) Tm\n<([\dA-F]*)> Tj/gu)].map(match => ({ x: Number(match[1]), y: Number(match[2]), text: Buffer.from(match[3] ?? '', 'hex').toString('latin1') }))
 }
 
-it.each(['A4', 'A3'] as const)('centers only the actual project name on the %s cover in both orientations', async pageSize => {
+it.each(['A4', 'A3'] as const)('centers the actual project name without extra cover identity text on the %s cover in both orientations', async pageSize => {
   for (const orientation of ['portrait', 'landscape'] as const) {
     const request = { ...multiPanelPdfRequest(true), title: 'Kitchen cabinet', pageSize, orientation }
     const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
@@ -269,7 +289,9 @@ it.each(['A4', 'A3'] as const)('centers only the actual project name on the %s c
     expect(texts).toHaveLength(1)
     expect(texts[0]?.text).toBe(request.title)
     expect((texts[0]?.x ?? 0) + font.widthOfTextAtSize(request.title, 28) / 2).toBeCloseTo(page.getWidth() / 2)
-    expect((texts[0]?.y ?? 0) + font.heightAtSize(28, { descender: false }) / 2).toBeCloseTo(page.getHeight() / 2)
+    expect(texts[0]?.y).toBeGreaterThan(36)
+    expect(texts[0]?.y).toBeLessThan(page.getHeight() - 36)
+    expect(Math.abs((texts[0]?.y ?? 0) + font.heightAtSize(28, { descender: false }) / 2 - page.getHeight() / 2)).toBeLessThan(4)
     expect(pageOperators(pdf, 0)).not.toMatch(/\b(?:S|f|re)\b/u)
   }
 })

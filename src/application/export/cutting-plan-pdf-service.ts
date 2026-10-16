@@ -1,3 +1,4 @@
+import { coverImageSchema, pdfSettingsSchema, type CoverImage } from '../../domain/model/pdf-settings'
 import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
 import type { SavePlanInput } from '../plans/saved-plan-service'
 import { savedPlanContext } from '../plans/saved-plan-codec'
@@ -30,6 +31,7 @@ export interface CuttingPlanPdfDocument extends Omit<CuttingPlanPdfRequest, 'pla
   readonly unplaced: readonly UnplacedParts[]
 }
 export interface ProjectCuttingPdfRequest extends SavePlanInput {
+  readonly cover?: { readonly title?: string; readonly description?: string; readonly image?: CoverImage }
   /** Optional known export-time prices, never inferred from panel names or written to historical plans. */
   readonly panelPrices?: readonly (Pick<SupplierProduct, 'id' | 'currency'> & { readonly price: number })[]
   readonly pageSize?: PdfPageSize
@@ -37,6 +39,7 @@ export interface ProjectCuttingPdfRequest extends SavePlanInput {
   readonly title: string
 }
 export interface ProjectCuttingPdfDocument {
+  readonly cover?: { readonly title?: string; readonly description?: string; readonly image?: CoverImage }
   readonly title: string
   readonly pageSize?: PdfPageSize
   readonly orientation: PdfOrientation
@@ -65,6 +68,13 @@ function panelDocument(snapshot: CuttingPlanPdfRequest): CuttingPlanPdfDocument 
 export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { ok: true; document: ProjectCuttingPdfDocument } | { ok: false; error: { kind: 'invalidPlan'; message: string } } {
   try {
     const snapshot = structuredClone(request)
+    if (snapshot.cover) {
+      pdfSettingsSchema.pick({ titleOverride: true, description: true }).parse({
+        ...(snapshot.cover.title === undefined ? {} : { titleOverride: snapshot.cover.title }),
+        ...(snapshot.cover.description === undefined ? {} : { description: snapshot.cover.description }),
+      })
+      if (snapshot.cover.image) coverImageSchema.parse(snapshot.cover.image)
+    }
     const validation = validateProjectPlan(snapshot.plan, savedPlanContext(snapshot))
     if (!validation.valid) throw new Error(validation.issues.map(issue => issue.message).join('; '))
     const prices = new Map(snapshot.panelPrices?.map(price => {
@@ -79,7 +89,7 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
       const pricing = prices.get(source.product.id)
       return panelDocument({ ...(pricing ? { pricing: { price: pricing.price, currency: pricing.currency } } : {}), plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, projectName: snapshot.title, supplierName: source.supplierName, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
     })
-    return { ok: true, document: { title: snapshot.title, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, metrics: snapshot.plan.metrics, unplaced: snapshot.plan.unplaced, parts: snapshot.parts, panels } }
+    return { ok: true, document: { ...(snapshot.cover ? { cover: snapshot.cover } : {}), title: snapshot.title, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, metrics: snapshot.plan.metrics, unplaced: snapshot.plan.unplaced, parts: snapshot.parts, panels } }
   } catch (cause) { return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting result.' } } }
 }
 

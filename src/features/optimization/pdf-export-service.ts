@@ -19,3 +19,9 @@ export function downloadCuttingPlanPdf(bytes: Uint8Array<ArrayBuffer>): void {
     window.setTimeout(() => { URL.revokeObjectURL(url) }, 1000)
   }
 }
+
+/** Reuse the PDF adapter's real PNG/JPEG decoder for local cover-image validation. */
+export async function readCoverImage(file: Blob) {
+  const { prepareCoverImage } = await import('../../infrastructure/pdf/cover-image')
+  return prepareCoverImage(file)
+}

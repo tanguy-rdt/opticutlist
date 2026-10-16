@@ -3,13 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as PdfExportModule from '../pdf-export-service'
 import CuttingPlansWorkspace from '../CuttingPlansWorkspace.vue'
 import { loadPdfPreview, type PdfPreviewDocument } from '../pdf-preview'
-import { cuttingPlanPdfServiceKey, downloadCuttingPlanPdf } from '../pdf-export-service'
+import { cuttingPlanPdfServiceKey, downloadCuttingPlanPdf, readCoverImage } from '../pdf-export-service'
 import { createCuttingPlanPdfService, type ProjectCuttingPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
+import { pngCover, jpegCover } from '../../../infrastructure/pdf/__tests__/cover-image-fixtures'
 import { pdfRequest, projectPdfRequest } from '../../../application/export/__tests__/pdf-fixtures'
 import { rotationPlan } from '../../../domain/cutting-tree/__tests__/editing-fixtures'
 
 vi.mock('../pdf-preview', () => ({ loadPdfPreview: vi.fn() }))
-vi.mock('../pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn() }))
+vi.mock('../pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn(), readCoverImage: vi.fn() }))
 const wrappers: VueWrapper[] = []
 function preview(): PdfPreviewDocument {
   return { pageCount: 3, render: vi.fn(() => Promise.resolve()), destroy: vi.fn(() => Promise.resolve()) }
@@ -29,6 +30,85 @@ async function click(wrapper: VueWrapper, text: string): Promise<void> {
   await button.trigger('click'); await flushPromises()
 }
 describe('Cutting Plans workspace', () => {
+  it('defaults to Portrait, edits only cover metadata and clears redundant title overrides', async () => {
+    const { wrapper, generate } = setup()
+    await flushPromises()
+    expect(generate.mock.calls.at(-1)?.[0].orientation).toBe('portrait')
+    expect(wrapper.get<HTMLInputElement>('#pdf-document-title').element.value).toBe('Workshop project')
+    await wrapper.get('#pdf-document-title').setValue('Fabrication package')
+    await wrapper.get('#pdf-document-title').trigger('change')
+    await wrapper.get('#pdf-description').setValue('Kitchen storage\nPainted finish')
+    await wrapper.get('#pdf-description').trigger('change')
+    await flushPromises()
+    expect(generate.mock.calls.at(-1)?.[0]).toMatchObject({ title: 'Workshop project', cover: { title: 'Fabrication package', description: 'Kitchen storage\nPainted finish' } })
+    expect(wrapper.emitted('settingsChange')?.at(-1)).toEqual([{ titleOverride: 'Fabrication package', description: 'Kitchen storage\nPainted finish' }])
+    await wrapper.get('#pdf-document-title').setValue('')
+    await wrapper.get('#pdf-document-title').trigger('change')
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('#pdf-document-title').element.value).toBe('Workshop project')
+    expect(wrapper.emitted('settingsChange')?.at(-1)).toEqual([{ description: 'Kitchen storage\nPainted finish' }])
+    await wrapper.setProps({ title: 'Renamed project' })
+    expect(wrapper.get<HTMLInputElement>('#pdf-document-title').element.value).toBe('Renamed project')
+    await wrapper.setProps({ settings: { orientation: 'landscape', pageSize: 'A3', titleOverride: 'Saved title', coverImage: pngCover } })
+    await flushPromises()
+    expect(generate.mock.calls.at(-1)?.[0]).toMatchObject({ orientation: 'landscape', pageSize: 'A3', cover: { title: 'Saved title', image: pngCover } })
+    expect(wrapper.get('img[alt="Selected cover image"]').attributes('src')).toBe('data:image/png;base64,' + pngCover.data)
+  })
+
+  it('validates, replaces and removes cover images without persisting preview URLs', async () => {
+    const { wrapper, generate } = setup()
+    await flushPromises()
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.get('#pdf-description').attributes('rows')).toBe('4')
+    const picker = wrapper.get<HTMLInputElement>('#pdf-cover-image')
+    expect(picker.classes()).toContain('hidden')
+    expect(picker.attributes('aria-hidden')).toBe('true')
+    const nativeClick = vi.spyOn(picker.element, 'click').mockImplementation(() => undefined)
+    await click(wrapper, 'Choose image')
+    expect(nativeClick).toHaveBeenCalledOnce()
+    const choose = async (name: string) => {
+      const input = wrapper.get<HTMLInputElement>('#pdf-cover-image')
+      Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['fixture'], name)] })
+      await input.trigger('change'); await flushPromises()
+    }
+    vi.mocked(readCoverImage).mockResolvedValueOnce(pngCover)
+    await choose('cover.png')
+    expect(generate.mock.calls.at(-1)?.[0].cover?.image).toEqual(pngCover)
+    expect(wrapper.get('button[aria-label="Remove cover image"]').text()).toBe('Remove')
+    await click(wrapper, 'Replace')
+    expect(nativeClick).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('button[aria-label="Replace cover image"]').attributes('aria-describedby')).toBe('pdf-cover-image-picker-error')
+    vi.mocked(readCoverImage).mockResolvedValueOnce(jpegCover)
+    await choose('replacement.jpg')
+    expect(generate.mock.calls.at(-1)?.[0].cover?.image).toEqual(jpegCover)
+    const count = generate.mock.calls.length
+    vi.mocked(readCoverImage).mockRejectedValueOnce(new Error('Choose a PNG or JPEG image.'))
+    await choose('invalid.gif')
+    expect(wrapper.text()).toContain('Choose a PNG or JPEG image.')
+    expect(generate).toHaveBeenCalledTimes(count)
+    expect(wrapper.get('img').attributes('src')).toContain(jpegCover.data)
+    await click(wrapper, 'Remove')
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(generate.mock.calls.at(-1)?.[0].cover?.image).toBeUndefined()
+    expect(wrapper.emitted('settingsChange')?.at(-1)).toEqual([{}])
+  })
+
+  it('ignores an obsolete image read after removal', async () => {
+    const { wrapper } = setup()
+    await wrapper.setProps({ settings: { coverImage: pngCover } })
+    await flushPromises()
+    let finish: ((image: typeof jpegCover) => void) | undefined
+    vi.mocked(readCoverImage).mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const input = wrapper.get<HTMLInputElement>('#pdf-cover-image')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['fixture'], 'new.jpg')] })
+    await input.trigger('change')
+    await click(wrapper, 'Remove')
+    finish?.(jpegCover)
+    await flushPromises()
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.emitted('settingsChange')?.at(-1)).toEqual([{}])
+  })
+
   it('automatically previews and downloads the identical generated bytes without native PDF or stock controls', async () => {
     const { wrapper, generate, input, before } = setup()
     await flushPromises()
@@ -47,15 +127,15 @@ describe('Cutting Plans workspace', () => {
     expect(generate).toHaveBeenCalledOnce()
     expect(input).toEqual(before)
   })
-  it('regenerates A3 and portrait using the same validated result and resets page navigation', async () => {
+  it('regenerates A3 and explicit landscape using the same validated result and resets page navigation', async () => {
     const { wrapper, generate } = setup()
     await flushPromises()
     expect(wrapper.get('[aria-label="Current PDF page"]').text()).toBe('1 / 3')
     await click(wrapper, 'A3')
-    expect(generate.mock.calls.at(-1)?.[0]).toMatchObject({ pageSize: 'A3', orientation: 'landscape' })
-    expect(wrapper.get('[aria-label="Current PDF page"]').text()).toBe('1 / 3')
-    await click(wrapper, 'Portrait')
     expect(generate.mock.calls.at(-1)?.[0]).toMatchObject({ pageSize: 'A3', orientation: 'portrait' })
+    expect(wrapper.get('[aria-label="Current PDF page"]').text()).toBe('1 / 3')
+    await click(wrapper, 'Landscape')
+    expect(generate.mock.calls.at(-1)?.[0]).toMatchObject({ pageSize: 'A3', orientation: 'landscape' })
     await click(wrapper, 'A4')
     expect(generate.mock.calls.at(-1)?.[0].pageSize).toBe('A4')
   })

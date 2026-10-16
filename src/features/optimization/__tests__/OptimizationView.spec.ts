@@ -1,3 +1,4 @@
+import { pngCover } from '../../../infrastructure/pdf/__tests__/cover-image-fixtures'
 import { ref } from 'vue'
 import { createPinia } from 'pinia'
 import { useToastStore } from '../../../shared/ui/toast-store'
@@ -254,6 +255,43 @@ describe('Automatic project optimization', () => {
     const after = await persistence.projectStock.find(project.id)
     expect(after.ok && after.value?.movements).toEqual(before.ok && before.value?.movements)
   })
+  it('persists PDF-only cover settings and explicit Landscape across reopening without changing the project name or inventory', async () => {
+    const { wrapper, reopen, workers, service, persistence, project, start, pdfGenerate } = await setup()
+    const owner = await service.projects.get(project.id)
+    if (!owner.ok) throw new Error('Missing project')
+    expect((await service.projects.update(project.id, { ...owner.value, pdfSettings: { coverImage: pngCover } })).ok).toBe(true)
+    const worker = await start()
+    worker.complete()
+    await showExport(wrapper)
+    await flushPromises()
+    expect(pdfGenerate.mock.calls.at(-1)?.[0]).toMatchObject({ orientation: 'portrait', title: project.name, cover: { image: pngCover } })
+    const stock = await persistence.stockItems.list()
+    const ledger = await persistence.projectStock.find(project.id)
+    await wrapper.get('#pdf-document-title').setValue('Workshop fabrication package')
+    await wrapper.get('#pdf-document-title').trigger('change')
+    await wrapper.get('#pdf-description').setValue('Assembly notes\nSecond line')
+    await wrapper.get('#pdf-description').trigger('change')
+    await wrapper.findAll('button').find(button => button.text() === 'Landscape')?.trigger('click')
+    await vi.waitFor(async () => {
+      expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { name: project.name, pdfSettings: { titleOverride: 'Workshop fabrication package', description: 'Assembly notes\nSecond line', orientation: 'landscape', coverImage: pngCover } } })
+    })
+    expect(workers).toHaveLength(1)
+    const restored = await reopen(wrapper)
+    await showExport(restored)
+    await flushPromises()
+    expect(restored.get<HTMLInputElement>('#pdf-document-title').element.value).toBe('Workshop fabrication package')
+    expect(restored.get<HTMLTextAreaElement>('#pdf-description').element.value).toBe('Assembly notes\nSecond line')
+    expect(pdfGenerate.mock.calls.at(-1)?.[0]).toMatchObject({ orientation: 'landscape', title: project.name, cover: { title: 'Workshop fabrication package', image: pngCover } })
+    await restored.get('#pdf-document-title').setValue('')
+    await restored.get('#pdf-document-title').trigger('change')
+    await vi.waitFor(async () => {
+      const saved = await service.projects.get(project.id)
+      expect(saved.ok && saved.value.pdfSettings?.titleOverride).toBeUndefined()
+    })
+    expect(await persistence.stockItems.list()).toEqual(stock)
+    expect(await persistence.projectStock.find(project.id)).toEqual(ledger)
+  })
+
   it('defaults old projects to stock preference, discards canceled changes and persists explicit false', async () => {
     const { wrapper, reopen, workers, service, project } = await setup()
     await wrapper.get('[aria-label="Cutting settings"]').trigger('click')
@@ -398,7 +436,7 @@ describe('Automatic project optimization', () => {
     expect(worker.request.input).toEqual(input)
     expect(workers).toHaveLength(1)
     expect(await persistence.stockItems.list()).toEqual(stock)
-    expect(await service.projects.get(project.id)).toEqual(savedProject)
+    expect(await service.projects.get(project.id)).toEqual(savedProject.ok ? { ok: true, value: { ...savedProject.value, pdfSettings: { orientation: 'portrait' } } } : savedProject)
     expect(await service.parts(project.id).list()).toEqual(savedParts)
   })
   it('loads only active-project parts and selected catalog products', async () => {

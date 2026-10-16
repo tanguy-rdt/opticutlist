@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import type { CuttingPlanPdfDocument, ProjectCuttingPdfDocument } from '../../application/export/cutting-plan-pdf-service'
 import type { Part } from '../../domain/model/part'
+import { drawCoverPage } from './cover-page'
 import { pdfPageSize } from './pdf-layout'
 import { drawScaleSheetCells } from './scale-sheet-cells'
 import { drawPanelSheet } from './panel-drawing'
@@ -11,7 +12,6 @@ const margin = 36
 const lineHeight = 14
 
 export { wrapPdfText } from './pdf-text'
-import { wrapPdfText } from './pdf-text'
 import { createPdfTables, type TableRow } from './pdf-table'
 import { purchasingSchedule } from './purchasing-schedule'
 import { appendPartDrawings } from './part-drawings'
@@ -100,7 +100,7 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
   })
 }
 type NumberedSheet = { page: PDFPage; position: { x: number; y: number; width: number; fontSize: number } }
-async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage, technicalSheets: readonly NumberedSheet[] = []): Promise<Uint8Array<ArrayBuffer>> {
+async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage, technicalSheets: readonly NumberedSheet[] = [], title = 'OptiCutList cutting plan'): Promise<Uint8Array<ArrayBuffer>> {
   for (const [index, current] of pdf.getPages().entries()) {
     if (current === cover) continue
     const position = technicalSheets.find(sheet => sheet.page === current)?.position
@@ -111,7 +111,7 @@ async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage, techn
     const x = position ? position.x + (position.width ? (position.width - font.widthOfTextAtSize(value, size)) / 2 : 0) : current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2
     current.drawText(value, { x, y: position?.y ?? 67, size, font, color: ink })
   }
-  pdf.setTitle('OptiCutList cutting plan')
+  pdf.setTitle(title)
   pdf.setProducer('OptiCutList / pdf-lib')
   return new Uint8Array(await pdf.save())
 }
@@ -130,16 +130,11 @@ export async function generateProjectCuttingPdf(document: ProjectCuttingPdfDocum
     const date = new Date().toISOString().slice(0, 10)
     const size = pdfPageSize(document.pageSize ?? 'A4', document.orientation)
     const cover = pdf.addPage([size.width, size.height])
-    const titleSize = 28
-    const lines = wrapPdfText(document.title, bold, titleSize, size.width - margin * 2)
-    const titleLineHeight = 34
-    const glyphHeight = bold.heightAtSize(titleSize, { descender: false })
-    const firstBaseline = size.height / 2 + (lines.length - 1) * titleLineHeight / 2 - glyphHeight / 2
-    for (const [index, text] of lines.entries()) cover.drawText(text, { x: size.width / 2 - bold.widthOfTextAtSize(text, titleSize) / 2, y: firstBaseline - index * titleLineHeight, font: bold, size: titleSize, color: ink })
+    await drawCoverPage(pdf, cover, await pdf.embedFont(StandardFonts.HelveticaOblique), bold, document)
     const drawingSheets: NumberedSheet[] = []
     appendFabricationSections(pdf, font, bold, document, date, drawingSheets)
     const sheets = document.panels.flatMap((panel, index) => appendCuttingPlanPdf(pdf, font, bold, panel, `Panel ${String(index + 1)}`))
-    return finishPdf(pdf, font, cover, [...drawingSheets, ...sheets])
+    return finishPdf(pdf, font, cover, [...drawingSheets, ...sheets], document.cover?.title?.trim() || document.title)
   })
 }
 async function withFontErrors(work: () => Promise<Uint8Array<ArrayBuffer>>): Promise<Uint8Array<ArrayBuffer>> {

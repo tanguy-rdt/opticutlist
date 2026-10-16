@@ -7,6 +7,7 @@ import { useStockRepository } from '../inventory/stock-repository'
 import { isCompatible } from '../../domain/compatibility'
 import { catalogPanelSupply } from '../../application/optimization/catalog-panel-supply'
 import { useToastStore } from '../../shared/ui/toast-store'
+import { pdfSettingsSchema, type PdfSettings } from '../../domain/model/pdf-settings'
 import { cuttingSettingsSchema, type CuttingSettings } from '../../domain/model/cutting-settings'
 import type { Part } from '../../domain/model/part'
 import type { PanelSnapshot, SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
@@ -35,6 +36,19 @@ const cuttingState = useCuttingWorkspaceState()
 const selectedCopies = ref<Record<number, string>>({})
 const projectId = useProjectId()
 const projectName = ref('')
+const pdfSettings = shallowRef<PdfSettings>({})
+const pdfSettingsError = ref('')
+let pdfSettingsWrite = Promise.resolve()
+function savePdfSettings(settings: PdfSettings): void {
+  const snapshot = pdfSettingsSchema.parse(settings)
+  pdfSettings.value = snapshot
+  pdfSettingsWrite = pdfSettingsWrite.then(async () => {
+    pdfSettingsError.value = ''
+    const project = await projects.projects.get(projectId)
+    const saved = project.ok ? await projects.projects.update(projectId, { ...project.value, pdfSettings: snapshot }) : project
+    if (!saved.ok) pdfSettingsError.value = persistenceErrorMessage(saved.error, 'Project')
+  }).catch(() => { pdfSettingsError.value = 'Could not save PDF settings. Try again.' })
+}
 const projects = useProjectService()
 const catalogs = useCatalogRepositories()
 const materials = useMaterialRepository()
@@ -183,6 +197,7 @@ async function readInputs() {
   ])
   if (!project.ok) throw new Error(persistenceErrorMessage(project.error, 'Project'))
   projectName.value = project.value.name
+  pdfSettings.value = project.value.pdfSettings ?? {}
   if (!scopedParts.ok) throw new Error(persistenceErrorMessage(scopedParts.error, 'Part'))
   if (!products.ok) throw new Error(persistenceErrorMessage(products.error, 'Product'))
   if (!supplierRecords.ok) throw new Error(persistenceErrorMessage(supplierRecords.error, 'Supplier'))
@@ -784,6 +799,9 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
       v-if="cuttingPlansStep && displayedInput && cuttingPlansAvailable"
       :input="displayedInput"
       :title="projectName || 'Project cutting result'"
+      :settings="pdfSettings"
+      :settings-error="pdfSettingsError"
+      @settings-change="savePdfSettings"
     />
     <div
       v-else-if="cuttingPlansStep && state !== 'loading'"

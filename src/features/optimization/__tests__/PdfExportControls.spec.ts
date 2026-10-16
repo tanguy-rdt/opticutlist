@@ -31,14 +31,14 @@ function setup(generate = vi.fn<(document: ProjectCuttingPdfDocument) => Promise
 describe('PDF export controls', () => {
   it('supports both A4 orientations and downloads a validated optimized plan', async () => {
     const { wrapper, generate } = setup()
-    expect(wrapper.get<HTMLSelectElement>('select').element.value).toBe('landscape')
+    expect(wrapper.get<HTMLSelectElement>('select').element.value).toBe('portrait')
     await wrapper.get('button[aria-describedby="pdf-export-help"]').trigger('click'); await flushPromises()
-    expect(generate.mock.calls[0]?.[0].orientation).toBe('landscape')
+    expect(generate.mock.calls[0]?.[0].orientation).toBe('portrait')
     expect(generate.mock.calls[0]?.[0].panels[0]?.edited).toBe(false)
     expect(wrapper.text()).toContain('PDF download started')
-    await wrapper.get('select').setValue('portrait')
+    await wrapper.get('select').setValue('landscape')
     await wrapper.get('button[aria-describedby="pdf-export-help"]').trigger('click'); await flushPromises()
-    expect(generate.mock.calls[1]?.[0].orientation).toBe('portrait')
+    expect(generate.mock.calls[1]?.[0].orientation).toBe('landscape')
     expect(createUrl).toHaveBeenCalledTimes(4)
     expect(click).toHaveBeenCalledTimes(2)
     expect(document.querySelector('a[download]')).toBeNull()
