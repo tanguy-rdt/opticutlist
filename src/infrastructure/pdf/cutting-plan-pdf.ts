@@ -3,7 +3,7 @@ import type { CuttingPlanPdfDocument, ProjectCuttingPdfDocument } from '../../ap
 import type { Part } from '../../domain/model/part'
 import { drawCoverPage } from './cover-page'
 import { pdfPageSize } from './pdf-layout'
-import { drawScaleSheetCells } from './scale-sheet-cells'
+import { drawTechnicalFrame, type SheetNumberPosition } from './technical-sheet'
 import { drawPanelSheet } from './panel-drawing'
 
 const ink = rgb(0.12, 0.15, 0.17)
@@ -47,10 +47,10 @@ function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, do
   const sheets: NumberedSheet[] = [{ page, position: drawing.titleBlock.sheetPosition }]
   if (drawing.titleBlock.continued.length) {
     const tables = createPdfTables(pdf, font, bold, size, continuation => {
-      continuation.drawRectangle({ x: 28, y: 36, width: size.width - 56, height: size.height - 52, borderColor: muted, borderWidth: 0.5 })
+      drawTechnicalFrame(continuation)
       sheets.push({ page: continuation, position: { x: size.width - 130, y: 48, width: 0, fontSize: 8 } })
     })
-    tables.table(`${heading} / Parts continued`, [{ label: 'Panel / Part', weight: 3 }, { label: 'Dimensions (mm)', weight: 1, nowrap: true }], drawing.titleBlock.continued.map(row => ({ cells: [`${row.ref} / ${row.name}`, row.dimensions], kind: 'child' })))
+    tables.table(`${heading} / Parts continued`, [{ label: 'Part reference / name', weight: 3 }, { label: 'Dimensions (mm)', weight: 1, nowrap: true, numeric: true }], drawing.titleBlock.continued.map(row => ({ cells: [`${row.ref} — ${row.name}`, row.dimensions], kind: 'child' })))
   }
   return sheets
 }
@@ -92,24 +92,25 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
       return [partCode(document.parts, missing.partId), part?.name ?? 'N/A', part ? materialName(document, part) : 'N/A', part ? dimensions(part) : 'N/A', String(missing.count), reasons[missing.reason]]
     }))
   }
-  appendPartDrawings(pdf, font, bold, document.parts, document.pageSize ?? 'A4', document.orientation, part => materialName(document, part), (page, scales) => {
-    page.drawRectangle({ x: 28, y: 36, width: size.width - 56, height: size.height - 52, borderColor: muted, borderWidth: 0.5 })
-    const scale = new Set(scales).size === 1 ? scales[0] ?? 'PER DRAWING' : 'PER DRAWING'
-    const position = drawScaleSheetCells(page, font, bold, { x: size.width - 208, y: 36, width: 180, height: 29 }, scale, 9)
-    drawingSheets.push({ page, position })
+  appendPartDrawings(pdf, font, bold, document.parts, document.pageSize ?? 'A4', document.orientation, part => materialName(document, part), (page, numbering) => {
+    drawTechnicalFrame(page)
+    drawingSheets.push(...numbering.map(position => ({ page, position })))
   })
 }
-type NumberedSheet = { page: PDFPage; position: { x: number; y: number; width: number; fontSize: number } }
+type NumberedSheet = { page: PDFPage; position: SheetNumberPosition }
 async function finishPdf(pdf: PDFDocument, font: PDFFont, cover?: PDFPage, technicalSheets: readonly NumberedSheet[] = [], title = 'OptiCutList cutting plan'): Promise<Uint8Array<ArrayBuffer>> {
   for (const [index, current] of pdf.getPages().entries()) {
     if (current === cover) continue
-    const position = technicalSheets.find(sheet => sheet.page === current)?.position
-    const numbers = `${String(index + 1)} / ${String(pdf.getPageCount())}`
-    const value = position?.width ? numbers : `Sheet ${numbers}`
-    const size = position?.fontSize ?? 9
-    if (position?.width && font.widthOfTextAtSize(value, size) > position.width - 8) throw new Error('Sheet numbering does not fit the technical footer.')
-    const x = position ? position.x + (position.width ? (position.width - font.widthOfTextAtSize(value, size)) / 2 : 0) : current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2
-    current.drawText(value, { x, y: position?.y ?? 67, size, font, color: ink })
+    const positions = technicalSheets.filter(sheet => sheet.page === current).map(sheet => sheet.position)
+    const numbers = String(index + 1) + ' / ' + String(pdf.getPageCount())
+    if (!positions.length) current.drawText('Sheet ' + numbers, { x: current.getWidth() - margin - (current.getWidth() - margin * 2) * 0.2, y: 67, size: 9, font, color: ink })
+    for (const position of positions) {
+      const value = position.width ? numbers : 'Sheet ' + numbers
+      const size = position.fontSize
+      if (position.width && font.widthOfTextAtSize(value, size) > position.width - 8) throw new Error('Sheet numbering does not fit the technical footer.')
+      const x = position.x + (position.width ? (position.width - font.widthOfTextAtSize(value, size)) / 2 : 0)
+      current.drawText(value, { x, y: position.y, size, font, color: ink })
+    }
   }
   pdf.setTitle(title)
   pdf.setProducer('OptiCutList / pdf-lib')

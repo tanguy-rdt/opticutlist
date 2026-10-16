@@ -224,7 +224,7 @@ it.each(['A4', 'A3'] as const)('keeps a compact hierarchical instance table and 
     const all = [...block.rows, ...block.continued]
     expect(all).toHaveLength(31)
     expect(all[0]).toMatchObject({ ref: 'Panel 1', name: panel.name, quantity: 1, parent: true })
-    expect(all.slice(1).map(row => ({ ref: row.ref, name: row.name, dimensions: row.dimensions, quantity: row.quantity }))).toEqual(parts.map((part, index) => ({ ref: `P${String(index + 1)}`, name: part.name, dimensions: '2 × 2 × 18', quantity: 1 })))
+    expect(all.slice(1).map(row => ({ ref: row.ref, name: row.name, dimensions: row.dimensions, quantity: row.quantity }))).toEqual(parts.map((part, index) => ({ ref: `P${String(index + 1)}`, name: part.name, dimensions: '2 × 2 × 18 mm', quantity: 1 })))
     expect(layout.panelBox.y - 33).toBeGreaterThan(block.top)
     for (const [label, options] of texts.mock.calls) {
       if (!options || options.x === undefined || options.y === undefined || !options.size) throw new Error('Missing text bounds')
@@ -236,8 +236,8 @@ it.each(['A4', 'A3'] as const)('keeps a compact hierarchical instance table and 
       expect(options.y).toBeGreaterThan(36)
     }
     const labels = texts.mock.calls.map(([label]) => label)
-    expect(labels).toContain('Panel / Part')
-    expect(labels).toContain('Dimensions (mm)')
+    expect(labels).not.toContain('Panel / Part')
+    expect(labels).not.toContain('Dimensions (mm)')
     expect(labels).not.toContain('Qty')
     expect(labels).toContain('SCALE'); expect(labels).toContain('SHEET')
     expect(labels.some(label => /Project:|Generated:|Units:|Print:/u.test(label))).toBe(false)
@@ -251,23 +251,48 @@ it('lists repeated definitions as distinct drawing references with quantity one 
   const repeated = { ...placed.part, quantity: 12 }
   const input = { ...document, parts: document.parts.map(part => part.id === repeated.id ? repeated : part), scene: { ...document.scene, parts: [{ ...placed, part: repeated, copyIndex: 9 }, { ...placed, part: repeated, copyIndex: 10, orientation: 'rotated' as const, dimensions: { ...placed.dimensions, lengthMm: placed.dimensions.widthMm, widthMm: placed.dimensions.lengthMm } }] } }
   expect(panelContainedParts(input)).toEqual([
-    { ref: 'P1.10', name: placed.part.name, dimensions: `${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.thicknessMm)}`, quantity: 1 },
-    { ref: 'P1.11', name: placed.part.name, dimensions: `${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.thicknessMm)}`, quantity: 1 },
+    { ref: 'P1.10', name: placed.part.name, dimensions: `${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.thicknessMm)} mm`, quantity: 1 },
+    { ref: 'P1.11', name: placed.part.name, dimensions: `${String(placed.dimensions.widthMm)} × ${String(placed.dimensions.lengthMm)} × ${String(placed.dimensions.thicknessMm)} mm`, quantity: 1 },
   ])
 })
 
 
-it.each(['A4', 'A3'] as const)('preserves the existing %s panel drawing reservation while removing redundant borders', async pageSize => {
+it.each(['A4', 'A3'] as const)('reserves measured %s panel metadata and separates every instance row', async pageSize => {
   for (const orientation of ['portrait', 'landscape'] as const) {
     const { document, page, font, bold } = await fixture({ ...pdfRequest, pageSize, orientation })
     const line = vi.spyOn(page, 'drawLine')
     const layout = drawPanelSheet(page, font, bold, document, 'Panel 1')
-    // Existing fixture: 62pt reservation (material + two parameters), independent of orientation.
-    expect(layout.titleBlock.top).toBe(98)
-    expect(layout.available.y).toBe(152)
+    const block = layout.titleBlock
+    expect(layout.available.y).toBe(block.top + 54)
     expect(layout.transform.scale).toBe(1)
-    expect(layout.titleBlock.metadata.some(value => value.includes(document.materialName))).toBe(false)
-    const lines = line.mock.calls.map(([value]) => value).filter(value => value.start.y < 98 && value.end.y < 98)
-    expect(lines.filter(value => value.start.y === value.end.y && value.end.x === layout.titleBlock.x + layout.titleBlock.tableWidth)).toHaveLength(2) // header and parent only
+    expect(block.metadata.some(value => value.includes(document.materialName))).toBe(false)
+    let boundary = block.top
+    for (const row of block.rows) {
+      boundary -= row.height
+      if (boundary <= 36) continue
+      expect(line.mock.calls.some(([value]) => value.start.x === block.x && value.start.y === boundary && value.end.y === boundary && value.end.x === block.x + block.tableWidth && value.thickness === 0.3)).toBe(true)
+    }
   }
+})
+
+it('starts with the panel identity, right-aligns full dimensions and keeps children regular and indented', async () => {
+  const { document, page, font, bold } = await fixture()
+  const texts = vi.spyOn(page, 'drawText')
+  const layout = drawPanelSheet(page, font, bold, document, 'Panel 1')
+  const block = layout.titleBlock
+  let top = block.top
+  for (const row of block.rows) {
+    const label = texts.mock.calls.find(([value, options]) => value === row.lines[0] && options?.y === top - 12)
+    const dimension = texts.mock.calls.find(([value, options]) => value === row.dimensions && options?.y === top - 12)
+    const selected = row.parent ? bold : font
+    expect(label?.[1]?.font).toBe(selected)
+    expect(label?.[1]?.x).toBe(block.x + (row.parent ? 6 : 14))
+    expect(dimension?.[1]?.font).toBe(selected)
+    expect((dimension?.[1]?.x ?? 0) + selected.widthOfTextAtSize(row.dimensions, 8)).toBeCloseTo(block.x + block.tableWidth - 6)
+    expect(row.dimensions.endsWith(' mm')).toBe(true)
+    top -= row.height
+  }
+  expect(block.rows[0]?.material).toEqual([document.materialName])
+  expect(block.rows.slice(1).every(row => row.material.length === 0)).toBe(true)
+  expect(texts.mock.calls.some(([value]) => value === 'Panel / Part' || value === 'Dimensions (mm)')).toBe(false)
 })

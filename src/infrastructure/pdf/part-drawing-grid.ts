@@ -4,7 +4,7 @@ import { DIMENSION_CLEARANCE, technicalTransform } from './technical-drawing'
 
 /** PDF-point layout only; the source millimetre rectangle is never resized or rotated. */
 export function partDrawingCells(size: { width: number; height: number }, minimumHeight = 170, count = 6): readonly PdfBox[] {
-  const area = { x: 36, y: 120, width: size.width - 72, height: size.height - 180 }
+  const area = { x: 28, y: 36, width: size.width - 56, height: size.height - 96 }
   if (![area.width, area.height, minimumHeight].every(Number.isFinite) || area.width < 170 || area.height < minimumHeight || minimumHeight <= 0) throw new RangeError('The paper is too small for readable part drawings.')
   if (!Number.isSafeInteger(count) || count < 1) throw new RangeError('Invalid drawing count.')
   const capacity = Math.min(3, Math.floor(area.height / minimumHeight)) * 2
