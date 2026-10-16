@@ -10,7 +10,8 @@ import type { PanelCuttingPlan } from '../../domain/optimizer/plan-with-strategy
 import { copyLabel } from './viewer/copy-label'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { createPlanCanvas, type PlanCanvas, type PlanPalette } from './viewer/plan-canvas'
-import { fitViewport, panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
+import { fitDimensionedViewport } from './viewer/dimensions'
+import { panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
 
 const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; panelLabel?: string | undefined; fitRequest?: number | undefined; selectedCopyKey?: string | undefined; confirmReset?: (() => boolean) | undefined }>()
 const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean]; 'select-copy': [key: string] }>()
@@ -19,6 +20,8 @@ const editFeedback = ref('')
 const editError = ref('')
 const swapKey = ref('')
 const swapOpen = ref(false)
+const detailedDimensions = ref(false)
+watch(detailedDimensions, value => { canvas?.setDimensions?.(value) })
 watch([() => props.plan, () => props.panel, () => props.parts, () => props.settings], () => {
   session.value = null
   swapOpen.value = false
@@ -91,7 +94,7 @@ let paused = false
 function palette(): PlanPalette {
   const style = getComputedStyle(document.documentElement)
   const token = (name: string) => style.getPropertyValue(`--${name}`).trim()
-  return { surface: token('cutting-panel'), margin: token('cutting-waste'), ink: token('cutting-ink'), muted: token('cutting-line'), part: token('cutting-part'), partBorder: token('cutting-line'), selected: token('cutting-selection'), kerf: token('cutting-cut') }
+  return { surface: token('cutting-panel'), margin: token('cutting-waste'), ink: token('cutting-ink'), muted: token('cutting-line'), part: token('cutting-part'), partBorder: token('cutting-line'), selected: token('cutting-selection'), kerf: token('cutting-cut'), annotation: token('muted') }
 }
 function setView(next: Viewport): void { view.value = next; canvas?.setViewport(next) }
 function fit(): void { isFitted = true; setView(fittedView.value) }
@@ -129,7 +132,7 @@ function resize(): void {
   const next = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
   if (next.width === size.width && next.height === size.height) return
   size = next
-  fittedView.value = fitViewport(projection.value.scene.panel, size)
+  fittedView.value = fitDimensionedViewport(projection.value.scene.panel, size)
   canvas?.resize(size)
   if (isFitted) fit()
 }
@@ -144,12 +147,13 @@ function render(): void {
   try {
     sizeToViewport()
     size = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
-    fittedView.value = fitViewport(projection.value.scene.panel, size)
+    fittedView.value = fitDimensionedViewport(projection.value.scene.panel, size)
     canvas = createPlanCanvas(host.value, projection.value.scene, size, palette(), key => { selectedKey.value = key }, next => { isFitted = false; view.value = next })
     canvasReady.value = true
     if (isFitted) fit()
     else canvas.setViewport(view.value)
     canvas.setSelection(selectedKey.value)
+    canvas.setDimensions?.(detailedDimensions.value)
     resizeObserver?.disconnect()
     resizeObserver?.observe(host.value)
     const toolbar = host.value.closest('section')?.querySelector('.canvas-toolbar')
@@ -263,6 +267,26 @@ onBeforeUnmount(() => {
               viewBox="0 0 24 24"
               aria-hidden="true"
             ><path d="m5 3 14 9-7 1-3 7Z" /></svg><span class="sr-only">Select and pan</span>
+          </button>
+        </div>
+        <div
+          class="tool-group"
+          role="group"
+          aria-label="Dimension annotations"
+        >
+          <button
+            type="button"
+            class="tool"
+            :disabled="!canvasReady"
+            :aria-pressed="detailedDimensions"
+            :aria-label="detailedDimensions ? 'Hide dimensions' : 'Show dimensions'"
+            :title="detailedDimensions ? 'Hide dimensions' : 'Show dimensions'"
+            @click="detailedDimensions = !detailedDimensions"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            ><path d="M3 6h18v12H3Zm4 0v5m5-5v3m5-3v5" /></svg>
           </button>
         </div>
         <div
@@ -461,7 +485,7 @@ onBeforeUnmount(() => {
         id="cutting-viewer-help"
         class="sr-only"
       >
-        Drag to pan; click a part to inspect it. Keyboard: focus the canvas and use arrow keys to pan, +/− to zoom, 0 to fit. Dragging only pans the viewport. Part dimensions are fixed; constrained edits are independently validated.
+        Drag to pan; click a part to inspect it. Keyboard: focus the canvas and use arrow keys to pan, +/− to zoom, 0 to fit. Overall panel dimensions are always shown. Detailed dimensions show the selected part size and X/Y offsets from the panel top-left origin, including margins. Dragging only pans the viewport. Part dimensions are fixed; constrained edits are independently validated.
       </p>
       <p
         v-if="canvasError"
@@ -537,6 +561,7 @@ onBeforeUnmount(() => {
 .panel-context { margin-right: auto; min-width: 0; overflow-wrap: anywhere; }
 .tool { display: inline-flex; align-items: center; justify-content: center; width: var(--control-height-small); height: var(--control-height-small); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; }
 .tool:hover:not(:disabled) { background: var(--quiet-surface); color: var(--ink); }
+.tool[aria-pressed="true"] { background: var(--subtle); color: var(--accent); }
 .tool:disabled { opacity: .45; cursor: not-allowed; }
 .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tool :deep(svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }

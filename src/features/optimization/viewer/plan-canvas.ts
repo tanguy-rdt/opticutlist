@@ -1,9 +1,11 @@
 import { copyLabel } from './copy-label'
 import Konva from 'konva'
+import { createDimensionOverlay, dimensionAnnotations } from './dimensions'
 import type { CuttingPlanScene } from '../../../application/optimization/cutting-plan-scene'
 import { grainMarker, hatchLines, panelGrainPoints, labelLayout, rectToCanvas, type CanvasSize, type Viewport } from './viewport'
 
 export interface PlanPalette {
+  readonly annotation?: string
   readonly surface: string
   readonly margin: string
   readonly ink: string
@@ -14,6 +16,7 @@ export interface PlanPalette {
   readonly kerf: string
 }
 export interface PlanCanvas {
+  setDimensions?(detailed: boolean): void
   setKeptWaste?(indices: readonly number[]): void
   setViewport(view: Viewport): void
   setSelection(key: string): void
@@ -85,6 +88,9 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
     const panelArrow = scene.panelGrain === 'none' ? null : new Konva.Arrow({ name: 'panel-grain', points: [...panelGrainPoints(rectToCanvas(scene.panel, base), scene.panelGrain, 1)], listening: false, strokeWidth: 1, strokeScaleEnabled: false })
     const panelLines: Konva.Line[] = panelArrow === null ? [] : [0, 1, 2].map(() => new Konva.Line({ name: 'panel-grain-line', listening: false, strokeWidth: 0.65, strokeScaleEnabled: false }))
     if (panelArrow !== null) layer.add(...panelLines, panelArrow)
+    let dimensionOverlay: ReturnType<typeof createDimensionOverlay> | undefined
+    let detailedDimensions = false
+    function updateDimensions(): void { dimensionOverlay?.(dimensionAnnotations(scene, viewport, selected, detailedDimensions), viewport, colors.annotation ?? colors.ink) }
     let selected = ''
     let colors = palette
     let keptWaste: readonly number[] = []
@@ -98,12 +104,14 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
       for (const { arrow, lines } of grains) { arrow.stroke(colors.partBorder); arrow.fill(colors.partBorder); for (const line of lines) line.stroke(colors.partBorder) }
       for (const line of panelLines) line.stroke(colors.muted)
       panelArrow?.stroke(colors.ink); panelArrow?.fill(colors.ink)
+      updateDimensions()
       layer.batchDraw()
     }
-    stage.on('dragmove', () => { viewport = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }; layer.batchDraw() })
+    stage.on('dragmove', () => { viewport = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }; updateDimensions(); layer.batchDraw() })
     stage.on('dragend', () => { viewport = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }; onPan(viewport) })
     applyPalette()
     return {
+      setDimensions(detailed) { detailedDimensions = detailed; dimensionOverlay ??= createDimensionOverlay(layer); updateDimensions(); layer.batchDraw() },
       setKeptWaste(indices) { keptWaste = indices; applyPalette() },
       setViewport(view) {
         viewport = view
@@ -120,6 +128,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
           line.setAttrs({ points: panelPoints.map((point, coordinate) => point - ((scene.panelGrain === 'length' ? coordinate % 2 === 1 : coordinate % 2 === 0) ? offset : 0)) })
         })
         panelArrow?.setAttrs({ points: [...panelGrainPoints(rectToCanvas(scene.panel, base), scene.panelGrain, view.scale)], pointerLength: 3 / view.scale, pointerWidth: 3 / view.scale })
+        updateDimensions()
         layer.batchDraw()
       },
       setSelection(key) {
@@ -129,6 +138,7 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
         selected = key
         const next = shapes.get(selected)
         next?.stroke(colors.selected); next?.strokeWidth(2)
+        updateDimensions()
         layer.batchDraw()
       },
       setPalette(next) { colors = next; applyPalette() },

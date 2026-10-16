@@ -8,7 +8,7 @@ import { freezeDeep, viewerPanel, viewerPart, viewerPlan, viewerSettings } from 
 vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: vi.fn() }))
 const wrappers: VueWrapper[] = []
 function fakeCanvas() {
-  return { setViewport: vi.fn<(view: Viewport) => void>(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() } satisfies PlanCanvas
+  return { setDimensions: vi.fn(), setViewport: vi.fn<(view: Viewport) => void>(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() } satisfies PlanCanvas
 }
 let canvas = fakeCanvas()
 beforeEach(() => { vi.mocked(createPlanCanvas).mockReset(); canvas = fakeCanvas(); vi.mocked(createPlanCanvas).mockReturnValue(canvas) })
@@ -25,6 +25,20 @@ function button(wrapper: VueWrapper, label: string) {
   return control
 }
 describe('Cutting layout workspace', () => {
+  it('toggles only detailed dimensions without resetting zoom or recreating the plan', async () => {
+    const wrapper = setup()
+    expect(canvas.setDimensions).toHaveBeenLastCalledWith(false)
+    await button(wrapper, 'Zoom in').trigger('click')
+    const viewport = canvas.setViewport.mock.calls.at(-1)?.[0]
+    await wrapper.get('[aria-label="Show dimensions"]').trigger('click')
+    expect(wrapper.get('[aria-label="Hide dimensions"]').attributes('aria-pressed')).toBe('true')
+    expect(canvas.setDimensions).toHaveBeenLastCalledWith(true)
+    expect(canvas.setViewport.mock.calls.at(-1)?.[0]).toEqual(viewport)
+    await wrapper.get('[aria-label="Hide dimensions"]').trigger('click')
+    expect(canvas.setDimensions).toHaveBeenLastCalledWith(false)
+    expect(createPlanCanvas).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('plan-change')).toBeUndefined()
+  })
   it('synchronizes external sidebar selection with the canvas and reports canvas selection', async () => {
     const wrapper = setup()
     const call = vi.mocked(createPlanCanvas).mock.calls[0]
@@ -59,16 +73,16 @@ describe('Cutting layout workspace', () => {
   })
   it('uses solid cutting tokens and updates them on theme changes without recreating the stage', async () => {
     const style = document.createElement('div').style
-    const tokens = ['cutting-panel', 'cutting-part', 'cutting-waste', 'cutting-ink', 'cutting-line', 'cutting-cut', 'cutting-selection']
+    const tokens = ['muted', 'cutting-panel', 'cutting-part', 'cutting-waste', 'cutting-ink', 'cutting-line', 'cutting-cut', 'cutting-selection']
     for (const token of tokens) style.setProperty(`--${token}`, `light-${token}`)
     const computedStyle = vi.spyOn(window, 'getComputedStyle').mockReturnValue(style)
     try {
       const wrapper = setup()
-      expect(vi.mocked(createPlanCanvas).mock.calls[0]?.[3]).toEqual({ surface: 'light-cutting-panel', part: 'light-cutting-part', margin: 'light-cutting-waste', ink: 'light-cutting-ink', muted: 'light-cutting-line', partBorder: 'light-cutting-line', selected: 'light-cutting-selection', kerf: 'light-cutting-cut' })
+      expect(vi.mocked(createPlanCanvas).mock.calls[0]?.[3]).toEqual({ surface: 'light-cutting-panel', part: 'light-cutting-part', margin: 'light-cutting-waste', ink: 'light-cutting-ink', muted: 'light-cutting-line', partBorder: 'light-cutting-line', selected: 'light-cutting-selection', kerf: 'light-cutting-cut', annotation: 'light-muted' })
       for (const token of tokens) style.setProperty(`--${token}`, `dark-${token}`)
       document.documentElement.dataset.theme = 'dark'
       await flushPromises()
-      expect(canvas.setPalette).toHaveBeenCalledWith(expect.objectContaining({ surface: 'dark-cutting-panel', part: 'dark-cutting-part', ink: 'dark-cutting-ink', kerf: 'dark-cutting-cut' }))
+      expect(canvas.setPalette).toHaveBeenCalledWith(expect.objectContaining({ surface: 'dark-cutting-panel', part: 'dark-cutting-part', ink: 'dark-cutting-ink', kerf: 'dark-cutting-cut', annotation: 'dark-muted' }))
       expect(createPlanCanvas).toHaveBeenCalledOnce()
       wrapper.unmount()
     } finally {
@@ -180,7 +194,7 @@ describe('Cutting layout workspace', () => {
     expect(host.getAttribute('style')).toContain('676px')
     width = 900; height = 500; notify()
     expect(canvas.resize).toHaveBeenLastCalledWith({ width: 900, height: 500 })
-    expect(canvas.setViewport).toHaveBeenLastCalledWith({ x: 167.5, y: 24, scale: 5.65 })
+    expect(canvas.setViewport).toHaveBeenLastCalledWith({ x: 243.25, y: 90, scale: 4.375 })
     await button(wrapper, 'Zoom in').trigger('click')
     await wrapper.get('[aria-label="Cutting plan canvas"]').trigger('keydown', { key: 'ArrowLeft' })
     const manual = canvas.setViewport.mock.calls.at(-1)?.[0]

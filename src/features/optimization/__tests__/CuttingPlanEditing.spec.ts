@@ -1,6 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CuttingPlanViewer from '../CuttingPlanViewer.vue'
+import { dimensionAnnotations } from '../viewer/dimensions'
 import { createPlanCanvas } from '../viewer/plan-canvas'
 import type { CuttingSettings } from '../../../domain/model/cutting-settings'
 import type { Part } from '../../../domain/model/part'
@@ -63,6 +64,28 @@ describe('Always available constrained editing', () => {
     expect(wrapper.find('[aria-label="Constrained plan editing"]').exists()).toBe(true)
     expect(wrapper.emitted('plan-change')?.at(-1)?.[1]).toBe(true)
   })
+  it('reprojects selected dimensions after rotation, undo and redo without altering the baseline', async () => {
+    const wrapper = setup()
+    await selectFirst(wrapper)
+    await wrapper.get('[aria-label="Show dimensions"]').trigger('click')
+    const key = vi.mocked(createPlanCanvas).mock.calls.at(-1)?.[1].parts[0]?.key ?? ''
+    function labels() {
+      const scene = vi.mocked(createPlanCanvas).mock.calls.at(-1)?.[1]
+      if (!scene) throw new Error('Missing scene')
+      return dimensionAnnotations(scene, { x: 100, y: 90, scale: 2 }, key, true).filter(item => item.id.startsWith('part-')).map(item => item.label)
+    }
+    expect(labels()).toEqual(['30 mm', '50 mm'])
+    await button(wrapper, 'Rotate selected copy 90°').trigger('click')
+    await flushPromises()
+    expect(labels()).toEqual(['50 mm', '30 mm'])
+    expect(wrapper.get('[aria-label="Hide dimensions"]').attributes('aria-pressed')).toBe('true')
+    await button(wrapper, 'Undo edit').trigger('click')
+    await flushPromises()
+    expect(labels()).toEqual(['30 mm', '50 mm'])
+    await button(wrapper, 'Redo edit').trigger('click')
+    await flushPromises()
+    expect(labels()).toEqual(['50 mm', '30 mm'])
+  })
   it('supports exact undo/redo and explicit reset without undoing viewport controls', async () => {
     const wrapper = setup()
     await selectFirst(wrapper)
@@ -99,6 +122,9 @@ describe('Always available constrained editing', () => {
     expect(wrapper.get('[aria-label="Selected part information"] dl').text()).toContain('35, 5 mm')
     const scene = vi.mocked(createPlanCanvas).mock.calls.at(-1)?.[1]
     expect(scene?.parts.map(part => part.part.name)).toEqual(['Second piece', 'First piece'])
+    if (!scene) throw new Error('Missing swapped scene')
+    const moved = scene.parts.find(part => part.part.name === 'First piece')
+    expect(dimensionAnnotations(scene, { x: 0, y: 0, scale: 1 }, moved?.key ?? '', true).find(item => item.id === 'position-x')?.label).toBe('X 35 mm')
     expect(swapPlan).toEqual(original)
   })
   it('explains grain and region rejection while leaving the current plan and history intact', async () => {
