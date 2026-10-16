@@ -15,7 +15,8 @@ import { useMaterialRepository } from './material-repository'
 
 import MaterialThumbnail from './MaterialThumbnail.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
-import SupplierLogo from '../suppliers/SupplierLogo.vue'
+import AppCheckbox from '../../shared/ui/AppCheckbox.vue'
+import AppButton from '../../shared/ui/AppButton.vue'
 
 const repository = useMaterialRepository()
 const catalog = useCatalogRepositories()
@@ -54,6 +55,41 @@ const visibleMaterials = computed(() => availableMaterials.value.filter(material
 const materialGroups = computed(() => categories.value.map(name => ({ name, materials: visibleMaterials.value.filter(material => material.category === name) })).filter(group => group.materials.length))
 const activeMaterial = computed(() => visibleMaterials.value.find(material => material.id === activeMaterialId.value) ?? visibleMaterials.value[0])
 const activeProducts = computed(() => products.value.filter(product => product.materialId === activeMaterial.value?.id))
+const stockExpanded = ref(true)
+const catalogExpanded = ref(true)
+const collapsedSuppliers = ref<ReadonlySet<Supplier['id']>>(new Set())
+const supplierGroups = computed(() => [...new Set(activeProducts.value.map(product => product.supplierId))].map(id => {
+  const references = activeProducts.value.filter(product => product.supplierId === id)
+  const eligible = references.filter(selectable)
+  return { id, name: suppliers.value.find(supplier => supplier.id === id)?.name ?? 'Missing supplier', products: references, eligible }
+}))
+const catalogCount = computed(() => activeProducts.value.filter(selectable).length)
+function groupState<T extends string>(ids: readonly T[], selected: readonly T[]): { checked: boolean; indeterminate: boolean } {
+  const count = ids.filter(id => selected.includes(id)).length
+  return { checked: ids.length > 0 && count === ids.length, indeterminate: count > 0 && count < ids.length }
+}
+const stockState = computed(() => groupState(activeStock.value.map(item => item.id), selectedStockIds.value))
+function supplierState(eligible: readonly SupplierProduct[]): { checked: boolean; indeterminate: boolean } {
+  return groupState(eligible.map(product => product.id), selectedProductIds.value)
+}
+function toggleAllStock(): void {
+  const remove = stockState.value.checked
+  for (const item of activeStock.value) {
+    if (selectedStockIds.value.includes(item.id) === remove) toggleStock(item)
+  }
+}
+function toggleSupplier(eligible: readonly SupplierProduct[]): void {
+  const remove = supplierState(eligible).checked
+  for (const product of eligible) {
+    if (selectedProductIds.value.includes(product.id) === remove) toggleProduct(product)
+  }
+}
+function toggleSupplierExpansion(id: Supplier['id']): void {
+  const next = new Set(collapsedSuppliers.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  collapsedSuppliers.value = next
+}
 const orphanProducts = computed(() => products.value.filter(product => selectedProductIds.value.includes(product.id) && !materials.value.some(material => material.id === product.materialId)))
 const summaryMaterials = computed(() => materials.value.filter(material => selectedIds.value.includes(material.id)
   || products.value.some(product => product.materialId === material.id && selectedProductIds.value.includes(product.id))
@@ -348,109 +384,229 @@ onActivated(() => {
           </section>
         </div>
       </section>
-      <section
-        class="panel panel-references min-w-0 overflow-hidden"
+      <div
+        class="panel-references min-w-0 space-y-4"
         :aria-busy="loading"
-        aria-labelledby="project-products-title"
       >
-        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
-          <div>
-            <h2
-              id="project-products-title"
-              class="font-semibold"
-            >
-              Panels for Optimization
-            </h2><p class="mt-1 text-xs text-muted">
-              {{ activeMaterial?.name ?? 'Choose a material from the library' }}
-            </p>
-          </div>
-        </header>
         <p
           v-if="loading"
           role="status"
-          class="p-6 text-sm text-muted"
+          class="text-sm text-muted"
         >
           Loading panel references…
         </p>
         <p
           v-else-if="loadError"
-          class="p-6 text-sm text-muted"
+          role="alert"
+          class="text-sm text-muted"
         >
           Panel references could not be loaded. Retry from the material library.
         </p>
-        <div
-          v-else-if="!activeProducts.length && !activeStock.length"
-          class="space-y-2 p-6"
+        <section
+          class="panel overflow-hidden"
+          aria-labelledby="stock-sources-title"
         >
-          <h3 class="text-sm font-semibold">
-            {{ activeMaterial ? 'No panel references for this material' : 'No material to view' }}
-          </h3>
-          <p
-            v-if="activeMaterial"
-            class="text-sm text-muted"
+          <header class="flex items-center gap-2 p-4">
+            <AppCheckbox
+              id="select-material-stock"
+              label="Select all stock panels"
+              hide-label
+              class="shrink-0 [&_label]:min-h-9 [&_label]:min-w-5"
+              :model-value="stockState.checked"
+              :indeterminate="stockState.indeterminate"
+              :disabled="loading || !activeStock.length"
+              @update:model-value="toggleAllStock"
+            />
+            <AppIcon
+              name="stock"
+              class="text-muted"
+            />
+            <div class="min-w-0 flex-1">
+              <h2
+                id="stock-sources-title"
+                class="font-semibold"
+              >
+                Stock <span class="ml-1 text-xs font-normal text-muted">{{ activeStock.length }}</span>
+              </h2>
+              <p class="truncate text-xs text-muted">
+                {{ activeMaterial?.name ?? 'Choose a material from the library' }}
+              </p>
+            </div>
+            <AppButton
+              variant="ghost"
+              size="small"
+              icon-only
+              label="Toggle Stock"
+              title="Expand or collapse Stock"
+              :aria-expanded="stockExpanded"
+              aria-controls="stock-sources"
+              @click="stockExpanded = !stockExpanded"
+            >
+              <AppIcon
+                name="chevron"
+                :class="{ 'rotate-90': stockExpanded }"
+              />
+            </AppButton>
+          </header>
+          <div
+            v-show="stockExpanded"
+            id="stock-sources"
           >
-            You can still select this material for creating Parts. Add panel references in the Catalog when needed for Optimization.
-          </p>
-          <p
-            v-else
-            class="text-sm text-muted"
-          >
-            {{ availableMaterials.length ? 'Adjust your search or category filter to view panel references.' : 'No catalog products yet. Add purchasable panels in the Catalogue.' }}
-          </p>
-        </div>
-        <ul
-          v-else
-          class="divide-y divide-line"
+            <p
+              v-if="!loading && !activeStock.length"
+              class="px-4 pb-4 text-sm text-muted"
+            >
+              No stock panels available for this material.
+            </p>
+            <ul class="divide-y divide-line">
+              <li
+                v-for="item in activeStock"
+                :key="`stock-${item.id}`"
+              >
+                <label
+                  class="flex items-start gap-3 px-4 py-3"
+                  :class="selectedStockIds.includes(item.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
+                >
+                  <input
+                    type="checkbox"
+                    class="mt-1 size-4 shrink-0 accent-accent"
+                    :aria-label="`Use stock ${item.id}`"
+                    :checked="selectedStockIds.includes(item.id)"
+                    :disabled="loading"
+                    @change="toggleStock(item)"
+                  >
+                  <span class="grid min-w-0 flex-1 gap-2 text-sm">
+                    <span class="font-semibold">Stock · {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}</span>
+                    <span class="tabular-nums">{{ item.lengthMm }} × {{ item.widthMm }} × {{ item.thicknessMm }} mm</span>
+                    <span class="text-xs text-muted">{{ item.quantity }} available · {{ item.grainDirection }} grain</span>
+                  </span>
+                </label>
+              </li>
+            </ul>
+          </div>
+        </section>
+        <section
+          class="panel overflow-hidden"
+          aria-labelledby="catalog-sources-title"
         >
-          <li
-            v-for="product in activeProducts"
-            :key="product.id"
-          >
-            <label
-              class="flex items-start gap-3 px-4 py-3"
-              :class="selectedProductIds.includes(product.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
-            >
-              <input
-                type="checkbox"
-                class="mt-1 size-4 shrink-0 accent-accent"
-                :aria-label="`Use panel ${product.name}`"
-                :checked="selectedProductIds.includes(product.id)"
-                :disabled="loading || (!selectable(product) && !selectedProductIds.includes(product.id))"
-                @change="toggleProduct(product)"
+          <header class="flex items-center gap-2 p-4">
+            <AppIcon
+              name="products"
+              class="text-muted"
+            />
+            <div class="min-w-0 flex-1">
+              <h2
+                id="catalog-sources-title"
+                class="font-semibold"
               >
-              <span class="grid min-w-0 flex-1 gap-2 text-sm">
-                <span class="font-semibold [overflow-wrap:anywhere]">{{ product.name }}</span>
-                <span class="flex items-center gap-2 text-xs text-muted"><SupplierLogo :website-url="suppliers.find(supplier => supplier.id === product.supplierId)?.websiteUrl" />{{ supplierName(product) }}</span>
-                <span class="flex flex-wrap items-center justify-between gap-2 tabular-nums">{{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm<span class="block text-xs text-muted">{{ product.price === undefined ? 'N/A' : `${product.price} ${product.currency}` }} / panel</span></span>
-                <span class="text-xs text-muted">{{ product.grainDirection }} grain · {{ product.availability }}<span v-if="!selectable(product)"> · Not available for new selection</span></span>
-              </span>
-            </label>
-          </li>
-          <li
-            v-for="item in activeStock"
-            :key="`stock-${item.id}`"
-          >
-            <label
-              class="flex items-start gap-3 px-4 py-3"
-              :class="selectedStockIds.includes(item.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
+                Catalog <span class="ml-1 text-xs font-normal text-muted">{{ catalogCount }} references</span>
+              </h2>
+              <p class="truncate text-xs text-muted">
+                {{ activeMaterial?.name ?? 'Choose a material from the library' }}
+              </p>
+            </div>
+            <AppButton
+              variant="ghost"
+              size="small"
+              icon-only
+              label="Toggle Catalog"
+              title="Expand or collapse Catalog"
+              :aria-expanded="catalogExpanded"
+              aria-controls="catalog-sources"
+              @click="catalogExpanded = !catalogExpanded"
             >
-              <input
-                type="checkbox"
-                class="mt-1 size-4 shrink-0 accent-accent"
-                :aria-label="`Use stock ${item.id}`"
-                :checked="selectedStockIds.includes(item.id)"
-                :disabled="loading"
-                @change="toggleStock(item)"
+              <AppIcon
+                name="chevron"
+                :class="{ 'rotate-90': catalogExpanded }"
+              />
+            </AppButton>
+          </header>
+          <div
+            v-show="catalogExpanded"
+            id="catalog-sources"
+          >
+            <p
+              v-if="!loading && !catalogCount"
+              class="px-4 pb-4 text-sm text-muted"
+            >
+              No catalog references available for this material.
+            </p>
+            <section
+              v-for="group in supplierGroups"
+              :key="group.id"
+              class="border-t border-line"
+              :aria-label="group.name"
+            >
+              <header class="flex items-center gap-2 bg-quiet-surface px-4 py-2">
+                <AppCheckbox
+                  :id="'supplier-selection-' + group.id"
+                  :label="'Select all panels from ' + group.name"
+                  hide-label
+                  class="shrink-0 [&_label]:min-h-9 [&_label]:min-w-5"
+                  :model-value="supplierState(group.eligible).checked"
+                  :indeterminate="supplierState(group.eligible).indeterminate"
+                  :disabled="loading || !group.eligible.length"
+                  @update:model-value="toggleSupplier(group.eligible)"
+                />
+                <h3
+                  class="min-w-0 flex-1 truncate text-sm font-semibold"
+                  :title="group.name"
+                >
+                  {{ group.name }}
+                </h3>
+                <span class="shrink-0 text-xs text-muted">{{ group.eligible.length }} references</span>
+                <AppButton
+                  variant="ghost"
+                  size="small"
+                  icon-only
+                  :label="'Toggle ' + group.name"
+                  :title="'Expand or collapse ' + group.name"
+                  :aria-expanded="!collapsedSuppliers.has(group.id)"
+                  :aria-controls="'supplier-products-' + group.id"
+                  @click="toggleSupplierExpansion(group.id)"
+                >
+                  <AppIcon
+                    name="chevron"
+                    :class="{ 'rotate-90': !collapsedSuppliers.has(group.id) }"
+                  />
+                </AppButton>
+              </header>
+              <ul
+                v-show="!collapsedSuppliers.has(group.id)"
+                :id="'supplier-products-' + group.id"
+                class="divide-y divide-line"
               >
-              <span class="grid min-w-0 flex-1 gap-2 text-sm">
-                <span class="font-semibold">Stock · {{ item.kind === 'offcut' ? 'Offcut' : 'Full panel' }}</span>
-                <span class="tabular-nums">{{ item.lengthMm }} × {{ item.widthMm }} × {{ item.thicknessMm }} mm</span>
-                <span class="text-xs text-muted">{{ item.quantity }} available · {{ item.grainDirection }} grain</span>
-              </span>
-            </label>
-          </li>
-        </ul>
-      </section>
+                <li
+                  v-for="product in group.products"
+                  :key="product.id"
+                >
+                  <label
+                    class="flex items-start gap-3 px-4 py-3"
+                    :class="selectedProductIds.includes(product.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
+                  >
+                    <input
+                      type="checkbox"
+                      class="mt-1 size-4 shrink-0 accent-accent"
+                      :aria-label="`Use panel ${product.name}`"
+                      :checked="selectedProductIds.includes(product.id)"
+                      :disabled="loading || (!selectable(product) && !selectedProductIds.includes(product.id))"
+                      @change="toggleProduct(product)"
+                    >
+                    <span class="grid min-w-0 flex-1 gap-2 text-sm">
+                      <span
+                        class="truncate font-semibold"
+                        :title="product.name"
+                      >{{ product.name }}</span>
+                      <span class="flex flex-wrap items-center justify-between gap-2 tabular-nums">{{ product.lengthMm }} × {{ product.widthMm }} × {{ product.thicknessMm }} mm<span class="block text-xs text-muted">{{ product.price === undefined ? 'N/A' : `${product.price} ${product.currency}` }} / panel</span></span>
+                      <span class="text-xs text-muted">{{ product.grainDirection }} grain · {{ product.availability }}<span v-if="!selectable(product)"> · Not available for new selection</span></span>
+                    </span>
+                  </label>
+                </li>
+              </ul>
+            </section>
+          </div>
+        </section>
+      </div>
       <aside
         class="panel project-selection min-w-0 overflow-hidden"
         aria-labelledby="material-selection-title"

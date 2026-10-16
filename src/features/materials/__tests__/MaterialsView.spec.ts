@@ -90,6 +90,129 @@ afterEach(() => {
 })
 
 describe('MaterialsView', () => {
+  async function groupedSources() {
+    const persistence = createLocalPersistence('grouped-material-sources', { indexedDB: new IDBFactory(), IDBKeyRange })
+    const otherMaterial = materialSchema.parse({ ...material, id: 'other-material', name: 'Other material' })
+    await persistence.materials.create(material)
+    await persistence.materials.create(otherMaterial)
+    await persistence.suppliers.create(validSupplierInput)
+    await persistence.suppliers.create({ ...validSupplierInput, id: 'second-supplier', name: 'Second supplier' })
+    for (const product of [
+      validSupplierProductInput,
+      { ...validSupplierProductInput, id: 'second-product', name: 'Second product' },
+      { ...validSupplierProductInput, id: 'unavailable-product', name: 'Unavailable product', availability: 'unavailable' },
+      { ...validSupplierProductInput, id: 'other-supplier-product', name: 'Other supplier product', supplierId: 'second-supplier' },
+      { ...validSupplierProductInput, id: 'other-material-product', materialId: otherMaterial.id },
+    ]) await persistence.supplierProducts.create(product)
+    for (const item of [
+      { ...validStockItemInput, id: 'first-stock' },
+      { ...validStockItemInput, id: 'second-stock' },
+      { ...validStockItemInput, id: 'other-material-stock', materialId: otherMaterial.id },
+      { ...validStockItemInput, id: 'own-offcut', provenance: { source: 'cutting', projectId: project.id, savedPlanId: 'origin', supplierProductId: validSupplierProductInput.id, panelIndex: 0, wasteIndex: 0 } },
+    ]) await persistence.stockItems.create(stockItemSchema.parse(item))
+    const service = createProjectService(persistence)
+    await service.projects.create(project)
+    const wrapper = render(persistence.materials, service, persistence)
+    await vi.waitFor(() => { expect(wrapper.get('input[aria-label="Search materials"]').attributes('disabled')).toBeUndefined() })
+    return { persistence, service, wrapper, otherMaterial }
+  }
+
+  it('renders separate source cards, supplier groups and eligible counts without row branding', async () => {
+    const { persistence, wrapper } = await groupedSources()
+    try {
+      expect(wrapper.findAll('.panel-references > section').map(section => section.attributes('aria-labelledby'))).toEqual(['stock-sources-title', 'catalog-sources-title'])
+      expect(wrapper.get('#stock-sources-title').text()).toBe('Stock 2')
+      expect(wrapper.get('#catalog-sources-title').text()).toBe('Catalog 3 references')
+      expect(wrapper.get('#stock-sources').findAll('li')).toHaveLength(2)
+      expect(wrapper.get('#catalog-sources').findAll('section')).toHaveLength(2)
+      expect(wrapper.get('#catalog-sources').findAll('img')).toHaveLength(0)
+      for (const row of wrapper.findAll('#catalog-sources li')) {
+        expect(row.text()).not.toContain(validSupplierInput.name)
+        expect(row.text()).not.toContain('Second supplier')
+      }
+      expect(wrapper.find('input[aria-label="Use stock own-offcut"]').exists()).toBe(false)
+      expect(wrapper.get('input[aria-label="Use panel Unavailable product"]').attributes('disabled')).toBeDefined()
+    } finally { persistence.close() }
+  })
+
+  it('derives Stock tri-state from individual and summary actions, scopes bulk changes and restores saved choices', async () => {
+    const { persistence, service, wrapper, otherMaterial } = await groupedSources()
+    try {
+      const bulk = wrapper.get<HTMLInputElement>('#select-material-stock')
+      expect(bulk.element.checked).toBe(false)
+      await wrapper.get('input[aria-label="Use stock first-stock"]').setValue(true)
+      expect(bulk.element.indeterminate).toBe(true)
+      expect(bulk.attributes('aria-checked')).toBe('mixed')
+      await bulk.setValue(true)
+      expect(bulk.element.checked).toBe(true)
+      expect(bulk.element.indeterminate).toBe(false)
+      expect(wrapper.get('button[aria-label="Toggle Stock"]').attributes('aria-expanded')).toBe('true')
+      await autosaved(wrapper)
+      expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { stockItemIds: ['first-stock', 'second-stock'] } })
+      await wrapper.get('button[aria-label="Remove stock first-stock"]').trigger('click')
+      expect(bulk.element.indeterminate).toBe(true)
+      await bulk.setValue(true)
+      await bulk.setValue(false)
+      expect(wrapper.get<HTMLInputElement>('input[aria-label="Use stock second-stock"]').element.checked).toBe(false)
+      await bulk.setValue(true)
+      await autosaved(wrapper)
+      await wrapper.get(`button[aria-label="Show panels for ${otherMaterial.name}"]`).trigger('click')
+      expect(bulk.element.checked).toBe(false)
+      await wrapper.get(`button[aria-label="Show panels for ${material.name}"]`).trigger('click')
+      expect(bulk.element.checked).toBe(true)
+      wrapper.unmount()
+      const reopened = render(persistence.materials, service, persistence)
+      await vi.waitFor(() => { expect(reopened.get('input[aria-label="Search materials"]').attributes('disabled')).toBeUndefined() })
+      expect(reopened.get<HTMLInputElement>('#select-material-stock').element.checked).toBe(true)
+      const inventory = await persistence.stockItems.list()
+      expect(inventory.ok).toBe(true)
+      if (inventory.ok) expect(inventory.value.find(item => item.id === 'first-stock')?.quantity).toBe(validStockItemInput.quantity)
+    } finally { persistence.close() }
+  })
+
+  it('scopes supplier bulk selection and keeps independent collapse state across material changes', async () => {
+    const { persistence, service, wrapper, otherMaterial } = await groupedSources()
+    try {
+      const bulk = wrapper.get<HTMLInputElement>(`#supplier-selection-${validSupplierInput.id}`)
+      await wrapper.get(`input[aria-label="Use panel ${validSupplierProductInput.name}"]`).setValue(true)
+      expect(bulk.element.indeterminate).toBe(true)
+      await bulk.setValue(true)
+      await autosaved(wrapper)
+      expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { supplierProductIds: [validSupplierProductInput.id, 'second-product'] } })
+      expect(wrapper.get<HTMLInputElement>('input[aria-label="Use panel Other supplier product"]').element.checked).toBe(false)
+      expect(wrapper.get('button[aria-label="Toggle Catalog"]').attributes('aria-expanded')).toBe('true')
+      await wrapper.get(`button[aria-label="Remove panel ${validSupplierProductInput.name}"]`).trigger('click')
+      expect(bulk.element.indeterminate).toBe(true)
+      await bulk.setValue(true)
+      await bulk.setValue(false)
+      expect(bulk.element.checked).toBe(false)
+      await bulk.setValue(true)
+      await wrapper.get(`button[aria-label="Toggle ${validSupplierInput.name}"]`).trigger('click')
+      expect(wrapper.get(`#supplier-products-${validSupplierInput.id}`).isVisible()).toBe(false)
+      expect(wrapper.get('#supplier-products-second-supplier').isVisible()).toBe(true)
+      await wrapper.get('button[aria-label="Toggle Catalog"]').trigger('click')
+      expect(wrapper.get('#stock-sources').isVisible()).toBe(true)
+      await wrapper.get('button[aria-label="Toggle Catalog"]').trigger('click')
+      expect(wrapper.get(`#supplier-products-${validSupplierInput.id}`).isVisible()).toBe(false)
+      await wrapper.get('button[aria-label="Toggle Stock"]').trigger('click')
+      await wrapper.get(`button[aria-label="Show panels for ${otherMaterial.name}"]`).trigger('click')
+      await wrapper.get(`button[aria-label="Show panels for ${material.name}"]`).trigger('click')
+      expect(wrapper.get('#stock-sources').isVisible()).toBe(false)
+      expect(wrapper.get(`#supplier-products-${validSupplierInput.id}`).isVisible()).toBe(false)
+      expect(bulk.element.checked).toBe(true)
+      await autosaved(wrapper)
+      expect(await service.projects.get(project.id)).toMatchObject({ ok: true, value: { supplierProductIds: [validSupplierProductInput.id, 'second-product'] } })
+    } finally { persistence.close() }
+  })
+
+  it('shows independent empty states and disables empty bulk selection', async () => {
+    const wrapper = render(fakeRepository())
+    await flushPromises()
+    expect(wrapper.get('#stock-sources').text()).toContain('No stock panels available for this material.')
+    expect(wrapper.get('#catalog-sources').text()).toContain('No catalog references available for this material.')
+    expect(wrapper.get('#select-material-stock').attributes('disabled')).toBeDefined()
+  })
+
   it('shows loading and then an empty catalog without creation controls', async () => {
     const repository = fakeRepository()
     let resolveList: ((result: PersistenceResult<readonly Material[]>) => void) | undefined
@@ -176,7 +299,7 @@ describe('MaterialsView', () => {
       const wrapper = render(persistence.materials, service, persistence)
       await vi.waitFor(() => { expect(wrapper.find('input[aria-label="Search materials"]').attributes('disabled') === undefined).toBe(true) })
       const panelColumn = wrapper.get('.panel-references')
-      expect(panelColumn.findAll('input[type="checkbox"]')).toHaveLength(3)
+      expect(panelColumn.findAll('input[aria-label^="Use panel "]')).toHaveLength(3)
       expect(wrapper.text()).not.toContain('All material panels')
       expect(wrapper.text()).not.toContain('Bulk panel selection')
       expect(wrapper.find('input[aria-label^="Use all"]').exists()).toBe(false)
@@ -275,14 +398,14 @@ describe('MaterialsView', () => {
       await vi.waitFor(() => { expect(wrapper.find('input[aria-label="Use Oak"]').exists()).toBe(true) })
       await wrapper.get('button[aria-label="Show panels for Oak"]').trigger('click')
       await wrapper.get('input[aria-label="Use Oak"]').setValue(true)
-      expect(wrapper.get('.panel-references > header').text()).toContain('Oak')
+      expect(wrapper.get('.panel-references > section > header').text()).toContain('Oak')
       expect(wrapper.get('aside').text()).toContain('Oak')
       // Material choice does not select any of its products.
       expect(wrapper.get<HTMLInputElement>('input[aria-label="Use panel Oak panel"]').element.checked).toBe(false)
       await wrapper.get('input[aria-label="Search materials"]').setValue('birch')
       expect(wrapper.find('input[aria-label="Use Oak"]').exists()).toBe(false)
       expect(wrapper.get('aside').text()).toContain('Oak')
-      expect(wrapper.get('.panel-references > header').text()).toContain(material.name)
+      expect(wrapper.get('.panel-references > section > header').text()).toContain(material.name)
       await wrapper.get('select[aria-label="Filter material category"]').setValue('Hardwoods')
       expect(wrapper.text()).toContain('No materials match your search.')
       await wrapper.get('input[aria-label="Search materials"]').setValue('')
@@ -540,7 +663,7 @@ describe('MaterialsView', () => {
       await autosaved(reopened)
       expect(await next.projects.get(project.id)).toMatchObject({ ok: true, value: { stockItemIds: [] } })
       await reopened.get(`button[aria-label="Show panels for ${mixed.name}"]`).trigger('click')
-      expect(reopened.get('.panel-references').findAll('input[type="checkbox"]')).toHaveLength(2)
+      expect(reopened.get('.panel-references').findAll('input[aria-label^="Use "]')).toHaveLength(2)
       expect(await next.stockItems.list()).toEqual(inventory)
     } finally { persistence.close(); next.close() }
   })
