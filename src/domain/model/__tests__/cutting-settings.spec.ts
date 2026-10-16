@@ -28,3 +28,10 @@ describe('cuttingSettingsSchema', () => {
     expect(cuttingSettingsSchema.safeParse({ ...valid, bladeRpm: 4000 }).success).toBe(false)
   })
 })
+
+
+it('accepts an optional strict stock preference without rewriting legacy settings', () => {
+  expect(cuttingSettingsSchema.parse(valid)).toEqual(valid)
+  for (const preferStockPanels of [true, false]) expect(cuttingSettingsSchema.parse({ ...valid, preferStockPanels }).preferStockPanels).toBe(preferStockPanels)
+  for (const preferStockPanels of [null, 'true', 0]) expect(cuttingSettingsSchema.safeParse({ ...valid, preferStockPanels }).success).toBe(false)
+})

@@ -1,3 +1,4 @@
+import { toPositiveUm } from '../geometry/units'
 import { panelQuantitySchema } from '../model/cutting-project'
 import { cuttingSettingsSchema } from '../model/cutting-settings'
 import { partSchema } from '../model/part'
@@ -19,13 +20,19 @@ function comparePlans(a: ProjectCuttingPlan, b: ProjectCuttingPlan): number {
   return b.metrics.placedCount - a.metrics.placedCount || a.panels.length - b.panels.length || Math.round(a.metrics.wasteAreaMm2 * 1_000_000) - Math.round(b.metrics.wasteAreaMm2 * 1_000_000)
 }
 
+/** Stock may save purchases at a modest material-area premium, but never add panels or lose copies.
+ * Ten percent of baseline panel area bounds both extra area and extra waste, even at zero baseline waste.
+ * Physical µm² and integer percentage arithmetic keep the threshold independent of UI/rounding.
+ */
+const MAX_STOCK_AREA_OVERHEAD_PERCENT = 10
+
 /** Deterministic greedy schedules, compared globally; no claim of an exhaustive/optimal search. */
 export function optimizeProject(input: OptimizeProjectInput): OptimizeProjectResult {
   const fail = (kind: 'invalidInput' | 'invalidPlan', message: string): OptimizeProjectResult => ({ ok: false, error: { kind, message, issues: [] } })
   if (!cuttingSettingsSchema.safeParse(input.settings).success || input.parts.some(part => !partSchema.safeParse(part).success) || input.panels.some(panel => !optimizationPanelSchema.safeParse(panel.product).success || !panelQuantitySchema.safeParse(panel.quantity).success)) return fail('invalidInput', 'Invalid optimization inputs')
   if (new Set(input.parts.map(part => part.id)).size !== input.parts.length || new Set(input.panels.map(panel => panel.product.id)).size !== input.panels.length || !Number.isSafeInteger(input.parts.reduce((total, part) => total + part.quantity, 0))) return fail('invalidInput', 'Duplicate references or unsupported total quantity')
   try {
-    function schedule(firstReference: number | null, preferSmall: boolean): ProjectCuttingPlan {
+    function schedule(firstReference: number | null, preferSmall: boolean, preferStock = false): ProjectCuttingPlan {
       const offsets = new Map<PartId, number>(input.parts.map(part => [part.id, 0]))
       const usage = input.panels.map(() => 0)
       const panels: AllocatedPanel[] = []
@@ -43,6 +50,13 @@ export function optimizeProject(input: OptimizeProjectInput): OptimizeProjectRes
         candidates.sort((a, b) => {
           if (a.index === b.index) return 0
           if (panels.length === 0 && firstReference !== null && (a.index === firstReference || b.index === firstReference)) return a.index === firstReference ? -1 : 1
+          if (preferStock) {
+            const aSource = input.panels[a.index]?.product
+            const aOwned = aSource !== undefined && 'stockItemId' in aSource
+            const bSource = input.panels[b.index]?.product
+            const bOwned = bSource !== undefined && 'stockItemId' in bSource
+            if (aOwned !== bOwned) return aOwned ? -1 : 1
+          }
           return (preferSmall ? a.area - b.area : b.selection.plan.placements.length - a.selection.plan.placements.length) ||
             (a.area - a.used) - (b.area - b.used) || a.index - b.index
         })
@@ -89,9 +103,38 @@ export function optimizeProject(input: OptimizeProjectInput): OptimizeProjectRes
       return { panels: completed, unplaced, metrics: { panelAreaMm2: panelUm2 / 1_000_000, usedAreaMm2: usedUm2 / 1_000_000, wasteAreaMm2: (panelUm2 - usedUm2) / 1_000_000, utilizationPercent: panelUm2 === 0 ? 0 : usedUm2 / panelUm2 * 100, placedCount, unplacedCount, panelCount: panels.length } }
     }
     const candidates = [schedule(null, false), schedule(null, true), ...input.panels.map((_, index) => schedule(index, false))]
+    const stockIds = new Set(input.panels.filter(source => 'stockItemId' in source.product).map(source => source.product.id))
+    const preferStock = input.settings.preferStockPanels !== false && stockIds.size > 0
+    // Same allocation/validation machinery, with only its source ranking varied; no inventory writes.
+    if (preferStock) candidates.push(schedule(null, false, true), schedule(null, true, true))
     candidates.sort(comparePlans)
-    const best = candidates[0]
+    let best = candidates[0]
     if (best === undefined) return fail('invalidPlan', 'No candidate schedule')
+    if (preferStock) {
+      const sources = new Map(input.panels.map(source => [source.product.id, source.product]))
+      function panelArea(plan: ProjectCuttingPlan): bigint {
+        return plan.panels.reduce((total, panel) => {
+          const source = sources.get(panel.supplierProductId)
+          if (!source) throw new RangeError('A candidate panel source is missing')
+          return total + BigInt(toPositiveUm(source.lengthMm)) * BigInt(toPositiveUm(source.widthMm))
+        }, 0n)
+      }
+      function wasteArea(plan: ProjectCuttingPlan): bigint {
+        const used = plan.panels.reduce((total, panel) => total + panel.plan.placements.reduce((area, part) =>
+          area + BigInt(toPositiveUm(part.region.lengthMm)) * BigInt(toPositiveUm(part.region.widthMm)), 0n), 0n)
+        return panelArea(plan) - used
+      }
+      const baseline = best
+      const baselineArea = panelArea(baseline)
+      const baselineWaste = wasteArea(baseline)
+      const maxArea = baselineArea * BigInt(100 + MAX_STOCK_AREA_OVERHEAD_PERCENT)
+      const comparable = candidates.filter(plan => plan.metrics.placedCount === baseline.metrics.placedCount
+        && plan.panels.length === baseline.panels.length && panelArea(plan) * 100n <= maxArea
+        && (wasteArea(plan) - baselineWaste) * 100n <= baselineArea * BigInt(MAX_STOCK_AREA_OVERHEAD_PERCENT))
+      const catalogCount = (plan: ProjectCuttingPlan) => plan.panels.filter(panel => !stockIds.has(panel.supplierProductId)).length
+      comparable.sort((a, b) => catalogCount(a) - catalogCount(b) || comparePlans(a, b))
+      best = comparable[0] ?? baseline
+    }
     const validation = validateProjectPlan(best, input)
     return validation.valid ? { ok: true, plan: best } : { ok: false, error: { kind: 'invalidPlan', message: 'Independent project-plan validation failed', issues: validation.issues } }
   } catch (cause) { return fail('invalidInput', cause instanceof Error ? cause.message : 'Optimization inputs exceed supported geometry') }

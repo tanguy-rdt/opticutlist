@@ -17,6 +17,7 @@ import { useCurrentResultService } from './current-result-service'
 import CuttingPlansWorkspace from './CuttingPlansWorkspace.vue'
 import AppDialog from '../../shared/ui/AppDialog.vue'
 import AppButton from '../../shared/ui/AppButton.vue'
+import AppCheckbox from '../../shared/ui/AppCheckbox.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
 import { useCuttingWorkspaceState } from '../projects/cutting-workspace-state'
@@ -69,6 +70,7 @@ const panels = shallowRef<readonly PanelChoice[]>([])
 const missingIds = shallowRef<readonly string[]>([])
 const kerf = ref<number | string>(3)
 const margin = ref<number | string>(0)
+const preferStockPanels = ref(true)
 const error = ref('')
 const inputError = ref('')
 const fieldErrors = ref<{ kerfMm?: string; edgeMarginMm?: string }>({})
@@ -143,12 +145,12 @@ function invalidate(markStale = true): void {
   error.value = ''
 }
 function openSettings(): void {
-  kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm
+  kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm; preferStockPanels.value = savedSettings.value.preferStockPanels ?? true
   fieldErrors.value = {}; settingsError.value = ''; settingsOpen.value = true
 }
 async function saveSettings(): Promise<void> {
   if (busy.value) return
-  const parsed = cuttingSettingsSchema.safeParse({ kerfMm: kerf.value, edgeMarginMm: margin.value })
+  const parsed = cuttingSettingsSchema.safeParse({ kerfMm: kerf.value, edgeMarginMm: margin.value, preferStockPanels: preferStockPanels.value })
   fieldErrors.value = {}; settingsError.value = ''
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
@@ -165,7 +167,7 @@ async function saveSettings(): Promise<void> {
     const saved = project.ok ? await projects.projects.update(projectId, { ...project.value, cuttingSettings: parsed.data }) : project
     if (current !== generation) return
     if (!saved.ok) { settingsError.value = persistenceErrorMessage(saved.error, 'Project'); return }
-    const changed = JSON.stringify(savedSettings.value) !== JSON.stringify(parsed.data)
+    const changed = JSON.stringify({ ...savedSettings.value, preferStockPanels: savedSettings.value.preferStockPanels ?? true }) !== JSON.stringify(parsed.data)
     savedSettings.value = parsed.data
     if (changed) { invalidate(); state.value = 'ready' }
     settingsOpen.value = false
@@ -223,7 +225,7 @@ async function load(): Promise<void> {
     if (current !== generation) return
     applyInputs(inputs)
     savedSettings.value = inputs.project.cuttingSettings ?? { kerfMm: 3, edgeMarginMm: 0 }
-    kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm
+    kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm; preferStockPanels.value = savedSettings.value.preferStockPanels ?? true
     state.value = 'ready'
   } catch (cause) {
     if (current !== generation) return
@@ -241,7 +243,8 @@ async function start(): Promise<void> {
     const inputs = await readInputs()
     if (current !== generation) return
     applyInputs(inputs)
-    const settings = inputs.project.cuttingSettings ?? savedSettings.value
+    const configuredSettings = inputs.project.cuttingSettings ?? savedSettings.value
+    const settings = { ...configuredSettings, preferStockPanels: configuredSettings.preferStockPanels ?? true }
     savedSettings.value = settings
     if (inputs.missingIds.length) throw new Error('Some selected panel sources are missing. Review Materials before optimizing.')
     if (inputs.parts.length === 0) throw new Error('Add project parts before optimizing.')
@@ -321,12 +324,12 @@ async function restoreCurrent(current: number): Promise<void> {
     panelIndex.value = 0
     const project = await projects.projects.get(projectId)
     if (current !== generation || !project.ok) return
-    if (project.value.cuttingSettings && JSON.stringify(project.value.cuttingSettings) !== JSON.stringify(contents.settings)) {
+    if (project.value.cuttingSettings && JSON.stringify({ ...project.value.cuttingSettings, preferStockPanels: project.value.cuttingSettings.preferStockPanels ?? true }) !== JSON.stringify({ ...contents.settings, preferStockPanels: contents.settings.preferStockPanels ?? true })) {
       planNotice.value = 'Cutting settings changed. Optimize again to create a current layout.'
       return
     }
     savedSettings.value = project.value.cuttingSettings ?? contents.settings
-    kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm
+    kerf.value = savedSettings.value.kerfMm; margin.value = savedSettings.value.edgeMarginMm; preferStockPanels.value = savedSettings.value.preferStockPanels ?? true
     result.value = { requestId: -current, selection: { ok: true, plan }, sources: contents.sources, parts: contents.parts, settings: contents.settings, savedBaseline: true, savedEdited: contents.panels.flatMap((panel, index) => panel.edited ? [index] : []), choices: contents.sources.map(source => ({ product: source.product, materialName: source.materialName, supplierName: source.supplierName, problem: '', broken: false })) }
     savedSummary.value = summary
     savedFingerprint.value = fingerprint.value
@@ -473,6 +476,13 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             </FormField>
           </div>
 
+          <AppCheckbox
+            id="optimization-prefer-stock"
+            v-model="preferStockPanels"
+            label="Prefer stock panels"
+            description="Prioritize panels you already own before using catalog references."
+            :disabled="busy"
+          />
           <p
             v-if="settingsError"
             role="alert"

@@ -71,11 +71,11 @@ describe('portable project transfer', () => {
     expect(await reopened.projects.get(project.id)).toEqual(imported)
   })
 
-  it('round-trips optional saved cutting settings with legacy catalog quantities intact', async () => {
+  it.each([undefined, true, false])('round-trips saved stock preference %j with legacy catalog quantities intact', async preferStockPanels => {
     const original = await source()
     const owner = await original.persistence.projects.get(project.id)
     if (!owner.ok) throw new Error('Missing project')
-    const configured = { ...owner.value, cuttingSettings: { kerfMm: 2.5, edgeMarginMm: 8 } }
+    const configured = { ...owner.value, cuttingSettings: { kerfMm: 2.5, edgeMarginMm: 8, ...(preferStockPanels === undefined ? {} : { preferStockPanels }) } }
     expect((await original.persistence.projects.update(project.id, configured)).ok).toBe(true)
     const exported = await original.transfer.export(project.id)
     if (!exported.ok) throw new Error('Export failed')

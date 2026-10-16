@@ -12,6 +12,8 @@ const nonNegativeMillimetersSchema = z
 export const cuttingSettingsSchema = z.strictObject({
   kerfMm: nonNegativeMillimetersSchema,
   edgeMarginMm: nonNegativeMillimetersSchema,
+  // Optional on disk for legacy snapshots; absence means enabled without rewriting stored geometry.
+  preferStockPanels: z.boolean().optional(),
 })
 
 export type CuttingSettings = z.infer<typeof cuttingSettingsSchema>

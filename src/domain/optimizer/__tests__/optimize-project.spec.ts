@@ -179,3 +179,55 @@ describe('independent project accounting', () => {
     expect(validateProjectPlan({ ...plan, panels: [{ ...first, plan: { ...first.plan, unplaced: first.plan.unplaced.map(missing => ({ ...missing, reason: { kind: 'noSpaceLeft' } })) } }, ...plan.panels.slice(1)] }, input)).toMatchObject({ valid: false })
   })
 })
+
+
+describe('bounded owned-stock preference', () => {
+  const owned = stockItemSchema.parse({ ...validStockItemInput, id: 'owned-panel', lengthMm: 100, widthMm: 100, quantity: 2, grainDirection: 'none' })
+  const source = stockPanel(owned)
+  it.each([undefined, true, false])('prefers equivalent Stock, including offcuts, only when enabled (%j)', preferStockPanels => {
+    const settings = { ...input.settings, ...(preferStockPanels === undefined ? {} : { preferStockPanels }) }
+    const request = { ...input, settings, panels: [{ product, quantity: 2 }, { product: source, quantity: 2 }] }
+    const snapshot = structuredClone(request)
+    const plan = run(request)
+    expect(plan.panels.map(panel => panel.supplierProductId)).toEqual(preferStockPanels === false ? [product.id, product.id] : [source.id, source.id])
+    expect(plan.panels.map(panel => panel.panelCopyIndex)).toEqual([0, 1])
+    expect(run(request)).toEqual(plan)
+    expect(request).toEqual(snapshot)
+    expect(owned.kind).toBe('offcut')
+  })
+  it.each([true, false])('keeps physical limits and mixes sources when necessary (preference %s)', preferStockPanels => {
+    const plan = run({ ...input, settings: { ...input.settings, preferStockPanels }, panels: [{ product, quantity: 1 }, { product: source, quantity: 1 }] })
+    expect(plan.metrics).toMatchObject({ placedCount: 2, unplacedCount: 0 })
+    expect(plan.panels.filter(panel => panel.supplierProductId === source.id)).toHaveLength(1)
+    expect(new Set(plan.panels.filter(panel => panel.supplierProductId === source.id).map(panel => panel.panelCopyIndex)).size).toBe(1)
+    expect(plan.panels.filter(panel => panel.supplierProductId === product.id)).toHaveLength(1)
+    const limited = run({ ...input, settings: { ...input.settings, preferStockPanels }, panels: [{ product: source, quantity: 1 }] })
+    expect(limited.metrics).toMatchObject({ placedCount: 1, unplacedCount: 1, panelCount: 1 })
+  })
+  it.each([110, 110.001, 150])('allows at most ten percent extra panel area, with an exact boundary (%s mm)', lengthMm => {
+    const stockSource = stockPanel({ ...owned, lengthMm, quantity: 1 })
+    const plan = run({ ...input, parts: [{ ...part, quantity: 1 }], panels: [{ product, quantity: 1 }, { product: stockSource, quantity: 1 }] })
+    expect(plan.panels[0]?.supplierProductId).toBe(lengthMm === 110 ? stockSource.id : product.id)
+  })
+  it('does not add extra panels just to avoid Catalog and considers owned full panels too', () => {
+    const full = stockPanel({ ...owned, kind: 'fullPanel' })
+    const large = { ...product, lengthMm: 200 }
+    const plan = run({ ...input, panels: [{ product: large, quantity: 1 }, { product: full, quantity: 2 }] })
+    expect(plan.panels.map(panel => panel.supplierProductId)).toEqual([large.id])
+    const equivalent = run({ ...input, panels: [{ product, quantity: 2 }, { product: full, quantity: 2 }] })
+    expect(equivalent.panels.map(panel => panel.supplierProductId)).toEqual([full.id, full.id])
+  })
+  it('uses Catalog when stock cannot satisfy grain, thickness, kerf or margins', () => {
+    const constrained = partSchema.parse({ ...part, lengthMm: 100, widthMm: 50, quantity: 1, grainDirection: 'length', rotation: 'allowed' })
+    const catalog = supplierProductSchema.parse({ ...product, lengthMm: 104, widthMm: 54, grainDirection: 'length' })
+    for (const stockSource of [
+      stockPanel({ ...owned, lengthMm: 104, widthMm: 54, grainDirection: 'width' }),
+      stockPanel({ ...owned, lengthMm: 104, widthMm: 54, thicknessMm: 19 }),
+      stockPanel({ ...owned, lengthMm: 100, widthMm: 50, grainDirection: 'length' }),
+    ]) {
+      const plan = run({ parts: [constrained], settings: { kerfMm: 3, edgeMarginMm: 2, preferStockPanels: true }, panels: [{ product: catalog, quantity: 1 }, { product: stockSource, quantity: 1 }] })
+      expect(plan.panels.map(panel => panel.supplierProductId)).toEqual([catalog.id])
+      expect(plan.metrics.unplacedCount).toBe(0)
+    }
+  })
+})
