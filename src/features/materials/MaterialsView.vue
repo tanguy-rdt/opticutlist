@@ -57,7 +57,7 @@ const activeMaterial = computed(() => visibleMaterials.value.find(material => ma
 const activeProducts = computed(() => products.value.filter(product => product.materialId === activeMaterial.value?.id))
 const stockExpanded = ref(true)
 const catalogExpanded = ref(true)
-const collapsedSuppliers = ref<ReadonlySet<Supplier['id']>>(new Set())
+const expandedSuppliers = ref<ReadonlySet<Supplier['id']>>(new Set())
 const supplierGroups = computed(() => [...new Set(activeProducts.value.map(product => product.supplierId))].map(id => {
   const references = activeProducts.value.filter(product => product.supplierId === id)
   const eligible = references.filter(selectable)
@@ -85,10 +85,10 @@ function toggleSupplier(eligible: readonly SupplierProduct[]): void {
   }
 }
 function toggleSupplierExpansion(id: Supplier['id']): void {
-  const next = new Set(collapsedSuppliers.value)
+  const next = new Set(expandedSuppliers.value)
   if (next.has(id)) next.delete(id)
   else next.add(id)
-  collapsedSuppliers.value = next
+  expandedSuppliers.value = next
 }
 const orphanProducts = computed(() => products.value.filter(product => selectedProductIds.value.includes(product.id) && !materials.value.some(material => material.id === product.materialId)))
 const summaryMaterials = computed(() => materials.value.filter(material => selectedIds.value.includes(material.id)
@@ -561,18 +561,18 @@ onActivated(() => {
                   icon-only
                   :label="'Toggle ' + group.name"
                   :title="'Expand or collapse ' + group.name"
-                  :aria-expanded="!collapsedSuppliers.has(group.id)"
+                  :aria-expanded="expandedSuppliers.has(group.id)"
                   :aria-controls="'supplier-products-' + group.id"
                   @click="toggleSupplierExpansion(group.id)"
                 >
                   <AppIcon
                     name="chevron"
-                    :class="{ 'rotate-90': !collapsedSuppliers.has(group.id) }"
+                    :class="{ 'rotate-90': expandedSuppliers.has(group.id) }"
                   />
                 </AppButton>
               </header>
               <ul
-                v-show="!collapsedSuppliers.has(group.id)"
+                v-show="expandedSuppliers.has(group.id)"
                 :id="'supplier-products-' + group.id"
                 class="divide-y divide-line"
               >
