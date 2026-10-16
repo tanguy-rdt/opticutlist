@@ -3,6 +3,7 @@ import { onActivated, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { cuttingProjectIdSchema } from '../../domain/model/ids'
 import type { CuttingProject } from '../../domain/model/cutting-project'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import { persistenceErrorMessage } from '../../shared/ui/persistence-error-message'
 import { partRepositoryKey } from '../parts/part-repository'
 import { projectIdKey, useProjectService } from './project-service'
@@ -16,6 +17,13 @@ const service = useProjectService()
 const navigation = useProjectNavigation()
 const route = useRoute()
 const workspaceRoute = shallowRef({ ...route })
+const sections = [
+  { label: 'Materials', route: 'project-materials' },
+  { label: 'Parts', route: 'project-parts' },
+  { label: 'Optimization', route: 'project-optimization' },
+  { label: 'Cutting Plans', route: 'project-cutting-plans' },
+  { label: 'Stock', route: 'project-stock' },
+] as const
 function remember(): void {
   if (route.params.projectId !== props.projectId || !project.value) return
   workspaceRoute.value = { ...route }
@@ -61,7 +69,7 @@ onActivated(async () => {
 onMounted(load)
 </script>
 <template>
-  <section class="space-y-6">
+  <section class="min-w-0 space-y-6">
     <p
       v-if="loading"
       role="status"
@@ -91,61 +99,72 @@ onMounted(load)
       </button>
     </div>
     <template v-else-if="project">
-      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
-        <div>
-          <RouterLink
-            to="/projects"
-            class="mb-1 inline-block text-sm text-muted hover:text-accent"
-          >
-            ← All projects
-          </RouterLink>
-          <p class="text-xl font-semibold [overflow-wrap:anywhere]">
-            {{ project.name }}
-          </p>
-        </div>
+      <header class="project-header flex min-w-0 flex-wrap items-center justify-between gap-x-5 gap-y-2 border-b border-line pb-3">
+        <nav
+          aria-label="Project context"
+          class="min-w-0 flex-1 basis-40"
+        >
+          <ol class="flex min-w-0 items-center gap-2 text-sm">
+            <li class="shrink-0">
+              <RouterLink
+                to="/projects"
+                class="rounded text-muted hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                All projects
+              </RouterLink>
+            </li>
+            <li class="flex min-w-0 items-center gap-2">
+              <AppIcon
+                name="chevron"
+                class="size-3 text-muted"
+              />
+              <span
+                class="truncate font-semibold"
+                :title="project.name"
+              >{{ project.name }}</span>
+            </li>
+          </ol>
+        </nav>
         <nav
           aria-label="Project"
-          class="flex flex-wrap gap-2"
+          class="ml-auto min-w-0 max-w-full overflow-x-auto"
         >
-          <RouterLink
-            :to="{ name: 'project-materials', params: { projectId: project.id } }"
-            class="nav-link"
-          >
-            Materials
-          </RouterLink>
-          <RouterLink
-            :to="{ name: 'project-parts', params: { projectId: project.id } }"
-            class="nav-link"
-          >
-            Parts
-          </RouterLink>
-          <RouterLink
-            :to="{ name: 'project-optimization', params: { projectId: project.id } }"
-            class="nav-link"
-          >
-            Optimization
-          </RouterLink>
-          <RouterLink
-            v-if="cuttingState.available.value"
-            :to="{ name: 'project-cutting-plans', params: { projectId: project.id } }"
-            class="nav-link"
-          >
-            Cutting Plans
-          </RouterLink>
-          <span
-            v-else
-            class="nav-link cursor-not-allowed opacity-60"
-            aria-disabled="true"
-            title="Optimize a valid cutting plan first"
-          >Cutting Plans</span>
-          <RouterLink
-            :to="{ name: 'project-stock', params: { projectId: project.id } }"
-            class="nav-link"
-          >
-            Stock
-          </RouterLink>
+          <ol class="flex w-max items-center gap-1">
+            <li
+              v-for="(section, index) in sections"
+              :key="section.route"
+              class="flex shrink-0 items-center gap-1"
+            >
+              <AppIcon
+                v-if="index"
+                name="chevron"
+                class="size-3 text-muted"
+              />
+              <RouterLink
+                v-slot="{ href, navigate, isExactActive }"
+                :to="{ name: section.route, params: { projectId: project.id } }"
+                custom
+              >
+                <a
+                  :href="href"
+                  :aria-label="section.label"
+                  :aria-current="isExactActive ? 'page' : undefined"
+                  class="grid shrink-0 items-center rounded-md px-2 py-1.5 text-sm whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+                  :class="isExactActive ? 'bg-subtle font-semibold text-accent' : 'font-normal text-muted hover:font-semibold hover:text-accent'"
+                  @click="navigate"
+                >
+                  <!-- Reserve the semibold label width to keep hover from shifting adjacent links. -->
+                  <span
+                    aria-hidden="true"
+                    class="invisible col-start-1 row-start-1 font-semibold"
+                  >{{ section.label }}</span>
+                  <span class="col-start-1 row-start-1">{{ section.label }}</span>
+                </a>
+              </RouterLink>
+            </li>
+          </ol>
         </nav>
-      </div>
+      </header>
       <RouterView :route="workspaceRoute" />
     </template>
   </section>
