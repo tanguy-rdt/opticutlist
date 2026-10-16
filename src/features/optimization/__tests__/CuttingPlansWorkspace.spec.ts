@@ -1,3 +1,6 @@
+import { createPinia, setActivePinia } from 'pinia'
+import { useToastStore } from '../../../shared/ui/toast-store'
+import { openPdfPrintView } from '../pdf-print-view'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as PdfExportModule from '../pdf-export-service'
@@ -9,13 +12,14 @@ import { pngCover, jpegCover } from '../../../infrastructure/pdf/__tests__/cover
 import { pdfRequest, projectPdfRequest } from '../../../application/export/__tests__/pdf-fixtures'
 import { rotationPlan } from '../../../domain/cutting-tree/__tests__/editing-fixtures'
 
+vi.mock('../pdf-print-view', () => ({ openPdfPrintView: vi.fn() }))
 vi.mock('../pdf-preview', () => ({ loadPdfPreview: vi.fn() }))
 vi.mock('../pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn(), readCoverImage: vi.fn() }))
 const wrappers: VueWrapper[] = []
 function preview(): PdfPreviewDocument {
   return { pageCount: 3, render: vi.fn(() => Promise.resolve()), destroy: vi.fn(() => Promise.resolve()) }
 }
-beforeEach(() => { vi.mocked(loadPdfPreview).mockReset(); vi.mocked(loadPdfPreview).mockResolvedValue(preview()); vi.mocked(downloadCuttingPlanPdf).mockClear() })
+beforeEach(() => { setActivePinia(createPinia()); vi.mocked(openPdfPrintView).mockReset(); vi.mocked(loadPdfPreview).mockReset(); vi.mocked(loadPdfPreview).mockResolvedValue(preview()); vi.mocked(downloadCuttingPlanPdf).mockClear() })
 afterEach(() => { wrappers.forEach(wrapper => { wrapper.unmount() }); wrappers.length = 0; vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function setup(generate = vi.fn<(document: ProjectCuttingPdfDocument) => Promise<Uint8Array<ArrayBuffer>>>().mockResolvedValue(new Uint8Array([1, 2]))) {
   const input = projectPdfRequest()
@@ -124,7 +128,9 @@ describe('Cutting Plans workspace', () => {
     expect(download?.element.closest('aside')).toBe(wrapper.get('.document-settings').element)
     await click(wrapper, 'Download PDF')
     expect(downloadCuttingPlanPdf).toHaveBeenCalledWith(new Uint8Array([1, 2]))
-    expect(generate).toHaveBeenCalledOnce()
+    expect(generate).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('PDF download started')
+    expect(useToastStore().notifications).toEqual([])
     expect(input).toEqual(before)
   })
   it('regenerates A3 and explicit landscape using the same validated result and resets page navigation', async () => {
@@ -219,7 +225,9 @@ describe('Cutting Plans workspace', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true)
     expect(generate).not.toHaveBeenCalled()
     expect(wrapper.find('canvas').exists()).toBe(false)
-    expect(wrapper.findAll('button').find(button => button.text() === 'Download PDF')?.attributes('disabled')).toBeDefined()
+    await click(wrapper, 'Download PDF')
+    expect(downloadCuttingPlanPdf).not.toHaveBeenCalled()
+    expect(useToastStore().notifications[0]?.kind).toBe('error')
   })
   it('discards stale generation and aborted render results on settings changes or exit', async () => {
     let finishGeneration: (bytes: Uint8Array<ArrayBuffer>) => void = () => { throw new Error('Not started') }
@@ -273,4 +281,91 @@ describe('Cutting Plans workspace', () => {
     await click(wrapper, 'Download PDF')
     expect(downloadCuttingPlanPdf).toHaveBeenCalledWith(new Uint8Array([4]))
   })
+})
+
+it.each(['download', 'print'] as const)('shows shared button loading and prevents duplicate %s operations', async kind => {
+  const { wrapper, generate } = setup()
+  await flushPromises()
+  const viewer = { show: vi.fn(), close: vi.fn() }
+  vi.mocked(openPdfPrintView).mockReturnValue(viewer)
+  let finish: ((bytes: Uint8Array<ArrayBuffer>) => void) | undefined
+  generate.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const label = kind === 'download' ? 'Download PDF' : 'Print'
+  const loading = kind === 'download' ? 'Generating PDF…' : 'Preparing…'
+  const button = wrapper.findAll('button').find(button => button.text() === label)
+  if (!button) throw new Error('Missing action')
+  await button.trigger('click')
+  expect(button.attributes('aria-busy')).toBe('true')
+  expect(button.find('.button-spinner').exists()).toBe(true)
+  expect(button.text()).toBe(loading)
+  expect(button.attributes('disabled')).toBeDefined()
+  expect(wrapper.get('.document-action [role="status"]').text()).toContain(kind === 'download' ? 'Generating PDF' : 'Preparing PDF')
+  if (kind === 'print') expect(openPdfPrintView).toHaveBeenCalledOnce()
+  await button.trigger('click')
+  expect(generate).toHaveBeenCalledTimes(2) // initial preview + this action
+  finish?.(new Uint8Array([9])); await flushPromises()
+  expect(button.text()).toBe(label)
+  expect(button.attributes('disabled')).toBeUndefined()
+  expect(button.find('.button-spinner').exists()).toBe(false)
+  if (kind === 'print') {
+    expect(viewer.show).toHaveBeenCalledWith(new Uint8Array([9]))
+    expect(downloadCuttingPlanPdf).not.toHaveBeenCalled()
+    expect(viewer.close).not.toHaveBeenCalled()
+    wrapper.unmount()
+    expect(viewer.close).not.toHaveBeenCalled()
+  } else expect(downloadCuttingPlanPdf).toHaveBeenCalledWith(new Uint8Array([9]))
+  expect(useToastStore().notifications).toEqual([])
+})
+
+it.each(['Download PDF', 'Print'])('uses current cover and orientation settings for %s and restores controls on failure', async label => {
+  const { wrapper, generate } = setup()
+  const viewer = { show: vi.fn(), close: vi.fn() }
+  vi.mocked(openPdfPrintView).mockReturnValue(viewer)
+  await wrapper.setProps({ settings: { pageSize: 'A3', orientation: 'landscape', titleOverride: 'Fabrication', description: 'Notes', coverImage: pngCover } })
+  await flushPromises()
+  generate.mockRejectedValueOnce(new Error('Cannot prepare fonts. Please retry.'))
+  await click(wrapper, label)
+  expect(generate.mock.calls.at(-1)?.[0]).toMatchObject({ pageSize: 'A3', orientation: 'landscape', cover: { title: 'Fabrication', description: 'Notes', image: pngCover } })
+  const button = wrapper.findAll('button').find(button => button.text() === label)
+  expect(button?.attributes('disabled')).toBeUndefined()
+  expect(button?.find('.button-spinner').exists()).toBe(false)
+  expect(useToastStore().notifications).toMatchObject([{ kind: 'error', description: 'Cannot prepare fonts. Please retry.', duration: 0 }])
+  expect(downloadCuttingPlanPdf).not.toHaveBeenCalled()
+  expect(viewer.show).not.toHaveBeenCalled()
+  if (label === 'Print') expect(viewer.close).toHaveBeenCalledOnce()
+})
+
+it('reports blocked print popups without generating another document', async () => {
+  const { wrapper, generate } = setup(); await flushPromises()
+  vi.mocked(openPdfPrintView).mockImplementation(() => { throw new Error('Allow popups for OptiCutList, then try Print again.') })
+  await click(wrapper, 'Print')
+  expect(generate).toHaveBeenCalledOnce()
+  expect(useToastStore().notifications[0]?.description).toContain('Allow popups')
+  expect(wrapper.findAll('button').find(button => button.text() === 'Print')?.attributes('disabled')).toBeUndefined()
+})
+
+it('closes a pending print tab and discards output when leaving the workspace', async () => {
+  const { wrapper, generate } = setup(); await flushPromises()
+  const viewer = { show: vi.fn(), close: vi.fn() }
+  vi.mocked(openPdfPrintView).mockReturnValue(viewer)
+  let finish: ((bytes: Uint8Array<ArrayBuffer>) => void) | undefined
+  generate.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  await click(wrapper, 'Print')
+  wrapper.unmount()
+  expect(viewer.close).toHaveBeenCalled()
+  finish?.(new Uint8Array([9])); await flushPromises()
+  expect(viewer.show).not.toHaveBeenCalled()
+  expect(useToastStore().notifications).toEqual([])
+})
+
+it('reports browser download failures without success feedback and permits another attempt', async () => {
+  const { wrapper } = setup(); await flushPromises()
+  vi.mocked(downloadCuttingPlanPdf).mockImplementationOnce(() => { throw new Error('Downloads blocked. Check browser download permissions and retry.') })
+  await click(wrapper, 'Download PDF')
+  expect(useToastStore().notifications).toMatchObject([{ kind: 'error', title: 'Could not download PDF' }])
+  expect(useToastStore().notifications[0]?.description).toContain('download permissions')
+  expect(wrapper.findAll('button').find(button => button.text() === 'Download PDF')?.attributes('disabled')).toBeUndefined()
+  expect(wrapper.text()).not.toContain('PDF download started')
+  await click(wrapper, 'Download PDF')
+  expect(downloadCuttingPlanPdf).toHaveBeenCalledTimes(2)
 })

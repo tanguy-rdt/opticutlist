@@ -57,7 +57,8 @@ describe('complete cutting finalization', () => {
     expect(generateProject.mock.calls[0]?.[0].panels).toHaveLength(2)
     await vi.waitFor(() => { expect(button(wrapper, 'Export PDF').attributes('disabled')).toBeUndefined() })
     await button(wrapper, 'Export PDF').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('PDF download started') })
+    await vi.waitFor(() => { expect(button(wrapper, 'Export PDF').attributes('disabled')).toBeUndefined() })
+    expect(wrapper.text()).not.toContain('PDF download started')
     const generated = generateProject.mock.results[0]
     if (!generated || generated.type !== 'return') throw new Error('PDF generation did not complete')
     const pdf = await PDFDocument.load(await generated.value)
@@ -96,7 +97,8 @@ describe('complete cutting finalization', () => {
     expect(wrapper.text()).toContain('No matching owned stock')
     expect(button(wrapper, 'Review inventory changes').attributes('disabled')).toBeDefined()
     await button(wrapper, 'Export PDF').trigger('click')
-    await vi.waitFor(() => { expect(wrapper.text()).toContain('PDF download started') })
+    await vi.waitFor(() => { expect(button(wrapper, 'Export PDF').attributes('disabled')).toBeUndefined() })
+    expect(wrapper.text()).not.toContain('PDF download started')
     expect(await persistence.stockItems.list()).toEqual({ ok: true, value: [] })
   })
   it('refuses invalid layouts and supports keyboard closing with focus restoration', async () => {

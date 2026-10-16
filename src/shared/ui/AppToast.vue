@@ -15,7 +15,7 @@ function stop(): void {
   if (timer !== undefined) { clearTimeout(timer); timer = undefined; remaining = Math.max(0, remaining - (Date.now() - started)) }
 }
 function resume(): void {
-  if (paused.value || timer !== undefined) return
+  if (props.notification.duration <= 0 || paused.value || timer !== undefined) return
   started = Date.now()
   timer = setTimeout(() => { timer = undefined; emit('dismiss') }, remaining)
 }
@@ -36,11 +36,12 @@ onBeforeUnmount(stop)
     @focusout="focus"
   >
     <AppIcon
-      name="check"
-      class="app-toast-status text-success"
+      :name="notification.kind === 'error' ? 'info' : 'check'"
+      class="app-toast-status"
+      :class="notification.kind === 'error' ? 'text-danger' : 'text-success'"
     />
     <div
-      role="status"
+      :role="notification.kind === 'error' ? 'alert' : 'status'"
       aria-atomic="true"
       class="min-w-0 flex-1"
     >
@@ -64,6 +65,7 @@ onBeforeUnmount(stop)
       <AppIcon name="close" />
     </AppButton>
     <span
+      v-if="notification.duration > 0"
       class="app-toast-progress"
       aria-hidden="true"
       :style="{ animationDuration: `${notification.duration}ms`, animationPlayState: paused ? 'paused' : 'running' }"

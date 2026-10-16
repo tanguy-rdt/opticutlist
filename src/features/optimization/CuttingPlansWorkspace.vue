@@ -3,6 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, toRaw,
 import { pdfSettingsSchema, type PdfSettings } from '../../domain/model/pdf-settings'
 import FormField from '../../shared/ui/FormField.vue'
 import AppButton from '../../shared/ui/AppButton.vue'
+import AppIcon from '../../shared/ui/AppIcon.vue'
+import { useToastStore } from '../../shared/ui/toast-store'
+import { openPdfPrintView, type PdfPrintView } from './pdf-print-view'
 import type { PdfOrientation, PdfPageSize } from '../../application/export/cutting-plan-pdf-service'
 import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import { readCoverImage, downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-service'
@@ -64,7 +67,9 @@ const zoom = ref(1)
 const generating = ref(false)
 const rendering = ref(false)
 const error = ref('')
-const feedback = ref('')
+const action = ref<'download' | 'print' | null>(null)
+const toasts = useToastStore()
+let pendingPrint: PdfPrintView | null = null
 const workspace = ref<HTMLElement | null>(null)
 const paper = ref<HTMLDivElement | null>(null)
 const viewport = ref<HTMLDivElement | null>(null)
@@ -143,33 +148,49 @@ async function renderPages(): Promise<void> {
     if (current === renderVersion && !disposed) error.value = cause instanceof Error ? cause.message : 'PDF preview failed.'
   } finally { if (current === renderVersion) rendering.value = false }
 }
-async function regenerate(): Promise<void> {
+async function regenerate(): Promise<Uint8Array<ArrayBuffer> | null> {
   const current = ++generation
-  clearDocument(); error.value = ''; feedback.value = ''; page.value = 1; generating.value = true
+  clearDocument(); error.value = ''; page.value = 1; generating.value = true
   const signal = loading.signal
-  if (!service) { error.value = 'PDF generation is unavailable.'; generating.value = false; return }
+  if (!service) { error.value = 'PDF generation is unavailable.'; generating.value = false; return null }
   try {
     const result = await service.exportProject({ ...toRaw(props.input), title: props.title, cover: {
       ...(configuration.value.titleOverride ? { title: configuration.value.titleOverride } : {}),
       ...(configuration.value.description ? { description: configuration.value.description } : {}),
       ...(configuration.value.coverImage ? { image: toRaw(configuration.value.coverImage) } : {}),
     }, pageSize: pageSize.value, orientation: orientation.value })
-    if (!isCurrent(current)) return
-    if (!result.ok) { error.value = result.error.message; return }
+    if (!isCurrent(current)) return null
+    if (!result.ok) { error.value = result.error.message; return null }
     bytes.value = result.bytes
     const loaded = await loadPdfPreview(result.bytes, signal)
-    if (!isCurrent(current)) { await loaded.destroy(); return }
+    if (!isCurrent(current)) { await loaded.destroy(); return null }
     pdf = loaded; pageCount.value = loaded.pageCount
     generating.value = false
     await nextTick(); await renderPages()
   } catch (cause) {
     if (isCurrent(current)) error.value = cause instanceof Error ? cause.message : 'Could not prepare the cutting document.'
   } finally { if (current === generation) generating.value = false }
+  return isCurrent(current) ? bytes.value : null
 }
-function download(): void {
-  if (!bytes.value || generating.value) return
-  try { downloadCuttingPlanPdf(bytes.value); feedback.value = 'PDF download started.' }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : 'PDF download failed.' }
+async function exportPdf(kind: 'download' | 'print'): Promise<void> {
+  if (action.value || generating.value || !service) return
+  action.value = kind
+  let viewer: PdfPrintView | null = null
+  try {
+    if (kind === 'print') { viewer = openPdfPrintView(); pendingPrint = viewer }
+    const document = await regenerate()
+    if (disposed) return
+    if (!document) throw new Error(error.value || 'The document changed while preparing it. Try again.')
+    if (viewer) viewer.show(document)
+    else downloadCuttingPlanPdf(document)
+    pendingPrint = null
+  } catch (cause) {
+    viewer?.close()
+    if (!disposed) toasts.error(kind === 'print' ? 'Could not prepare PDF for printing' : 'Could not download PDF', cause instanceof Error ? cause.message : 'Try again. If the problem continues, reload the document.')
+  } finally {
+    if (disposed) viewer?.close()
+    pendingPrint = null; action.value = null
+  }
 }
 watch([() => props.input, () => props.title, configuration], () => { void regenerate() }, { immediate: true, deep: true })
 watch(zoom, () => { void renderPages() })
@@ -194,7 +215,7 @@ onMounted(() => {
     if (workspace.value) observer.observe(workspace.value)
   }
 })
-onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect(); window.removeEventListener('resize', sizeWorkspace); clearDocument() })
+onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1; observer?.disconnect(); window.removeEventListener('resize', sizeWorkspace); clearDocument() })
 </script>
 <template>
   <section
@@ -214,13 +235,6 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
       >
         Retry
       </button>
-    </p>
-    <p
-      v-if="feedback"
-      role="status"
-      class="text-sm text-success"
-    >
-      {{ feedback }}
     </p>
     <div class="document-grid">
       <div class="preview-column">
@@ -447,14 +461,37 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
           </p>
         </div>
         <div class="document-action">
-          <button
-            type="button"
-            class="button button-primary button-compact w-full"
-            :disabled="!bytes || generating"
-            @click="download"
+          <AppButton
+            size="small"
+            class="print-action"
+            :disabled="generating || action !== null || !service"
+            :loading="action === 'print'"
+            @click="exportPdf('print')"
           >
-            Download PDF
-          </button>
+            <AppIcon
+              v-if="action !== 'print'"
+              name="printer"
+            />
+            {{ action === 'print' ? 'Preparing…' : 'Print' }}
+          </AppButton>
+          <AppButton
+            variant="primary"
+            size="small"
+            class="download-action"
+            :disabled="generating || action !== null || !service"
+            :loading="action === 'download'"
+            @click="exportPdf('download')"
+          >
+            <AppIcon
+              v-if="action !== 'download'"
+              name="export"
+            />
+            {{ action === 'download' ? 'Generating PDF…' : 'Download PDF' }}
+          </AppButton>
+          <span
+            class="sr-only"
+            role="status"
+          >{{ action === 'download' ? 'Generating PDF…' : action === 'print' ? 'Preparing PDF for printing…' : '' }}</span>
         </div>
       </aside>
     </div>
@@ -482,7 +519,9 @@ onBeforeUnmount(() => { disposed = true; generation += 1; observer?.disconnect()
 .options button { flex: 1; height: var(--control-height-small); min-height: var(--control-height-small); padding: .3rem .5rem; border-radius: var(--control-radius); font-size: .8125rem; }
 .options button[aria-pressed='true'] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
 .options button:hover { color: var(--accent); }
-.document-action { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.document-action { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.print-action { min-width: 7rem; }
+.download-action { min-width: 10.5rem; }
 @media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .75rem; } .document-settings { grid-row: 1; max-height: min(45dvh, 24rem); display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; padding: 1rem; } .document-settings h2, .cover-settings { flex-basis: 100%; } .cover-settings { margin-top: 1rem; min-width: 0; }
 .setting { margin-top: 0; } .document-action { margin: 0 0 0 auto; padding: 0; border: 0; } }
 @media (max-width: 640px) { .document-viewport { padding: 1rem; } .paper { gap: 1.25rem; } .document-settings { gap: .75rem 1rem; } }

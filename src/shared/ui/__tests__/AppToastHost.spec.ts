@@ -84,3 +84,16 @@ describe('application toast notifications', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.toast-enter-active, \.toast-leave-active \{ transition: none; \}\s*\.app-toast-progress \{ animation: none; \}/)
   })
 })
+
+it('keeps PDF operation errors available until explicitly dismissed', async () => {
+  const store = setup()
+  const id = store.error('Could not download PDF', 'Retry after checking the document settings.')
+  expect(store.error('Could not download PDF', 'Retry after checking the document settings.')).toBe(id)
+  await nextTick()
+  expect(wrapper.get('[role="alert"]').text()).toContain('Retry after checking')
+  expect(wrapper.find('.app-toast-progress').exists()).toBe(false)
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(store.notifications).toHaveLength(1)
+  await wrapper.get('button[aria-label="Dismiss Could not download PDF"]').trigger('click')
+  expect(store.notifications).toHaveLength(0)
+})

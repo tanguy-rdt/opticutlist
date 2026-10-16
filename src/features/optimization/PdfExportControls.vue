@@ -3,6 +3,7 @@ import { onBeforeUnmount, onDeactivated, ref, toRaw, watch } from 'vue'
 import type { PdfOrientation } from '../../application/export/cutting-plan-pdf-service'
 import type { SavePlanInput } from '../../application/plans/saved-plan-service'
 import FormField from '../../shared/ui/FormField.vue'
+import AppButton from '../../shared/ui/AppButton.vue'
 import { downloadCuttingPlanPdf, useCuttingPlanPdfService } from './pdf-export-service'
 
 const props = defineProps<{ input: SavePlanInput; title: string; workspace?: boolean }>()
@@ -30,7 +31,7 @@ async function exportPdf(download: boolean): Promise<void> {
     clearPreview()
     previewUrl.value = URL.createObjectURL(new Blob([result.bytes], { type: 'application/pdf' }))
     if (download) downloadCuttingPlanPdf(result.bytes)
-    feedback.value = download ? 'PDF download started. All panel layouts were independently validated.' : 'Complete PDF preview generated. Inventory is unchanged.'
+    if (!download) feedback.value = 'Complete PDF preview generated. Inventory is unchanged.'
   } catch (cause) {
     if (current === generation) error.value = cause instanceof Error ? `PDF export failed: ${cause.message}` : 'PDF export failed. Try again.'
   } finally { if (current === generation) exporting.value = false }
@@ -78,16 +79,14 @@ async function exportPdf(download: boolean): Promise<void> {
         >
           Preview PDF
         </button>
-        <button
-          type="button"
-          class="button"
-          :disabled="exporting || service === undefined"
-          :aria-busy="exporting"
+        <AppButton
+          :disabled="service === undefined"
+          :loading="exporting"
           aria-describedby="pdf-export-help"
           @click="exportPdf(true)"
         >
           {{ exporting ? 'Generating PDF…' : 'Export PDF' }}
-        </button>
+        </AppButton>
       </div>
       <p
         id="pdf-export-help"

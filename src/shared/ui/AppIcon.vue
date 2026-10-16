@@ -13,6 +13,7 @@ const paths = {
   plus: 'M12 5v14M5 12h14',
   search: 'M21 21l-6-6M17 9a7 7 0 1 1-14 0 7 7 0 0 1 14 0',
   external: 'M14 3h7v7M21 3 11 13M10 5H4v15h15v-6',
+  printer: 'M6 9V3h12v6M6 18H3V9h18v9h-3M6 14h12v7H6ZM17 12h.01',
   export: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   import: 'M12 15V3m-5 5 5-5 5 5M4 16v5h16v-5',
   chevron: 'm9 5 7 7-7 7',
