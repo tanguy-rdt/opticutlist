@@ -135,7 +135,7 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
   const [result, project, productResult, supplierResult, stockResult] = await Promise.all([
-    repository.list(), service.projects.get(projectId), catalog.supplierProducts.list(), catalog.suppliers.list(), stockRepository?.list() ?? Promise.resolve({ ok: true as const, value: [] }),
+    repository.list(), service.projects.get(projectId), catalog.supplierProducts.list(), catalog.suppliers.list(), stockRepository?.selectionStock(projectId) ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
   if (disposed || !active || revision !== loadRevision) return
   if (result.ok && project.ok && productResult.ok && supplierResult.ok && stockResult.ok) {

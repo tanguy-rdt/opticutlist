@@ -78,6 +78,7 @@ describe('automatic project stock reconciliation', () => {
     expect((await projects.update(other.id, { ...other, stockItemIds: [offcut.id] })).ok).toBe(true)
     // Existing circular data stays readable and unchanged until explicitly removed.
     value(await persistence.projects.update(project.id, { ...project, stockItemIds: [offcut.id] }))
+    expect(value(await repository.selectionStock(project.id))).toContainEqual(offcut)
     const rejected = await repository.planningStock(project.id)
     expect(rejected).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
     if (!rejected.ok && rejected.error.kind === 'referenceConflict') expect(rejected.error.message).toContain('Remove that stock selection in Materials')
@@ -148,7 +149,27 @@ describe('automatic project stock reconciliation', () => {
     const history = value(await service.preview()).movements
     value(await ownedPlan())
     expect(value(await service.preview()).movements).toEqual(history)
-    expect(value(await createStockRepository(persistence).planningStock(project.id)).find(item => item.id === stock.id)?.quantity).toBe(3)
+    const repository = createStockRepository(persistence)
+    expect(value(await repository.planningStock(project.id)).find(item => item.id === stock.id)?.quantity).toBe(3)
+    expect(value(await repository.selectionStock(project.id)).find(item => item.id === stock.id)?.quantity).toBe(3)
+    // Deplete the live record completely; only the owning project's active ledger grants supply.
+    value(await ownedPlan(3))
+    const ledger = await persistence.projectStock.find(project.id)
+    expect(await repository.list()).toEqual({ ok: true, value: [] })
+    expect(value(await repository.selectionStock(project.id))).toEqual([stock])
+    const projects = createProjectService(persistence).projects
+    const owner = value(await projects.get(project.id))
+    value(await projects.update(project.id, { ...owner, stockItemIds: [stock.id] }))
+    const other = cuttingProjectSchema.parse({ ...project, id: 'another-stock-project', stockItemIds: [stock.id] })
+    expect(await projects.create(other)).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    // Legacy/imported selections alone must not grant ownership.
+    value(await persistence.projects.create(other))
+    expect(value(await repository.selectionStock(other.id))).toEqual([])
+    expect(value(await repository.planningStock(other.id))).toEqual([])
+    expect(await projects.update(other.id, { ...other, name: 'Still unavailable' })).toMatchObject({ ok: false, error: { kind: 'referenceConflict' } })
+    value(await projects.update(project.id, { ...owner, stockItemIds: [] }))
+    expect(await persistence.projectStock.find(project.id)).toEqual(ledger)
+    expect(await repository.list()).toEqual({ ok: true, value: [] })
     value(await ownedPlan(1))
     expect(value(await persistence.stockItems.get(stock.id)).quantity).toBe(2)
     await optimize()

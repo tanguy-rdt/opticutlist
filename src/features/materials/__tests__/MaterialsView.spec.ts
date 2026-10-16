@@ -7,7 +7,7 @@ import { createProjectService, type ProjectService } from '../../../application/
 import { projectIdKey, projectServiceKey } from '../../projects/project-service'
 import { supplierRepositoryKey, supplierProductRepositoryKey } from '../../suppliers/catalog-repositories'
 import type { LocalPersistence, PersistenceResult, Repository } from '../../../application/persistence/repositories'
-import { validMaterialInput, validSupplierInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
+import { validMaterialInput, validSupplierInput, validSupplierProductInput, validStockItemInput, validPartInput } from '../../../domain/model/__tests__/fixtures'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { materialSchema, type Material } from '../../../domain/model/material'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
@@ -15,7 +15,12 @@ import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../../../app/router'
 import MaterialsView from '../MaterialsView.vue'
 import { stockRepositoryKey } from '../../inventory/stock-repository'
-import { createStockRepository } from '../../../application/inventory/stock-repository'
+import { createCurrentResultService } from '../../../application/plans/current-result-service'
+import { partSchema } from '../../../domain/model/part'
+import { panelSnapshotSchema } from '../../../domain/model/saved-cutting-plan'
+import { optimizeProject } from '../../../domain/optimizer/optimize-project'
+import { stockPanel } from '../../../domain/optimizer/panel-source'
+import { createStockRepository, type StockRepository } from '../../../application/inventory/stock-repository'
 import { stockItemSchema } from '../../../domain/model/stock-item'
 import { materialRepositoryKey } from '../material-repository'
 
@@ -47,7 +52,7 @@ function projectRepository() {
     }),
   }
 }
-function render(repository: Repository<Material>, service?: ProjectService, catalog?: Pick<LocalPersistence, 'suppliers' | 'supplierProducts'> & Partial<LocalPersistence>, id = project.id) {
+function render(repository: Repository<Material>, service?: ProjectService, catalog?: Pick<LocalPersistence, 'suppliers' | 'supplierProducts'> & Partial<LocalPersistence>, id = project.id, stockSource?: StockRepository) {
   const emptyCatalog = {
     create: vi.fn(), get: vi.fn(), update: vi.fn(), delete: vi.fn(),
     list: vi.fn().mockResolvedValue({ ok: true, value: [] }),
@@ -65,7 +70,7 @@ function render(repository: Repository<Material>, service?: ProjectService, cata
       provide: {
         [materialRepositoryKey]: repository, [projectServiceKey]: source, [projectIdKey]: id,
         [supplierRepositoryKey]: catalog?.suppliers ?? { ...emptyCatalog, list: vi.fn().mockResolvedValue({ ok: true, value: [validSupplierInput] }) }, [supplierProductRepositoryKey]: catalog?.supplierProducts ?? { ...emptyCatalog, list: vi.fn().mockResolvedValue({ ok: true, value: [validSupplierProductInput, { ...validSupplierProductInput, id: 'oak-panel', materialId: 'oak' }] }) },
-        ...(catalog?.stockItems ? { [stockRepositoryKey]: catalog.stockItems } : {}),
+        ...(catalog?.stockItems ? { [stockRepositoryKey]: stockSource ?? { ...catalog.stockItems, selectionStock: () => catalog.stockItems?.list() } } : {}),
       },
     },
   })
@@ -677,6 +682,66 @@ describe('MaterialsView', () => {
       expect(reopened.get('.panel-references').findAll('input[aria-label^="Use "]')).toHaveLength(2)
       expect(await next.stockItems.list()).toEqual(inventory)
     } finally { persistence.close(); next.close() }
+  })
+
+  it('retains consumed source selections after optimization and reload without exposing them to other projects', async () => {
+    const indexedDB = new IDBFactory()
+    const persistence = createLocalPersistence('materials-allocated-stock', { indexedDB, IDBKeyRange })
+    const reopened = createLocalPersistence('materials-allocated-stock', { indexedDB, IDBKeyRange })
+    try {
+      await persistence.materials.create(material)
+      const first = stockItemSchema.parse(validStockItemInput)
+      const second = stockItemSchema.parse({ ...first, id: 'unused-identical-panel' })
+      await persistence.stockItems.create(first)
+      await persistence.stockItems.create(second)
+      const service = createProjectService(persistence)
+      await service.projects.create({ ...project, stockItemIds: [first.id, second.id] })
+      const part = partSchema.parse({ ...validPartInput, lengthMm: 200, widthMm: 200, quantity: 1 })
+      await service.parts(project.id).create(part)
+      const source = stockPanel(first)
+      const settings = { kerfMm: 3, edgeMarginMm: 0 }
+      const result = optimizeProject({ parts: [part], panels: [{ product: source, quantity: 1 }], settings })
+      if (!result.ok) throw new Error('Invalid test plan')
+      const current = createCurrentResultService(persistence).forProject(project.id)
+      const snapshot = panelSnapshotSchema.parse({
+        id: source.id, stockItemId: first.id, name: source.name, materialId: first.materialId,
+        lengthMm: first.lengthMm, widthMm: first.widthMm, thicknessMm: first.thicknessMm, grainDirection: first.grainDirection,
+      })
+      const replacement = { plan: result.plan, parts: [part], settings, sources: [{ product: snapshot, quantity: 1, materialName: material.name, supplierName: 'Owned stock' }], editedPanelIndices: [] }
+      const before = render(persistence.materials, service, persistence, project.id, createStockRepository(persistence))
+      await vi.waitFor(() => { expect(before.find(`input[aria-label="Use stock ${first.id}"]`).exists()).toBe(true) })
+      expect(before.get<HTMLInputElement>(`input[aria-label="Use stock ${first.id}"]`).element.checked).toBe(true)
+      before.unmount()
+      expect((await current.replace(replacement)).ok).toBe(true)
+      const ledger = await persistence.projectStock.find(project.id)
+      expect(await persistence.stockItems.get(first.id)).toMatchObject({ ok: false, error: { kind: 'notFound' } })
+      expect((await current.replace(replacement)).ok).toBe(true)
+      const after = await persistence.projectStock.find(project.id)
+      expect(after.ok && after.value?.movements).toEqual(ledger.ok && ledger.value?.movements)
+      const restoredService = createProjectService(reopened)
+      const view = render(reopened.materials, restoredService, reopened, project.id, createStockRepository(reopened))
+      await vi.waitFor(() => { expect(view.get('input[aria-label="Search materials"]').attributes('disabled')).toBeUndefined() })
+      expect(view.findAll(`input[aria-label="Use stock ${first.id}"]`)).toHaveLength(1)
+      expect(view.get<HTMLInputElement>(`input[aria-label="Use stock ${first.id}"]`).element.checked).toBe(true)
+      expect(view.get<HTMLInputElement>(`input[aria-label="Use stock ${second.id}"]`).element.checked).toBe(true)
+      expect(view.get('aside').text()).not.toContain('Missing reference')
+      expect(view.get('aside').text()).not.toContain('no longer')
+      // Saving another choice must not invalidate a legitimate, already-consumed source.
+      await view.get(`input[aria-label="Use ${material.name}"]`).setValue(true)
+      await autosaved(view)
+      expect(await reopened.projects.get(project.id)).toMatchObject({ ok: true, value: { materialIds: [material.id], stockItemIds: [first.id, second.id] } })
+      const other = cuttingProjectSchema.parse({ ...project, id: 'stale-other-project', stockItemIds: [first.id] })
+      await reopened.projects.create(other)
+      const otherView = render(reopened.materials, restoredService, reopened, other.id, createStockRepository(reopened))
+      await vi.waitFor(() => { expect(otherView.get('input[aria-label="Search materials"]').attributes('disabled')).toBeUndefined() })
+      expect(otherView.find(`input[aria-label="Use stock ${first.id}"]`).exists()).toBe(false)
+      expect(otherView.get('aside').text()).toContain(`Missing reference: ${first.id}`)
+      await view.get(`button[aria-label="Remove stock ${first.id}"]`).trigger('click')
+      await autosaved(view)
+      expect(await reopened.projects.get(project.id)).toMatchObject({ ok: true, value: { stockItemIds: [second.id] } })
+      expect(await reopened.stockItems.list()).toEqual({ ok: true, value: [second] })
+      expect(await reopened.projectStock.find(project.id)).toEqual(after)
+    } finally { persistence.close(); reopened.close() }
   })
 
   it('hides own generated offcuts but preserves circular selections with an actionable warning after reopening', async () => {
