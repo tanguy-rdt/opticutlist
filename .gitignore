@@ -20,3 +20,10 @@ npm-debug.log*
 .vscode/*
 !.vscode/extensions.json
 .DS_Store
+
+# Optional self-hosted builds and private SQLite data
+server-dist/
+dist-self-hosted/
+data/
+*.sqlite
+*.sqlite-*

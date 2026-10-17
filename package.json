@@ -16,7 +16,10 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "vue-tsc --build --force",
     "test": "vitest",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "build:self-hosted": "vite build --config server/frontend.config.ts && vite build --config server/vite.config.ts",
+    "start:self-hosted": "node server-dist/main.js",
+    "test:server": "vitest run server/__tests__ --maxWorkers=1"
   },
   "dependencies": {
     "dexie": "^4.4.6",

@@ -8,7 +8,7 @@ The authoritative decisions remain in [ARCHITECTURE.md](../ARCHITECTURE.md) and 
 
 ## Runtime system context
 
-The production artifact is static HTML/CSS/ES modules. Vite's build bundles worker entry points and local PDF.js assets; a static host serves files, not application APIs. Browser origin/profile owns the database. Reload reconstructs state from IndexedDB; no server can recover an evicted origin's records.
+The default production artifact is static HTML/CSS/ES modules. An optional [self-hosted build](storage.md#self-hosted-storage) serves those assets with a Node HTTP API and shared SQLite persistence; only service execution and storage move to the server. Vite's build bundles worker entry points and local PDF.js assets; a static host serves files, not application APIs. In default browser mode the origin/profile owns the database; reload reconstructs state from IndexedDB and a static host cannot recover evicted records. Self-hosted mode instead reloads shared records from the server API.
 
 ```mermaid
 flowchart TD
@@ -24,7 +24,7 @@ flowchart TD
   App -->|Optional direct favicon request| Supplier[Supplier website origin]
 ```
 
-“No backend” does not mean no network requests: static assets and optional supplier favicons are network resources. Material previews and PDF.js workers are bundled/local paths; no scraping, logo aggregator or remote optimizer participates. Browser-native print/save decisions are outside the application transaction model.
+“Browser-local storage” does not mean no network requests: static assets and optional supplier favicons are network resources. Material previews and PDF.js workers are bundled/local paths; no scraping, logo aggregator or remote optimizer participates. Browser-native print/save decisions are outside the application transaction model.
 
 ### Execution domains and copy boundaries
 
@@ -56,7 +56,7 @@ flowchart TD
 - **UI:** Vue components and typed injection helpers under [UI](../src/ui/). Konva and PDF.js belong to presentation, not to domain algorithms. The UI `use-project-service.ts` is a Vue injection helper; `application/projects/project-service.ts` owns business coordination.
 - **Workers:** [handle-optimization-request.ts](../src/infrastructure/optimization/handle-optimization-request.ts) validates messages and delegates to domain code. It has no inventory side effects.
 
-[main.ts](../src/app/main.ts) selects persistence once through [createConfiguredPersistence](../src/app/persistence.ts), wraps it with guarded catalog/project/stock services, supplies typed injection keys, creates router/Pinia and lazily imports the PDF renderer. Database closing is registered on app unmount. Tests can provide isolated factories instead of inheriting singletons. The existing [Persistence contract](../src/application/persistence/repositories.ts) is backend-neutral; `LocalPersistence` remains a compatibility alias. Unset or `browser` build-time `VITE_STORAGE_MODE` selects Dexie; `server` and unsupported values fail without fallback. Only browser storage is implemented. See [deployment modes and future server requirements](storage.md#storage-deployment-modes); selecting a mode never migrates or synchronizes data.
+[main.ts](../src/app/main.ts) selects service execution once through [createConfiguredStorage](../src/app/persistence.ts), supplies typed injection keys, creates router/Pinia and lazily imports the PDF renderer. Browser mode closes its database on unmount; server mode calls a fixed HTTP operation whitelist. The existing [Persistence contract](../src/application/persistence/repositories.ts) remains an in-process transaction boundary; `LocalPersistence` is a compatibility alias. Unset/`browser` build-time `VITE_STORAGE_MODE` selects Dexie; `server` selects the optional shared SQLite service, with no fallback or automatic migration. See [Self-hosting](storage.md#self-hosted-storage) for API, transactions and deployment security.
 
 ## UI organization and migration
 

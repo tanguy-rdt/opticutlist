@@ -4,7 +4,7 @@
 
 Use this page as the overview. The detailed [storage reference](storage.md) catalogs every physical table, key, index, transaction and upgrade path. The [JSON reference](json-formats.md) provides envelope/field contracts, processing diagrams, compatibility cases and a clearly separated future migration proposal.
 
-In the implemented browser mode, business records are stored exclusively in IndexedDB. Startup selects the backend through [explicit deployment configuration](storage.md#storage-deployment-modes); server storage is not implemented and cannot silently fall back to the browser. [Repositories](../src/application/persistence/repositories.ts) are application ports; [createLocalPersistence](../src/infrastructure/persistence/local-database.ts) implements them with Dexie. Vue features receive guarded services through injection, not database connections.
+In the implemented browser mode, business records are stored exclusively in IndexedDB. Startup selects the backend through [explicit deployment configuration](storage.md#storage-deployment-modes); the optional [self-hosted service](storage.md#self-hosted-storage) uses SQLite and never silently falls back to the browser. [Repositories](../src/application/persistence/repositories.ts) are application ports; [createLocalPersistence](../src/infrastructure/persistence/local-database.ts) implements them with Dexie. Vue features receive guarded services through injection, not database connections.
 
 **On this page:** [Database and evolution](#database-and-evolution) · [Validated repository behavior](#validated-repository-behavior) · [Supported portable formats](#supported-portable-formats) · [Settings compatibility](#settings-compatibility) · [Backup boundaries](#backup-boundaries)
 

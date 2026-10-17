@@ -2,7 +2,7 @@
 
 **From project requirements to a validated cutting plan.**
 
-OptiCutList is an open-source, browser-based workspace for planning rectangular panel cuts. It connects materials, finished parts, physically owned stock, optimization and printable fabrication documents. Business data stays in the browser's IndexedDB; there is no application backend to configure.
+OptiCutList is an open-source, browser-based workspace for planning rectangular panel cuts. It connects materials, finished parts, physically owned stock, optimization and printable fabrication documents. Business data stays in the browser's IndexedDB by default; optional self-hosting uses one shared SQLite database while optimization stays in the browser.
 
 This Wiki is the implementation guide for contributors: find the owning module, understand its invariants, and follow a change safely from UI to persistence.
 
@@ -27,7 +27,7 @@ This Wiki is the implementation guide for contributors: find the owning module, 
 | Area | Guides & references |
 | --- | --- |
 | **Architecture & domain** | [System architecture](architecture.md) · [Entities, ownership & invariants](domain-model.md) |
-| **Data & persistence** | [Persistence overview](persistence-and-json.md) · [IndexedDB tables & transactions](storage.md) |
+| **Data & persistence** | [Persistence overview](persistence-and-json.md) · [IndexedDB tables & transactions](storage.md) · [Self-hosted deployment & API](storage.md#self-hosted-storage) |
 | **Optimization & inventory** | [Optimization engine](optimization.md) · [Physical stock & offcuts](stock-management.md) |
 | **Application & documents** | [Screens & interactions](features.md) · [Workflow traces](workflows.md) · [Cutting plans & PDF](pdf-generation.md) |
 | **Import & compatibility** | [JSON contracts](json-formats.md) · [Parts import](parts-json.md) · [Stock exchange](stock-json-format.md) |

@@ -77,3 +77,7 @@ Local business data is not a backup. Before testing destructive workflows agains
 ---
 
 **Continue exploring:** [Explore the application](features.md) · [Understand the architecture](architecture.md) · [Documentation home](README.md)
+
+## Optional self-hosted development
+
+The default commands above remain browser-only. With Node.js 24+, `npm run build:self-hosted` builds the matching frontend/service and `npm run start:self-hosted` runs both at `http://127.0.0.1:3000/opticutlist/`. See [Self-hosting](storage.md#self-hosted-storage) for the persistent database path, configuration, API and trusted-environment security limits.

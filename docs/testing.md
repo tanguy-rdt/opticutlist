@@ -135,3 +135,7 @@ For Mermaid validation, use a real Mermaid parser when available; balanced fence
 ---
 
 **Continue exploring:** [Safe change recipes](maintenance.md) · [Wiki validation](wiki-publishing.md) · [Documentation home](README.md)
+
+## Optional backend regressions
+
+`npm run test:server` runs the new Node-environment tests in [server/__tests__/self-hosted.spec.ts](../server/__tests__/self-hosted.spec.ts), also included by `npm run test:unit`. They use real temporary SQLite files and loopback HTTP listeners, not IndexedDB substitutes. Coverage includes restart/migration safety, transactional rollback, request deduplication, concurrent stock changes, API security/validation, JSON workflows and repeated reconciliation. Node.js 24+ is required for this server test target. `npm run build:self-hosted` additionally verifies both optional deployment artifacts. Existing browser test assertions, fixtures and configuration remain the regression baseline.

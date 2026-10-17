@@ -2,7 +2,7 @@
 
 ## Mission
 
-Build OptiCutList, an open-source browser application for planning and optimizing rectangular panel cuts, primarily for woodworking. Target one first stable 1.0 release; do not invent intermediate public releases.
+Build OptiCutList, an open-source browser application for planning and optimizing rectangular panel cuts, primarily for woodworking. The browser-only v1 release is published; preserve its compatibility. Optional self-hosted persistence must not replace the static application. Do not create releases or tags unless requested.
 
 ## Working Rules
 
@@ -36,7 +36,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Application: use cases and ports that coordinate domain behavior.
 - Infrastructure: adapters for persistence, import/export and PDF.
 - UI: Vue pages, components, layouts, composables, UI state and presentation helpers in `src/ui/`; no optimization algorithms or direct persistence implementation access.
-- Pinia manages UI state; the configured persistence backend is the business-data source of truth. Browser IndexedDB remains the only implemented backend and the default.
+- Pinia manages UI state; the configured persistence backend is the business-data source of truth. Browser IndexedDB remains the default; explicit self-hosted builds use the shared server SQLite database.
 - Run optimization in a Web Worker.
 - Enforce dependency direction and avoid circular imports.
 - Create modules and directories when needed; avoid empty scaffolding.
@@ -81,7 +81,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Physical stock exchange uses `stock.oclstock.json` (`opticutlist-stock`, schemaVersion 1). Preserve stable stock IDs/provenance; validate strict StockItems and matching existing Material snapshots. Import only new independent manual/purchased stock after preview and explicit consent in one transaction; identical records are no-ops, conflicts and history-reserved missing IDs block the entire file. Never recreate absent cutting offcuts, remap inventory identities, overwrite/merge quantities or import/reset movement history. Existing cutting stock requires matching recorded origin/history. Stock files are not full application backups.
 - Portable catalog transfers use `.cocl` UTF-8 JSON (`opticutlist-catalog`, schema version 1); projects download as normalized lowercase `<project_name>.oclproject.json` while accepting legacy `.pocl` and `.json` files; Parts JSON import accepts `.oclparts.json` and legacy `.json`; standalone Parts export is not supported. Share existing serialization, strict catalog schemas and identity remapping. Catalog imports require preview and explicit consent, recheck conflicts and references within one insert-only transaction, reuse only identical stable IDs/fields, and never overwrite records or transfer projects, physical stock or rendering data.
 - Portable project JSON is a strict, versioned project-only boundary. Validate every entity, reference and saved cutting tree before import and after ID remapping. Require preview and explicit confirmation; insert all dependencies, owned Parts, project and saved plans atomically without overwriting existing records. Reuse catalog records only with identical stable identity and fields; remap conflicts consistently. Never transfer physical inventory, cutting movements, rendered data or transient editing history.
-- Persistence code uses the backend-neutral `Persistence` and repository ports; Dexie stays in `src/infrastructure/`. Select storage only at startup through explicit deployment configuration, never hostnames or a UI toggle. Unsupported/server modes must fail clearly without browser fallback; no server adapter is implemented yet. Future server operations must preserve application guards and atomic transactions on the server, not emulate them with separate browser CRUD requests.
+- Persistence code uses the backend-neutral `Persistence` and repository ports; Dexie stays in `src/infrastructure/`. Select storage only at startup through explicit deployment configuration, never hostnames or a UI toggle. Unsupported modes and unavailable server storage must fail clearly without browser fallback. Server operations reuse guarded application services within SQLite transactions, never separate remote CRUD requests or serialized callbacks. Keep the optimization engine in the browser in both modes. The optional Node.js 24+ service has one shared database and no authentication: trusted LAN/VPN only, loopback by default, exact origin/host checks and no permissive CORS. Preserve SQLite migrations, request deduplication and existing IndexedDB formats; see `docs/storage.md#self-hosted-storage`.
 - Validate records on both database reads and writes with existing strict domain schemas. Never omit corrupt records from lists or upsert through `create`/`update`.
 - Multi-record writes use the persistence transaction callback, only its scoped repositories, and await every operation. Any failed operation aborts all changes; do not await network requests or timers inside transactions.
 - Database schema versions are immutable once shipped. Append versions and transactional migrations; never delete/recreate a database to recover from an upgrade failure. Use isolated fake-indexeddb factories for persistence tests.

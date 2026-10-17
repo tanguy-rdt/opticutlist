@@ -7,7 +7,7 @@ import tseslint from 'typescript-eslint'
 export default defineConfig(
   {
     name: 'app/ignores',
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**'],
+    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'server-dist/**', 'dist-self-hosted/**'],
   },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
@@ -33,7 +33,7 @@ export default defineConfig(
   },
   {
     name: 'app/config-files',
-    files: ['*.config.ts', 'scripts/**/*.ts'],
+    files: ['*.config.ts', 'scripts/**/*.ts', 'server/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

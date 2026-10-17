@@ -2,18 +2,16 @@
 
 ## Product and Release Goal
 
-OptiCutList is an open-source, browser-based application for optimizing rectangular panel cutting plans, primarily for woodworking. The goal is one first stable **1.0** release, developed through small, tested tasks without intermediate public release milestones.
-
-The intended 1.0 workflow includes projects, parts, materials, suppliers, owned inventory, guillotine optimization, interactive plan editing, cost and waste comparison, shopping lists, vector PDF exports, offcuts, stock consumption and versioned JSON backup/restore.
+OptiCutList is an open-source application for rectangular panel cutting, primarily for woodworking. The browser-only v1 release is published. Preserve its static-hosting and existing-data compatibility; the optional self-hosted mode changes persistence, not the optimization or UI execution environment.
 
 ## Architecture and Stack
 
-A **modular monolith**: one repository, one Vue/Vite application, one `package.json`, static GitHub Pages hosting. No backend, user accounts, cloud synchronization, monorepo or microservices.
+A **modular monolith**: one repository, one Vue/Vite application and one `package.json`. Static GitHub Pages hosting remains the default. An optional Node.js HTTP service serves the self-hosted frontend and SQLite persistence. No accounts, cloud synchronization, monorepo or microservices.
 
 - Vue 3 SFC / Composition API, strict TypeScript, Vite
 - Vue Router with hash history; Pinia for UI state; Tailwind CSS
 - Konva.js for interactive 2D cutting editor
-- Dexie.js / IndexedDB for local persistence
+- Dexie.js / IndexedDB for default local persistence; Node.js 24+ built-in SQLite/HTTP for optional shared self-hosting
 - Zod for runtime validation and versioned JSON
 - pdf-lib for vector PDF exports
 - Vitest, Playwright, ESLint and GitHub Actions
@@ -24,12 +22,12 @@ Install packages only when their functionality is needed.
 
 - Node.js 24 (`.nvmrc`) in CI; Node.js 22+ supported locally.
 - Tailwind CSS v4 via `@tailwindcss/vite`; styles entry is `src/ui/styles.css`.
-- TypeScript project references: `tsconfig.app.json` (browser code), `tsconfig.vitest.json` (tests), `tsconfig.node.json` (config files). `vue-tsc --build` type checks all of them.
+- TypeScript project references: `tsconfig.app.json` (browser code), `tsconfig.vitest.json` (tests), `tsconfig.node.json` (config files). `server/tsconfig.json` includes the optional Node service. `vue-tsc --build` type checks all of them.
 - ESLint flat config (`eslint.config.ts`) composes `typescript-eslint` and `eslint-plugin-vue` directly. `env.d.ts` declares `*.vue` modules only as a fallback for ESLint's TypeScript service; `vue-tsc` resolves real SFC types.
 - Vitest runs in jsdom and reuses `vite.config.ts`.
 - Vite `base` is `/opticutlist/` for `https://<owner>.github.io/opticutlist/`.
 
-Current implementation: `src/app/main.ts` composes services and browser adapters, mounts the root layout and registers cleanup. `src/app/router/` defines routes; `src/app/persistence.ts` selects the explicitly configured backend. Every Vue SFC and presentation-specific module lives in `src/ui/`. Pure domain code owns models, geometry, guillotine placement and independent validation. Application services coordinate guarded catalog/project/stock operations, transactions, imports, current results and PDF requests. Infrastructure implements Dexie persistence, JSON serialization, vector PDF/image decoding and thin optimization worker adapters. No server backend is implemented.
+Current implementation: `src/app/main.ts` composes services and browser adapters, mounts the root layout and registers cleanup. `src/app/router/` defines routes; `src/app/persistence.ts` selects the explicitly configured backend. Every Vue SFC and presentation-specific module lives in `src/ui/`. Pure domain code owns models, geometry, guillotine placement and independent validation. Application services coordinate guarded catalog/project/stock operations, transactions, imports, current results and PDF requests. Infrastructure implements Dexie persistence, JSON serialization, vector PDF/image decoding and thin optimization worker adapters. The optional `server/` entry points reuse those guarded services with SQLite; optimization remains browser-side.
 
 ### Directory Layout
 
@@ -49,7 +47,8 @@ src/
     styles.css          # Semantic theme tokens and shared UI styles
   application/          # Use cases, orchestration and backend-neutral ports
   domain/               # Models, cutting rules, geometry and optimization
-  infrastructure/       # Persistence, JSON/PDF/image adapters and optimization worker
+  infrastructure/       # Persistence, HTTP services, JSON/PDF/image adapters and worker
+server/                 # Optional HTTP bootstrap, SQLite adapter and server builds
 ```
 
 Old `src/features/`, `src/shared/ui/` and `src/workers/` paths contain retained tests only; there are no production compatibility modules or parallel feature architecture. Test locations stay stable for this structural migration. New tests should follow the owning layer's normal colocated convention.
@@ -61,15 +60,19 @@ Old `src/features/`, `src/shared/ui/` and `src/workers/` paths contain retained 
 - Infrastructure implements application ports and may use domain types.
 - UI calls application use cases through typed injection helpers and imports domain contracts/presentation libraries where appropriate; it does not import infrastructure or database implementations.
 - Konva is presentation-only; optimization and validation do not depend on canvas.
-- Pinia is not the database; the configured persistence backend is the business-data source of truth. IndexedDB remains the only implemented backend.
+- Pinia is not the database; the configured persistence backend is the business-data source of truth. IndexedDB is the default; server builds use SQLite through HTTP service adapters.
 
 UI/application imports use the existing `@/` alias across layers; same-directory imports stay relative. Runtime declaration order, Vue hooks, route definitions, component templates/styles and dependency injection identities are preserved. PDF.js preview and Konva remain presentation integrations in UI. Cover-image decoding is the exception moved behind the existing PDF service's optional `readCoverImage` port: bootstrap supplies the lazy `prepareCoverImage` infrastructure adapter, with a structural file input rather than a DOM type in application code. The decoder's validation and output are unchanged.
 
 ### Persistence deployment boundary
 
-The application uses the existing backend-neutral `Persistence` / `Repositories` contracts in `src/application/persistence/repositories.ts`. `LocalPersistence` remains a compatibility type alias. All existing guarded services use that same contract; no second repository layer is added. Only the browser infrastructure adapter imports Dexie. `src/app/persistence.ts` selects the implementation once during bootstrap from the build-time `VITE_STORAGE_MODE`: unset or `browser` constructs the unchanged `createLocalPersistence()` adapter; `server` and unknown values fail before opening storage. No hostname detection, storage toggle, server adapter or fallback is provided.
+The application uses the existing backend-neutral `Persistence` / `Repositories` contracts in `src/application/persistence/repositories.ts`. `LocalPersistence` remains a compatibility alias. `src/application/storage/services.ts` composes the existing guarded operations for either runtime. `createConfiguredStorage` in `src/app/persistence.ts` selects execution from build-time `VITE_STORAGE_MODE`: unset/`browser` uses unchanged Dexie; `server` uses the HTTP service adapters. Unknown modes fail; unavailable server storage never falls back to browser data. There is no hostname detection or UI storage toggle.
 
-Future self-hosted persistence requires an actual server service and durable host storage. Browser JavaScript cannot access the host filesystem, and the callback-based transaction contract cannot be transported as an HTTP payload. Authoritative guarded application operations must execute with their transaction in the server runtime; the browser will need corresponding service adapters at its existing injection boundary. Backend implementation, access/ownership policy, concurrency control and complete backup/restore remain future work. Browser and server data are separate datasets, with no implicit copying or synchronization. Existing JSON exchanges are partial transfers, not full inventory/audit backups. See [Storage deployment modes](docs/storage.md#storage-deployment-modes) for implemented configuration, transaction requirements and open decisions.
+`server/http.ts` serves a fixed `/api/v1/` operation whitelist and the server-mode frontend. `server/operations.ts` validates argument tuples and delegates to the same guarded application services. `server/sqlite.ts` implements the persistence ports using parameterized SQL, domain-schema validation and SQLite migration 1. Thirteen entity tables retain existing record IDs/formats; deferred foreign keys protect selected live relationships without breaking historical audits. SQLite versions are independent of IndexedDB v8 and exchange-format v1.
+
+Every mutation and its successful request-deduplication receipt commits in one serialized `BEGIN IMMEDIATE` transaction. Service callbacks run locally with scoped repositories; failures, including ignored repository failures, roll back the complete operation. No callback is transmitted and no sequence of HTTP CRUD requests simulates atomic stock changes. Existing stock reconciliation/identity/snapshot guards are reused. Ordinary project/catalog writes retain their existing last-writer semantics; there is no general revision protocol or real-time collaboration.
+
+The optional service defaults to loopback and one explicitly shared dataset, with no authentication. Host/origin checks, JSON-only application requests and no permissive CORS restrict unintended browser requests; these are not access control. Use trusted LAN/VPN environments only. Data lives outside generated assets, survives restarts and uses transactional schema upgrades rather than resets. Browser and server data remain separate, with explicit partial JSON transfers only. The optimizer, editor, PDF generation and preview stay in the browser in both modes. See [Self-hosting](docs/storage.md#self-hosted-storage) for startup, API, schema, retry, backup and security limitations.
 
 ## Domain Model
 

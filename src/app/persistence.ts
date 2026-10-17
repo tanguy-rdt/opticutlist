@@ -1,13 +1,29 @@
-import type { Persistence } from '../application/persistence/repositories'
 import { createLocalPersistence } from '../infrastructure/persistence/local-database'
+import { createHttpStorageServices } from '../infrastructure/http/storage-services'
+import { createStorageServices } from '../application/storage/services'
+import { projectJson } from '../infrastructure/projects/project-json'
 
-/** Select storage once at startup, without hostname inference or fallback. */
-export function createConfiguredPersistence(mode = 'browser'): Persistence {
-  if (mode === 'browser') {
-    return createLocalPersistence()
-  }
+/** Choose service execution beside its storage, not a remote callback-based repository. */
+export function createConfiguredStorage(mode = 'browser') {
   if (mode === 'server') {
-    throw new Error('Server storage is not implemented. Leave VITE_STORAGE_MODE unset or set it to browser.')
+    const services = createHttpStorageServices()
+    return {
+      services,
+      pricing: { supplierProducts: services.catalog.supplierProducts, stockItems: services.stock },
+      stockRead: services.stock,
+      close: () => { }
+    }
   }
-  throw new Error('Unsupported VITE_STORAGE_MODE. Only browser storage is currently available.')
+  if (mode !== 'browser') {
+    throw new Error('Unsupported VITE_STORAGE_MODE. Choose browser or server.')
+  }
+  const persistence = createLocalPersistence()
+  return {
+    services: createStorageServices(persistence, projectJson),
+    pricing: persistence,
+    stockRead: persistence.stockItems,
+    close: () => {
+      persistence.close()
+    }
+  }
 }
