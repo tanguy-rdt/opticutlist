@@ -57,7 +57,7 @@ app.provide(cuttingPlanPdfServiceKey, createCuttingPlanPdfService({ generate: as
 }, generateProject: async document => {
   const { generateProjectCuttingPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
   return generateProjectCuttingPdf(document)
-} }))
+} }, persistence))
 app.onUnmount(() => { persistence.close() })
 
 app.use(createAppPinia())

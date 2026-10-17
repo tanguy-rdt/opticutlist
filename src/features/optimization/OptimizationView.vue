@@ -824,7 +824,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
   </section>
 </template>
 <style scoped>
-.optimization-workspace :deep(.field) { height: var(--control-height-small); min-height: var(--control-height-small); }
+.optimization-workspace :deep(.field:not(textarea)) { height: var(--control-height-small); min-height: var(--control-height-small); }
 .cutting-workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1024px) {
   .cutting-workspace-grid { grid-template-columns: minmax(200px, 230px) minmax(0, 1fr); }

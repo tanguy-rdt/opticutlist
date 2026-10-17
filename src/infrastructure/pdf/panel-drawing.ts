@@ -2,6 +2,7 @@ import { rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import type { CuttingPlanPdfDocument } from '../../application/export/cutting-plan-pdf-service'
 import type { ScenePart } from '../../application/optimization/cutting-plan-scene'
 import type { GrainDirection } from '../../domain/model/orientation'
+import { boundedPdfText as bounded } from './pdf-text'
 import { pdfPageSize, pdfRect, type PdfBox } from './pdf-layout'
 import { drawPanelTitleBlock, layoutPanelTitleBlock, panelPartReference } from './panel-title-block'
 import { DIMENSION_CLEARANCE, drawDimensions, drawGrain, drawWaste, scaleLabel, technicalTransform } from './technical-drawing'
@@ -9,12 +10,6 @@ import { DIMENSION_CLEARANCE, drawDimensions, drawGrain, drawWaste, scaleLabel, 
 const ink = rgb(0.14, 0.14, 0.14)
 const muted = rgb(0.4, 0.4, 0.4)
 const margin = 36
-function bounded(text: string, font: PDFFont, size: number, width: number): string {
-  if (font.widthOfTextAtSize(text, size) <= width) return text
-  let result = text
-  while (result.length && font.widthOfTextAtSize(`${result}...`, size) > width) result = result.slice(0, -1)
-  return `${result}...`
-}
 function orientedSize(part: ScenePart): string { return `${String(part.dimensions.lengthMm)} × ${String(part.dimensions.widthMm)} mm${part.orientation === 'rotated' ? ' / 90°' : ''}` }
 function fitsLabel(document: CuttingPlanPdfDocument, part: ScenePart, font: PDFFont, bold: PDFFont, transform: ReturnType<typeof technicalTransform>): boolean {
   const box = pdfRect(part.region, transform)
@@ -77,6 +72,6 @@ export function drawPanelSheet(page: PDFPage, font: PDFFont, bold: PDFFont, docu
   page.drawRectangle({ ...panelBox, borderColor: ink, borderWidth: 0.6 })
   drawDimensions(page, font, panelBox, document.panel.lengthMm, document.panel.widthMm)
   if (document.panel.grainDirection !== 'none') drawGrain(page, { x: panelBox.x, y: panelBox.y + panelBox.height + 8, width: 40, height: 35 }, document.panel.grainDirection)
-  drawPanelTitleBlock(page, font, bold, layout.titleBlock, scaleLabel(transform))
-  return { ...layout, scale: scaleLabel(transform) }
+  const sheetPosition = drawPanelTitleBlock(page, font, bold, layout.titleBlock, scaleLabel(transform))
+  return { ...layout, sheetPosition, scale: scaleLabel(transform) }
 }

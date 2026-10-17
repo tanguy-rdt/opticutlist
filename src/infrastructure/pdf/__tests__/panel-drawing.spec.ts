@@ -218,7 +218,7 @@ it.each(['A4', 'A3'] as const)('keeps a compact hierarchical instance table and 
     const texts = vi.spyOn(page, 'drawText')
     const layout = drawPanelSheet(page, font, bold, document, 'Panel 1')
     const block = layout.titleBlock
-    expect(block.top - 36).toBeLessThanOrEqual(150)
+    expect(block.tableHeight).toBeLessThanOrEqual(150)
     expect(block.parts).toHaveLength(30)
     expect(block.continued.length).toBeGreaterThan(0)
     const all = [...block.rows, ...block.continued]
@@ -229,7 +229,7 @@ it.each(['A4', 'A3'] as const)('keeps a compact hierarchical instance table and 
     for (const [label, options] of texts.mock.calls) {
       if (!options || options.x === undefined || options.y === undefined || !options.size) throw new Error('Missing text bounds')
       if (options.y >= block.top) continue
-      expect(options.size).toBe(8)
+      expect([6, 7, 8]).toContain(options.size)
       const selectedFont = options.font ?? font
       expect(options.x).toBeGreaterThanOrEqual(28)
       expect(options.x + selectedFont.widthOfTextAtSize(label, options.size)).toBeLessThanOrEqual(layout.size.width - 28)
@@ -265,7 +265,7 @@ it.each(['A4', 'A3'] as const)('reserves measured %s panel metadata and separate
     const block = layout.titleBlock
     expect(layout.available.y).toBe(block.top + 54)
     expect(layout.transform.scale).toBe(1)
-    expect(block.metadata.some(value => value.includes(document.materialName))).toBe(false)
+    expect(block.content.context.lines.some(value => value.includes(document.materialName))).toBe(false)
     let boundary = block.top
     for (const row of block.rows) {
       boundary -= row.height
@@ -292,7 +292,66 @@ it('starts with the panel identity, right-aligns full dimensions and keeps child
     expect(row.dimensions.endsWith(' mm')).toBe(true)
     top -= row.height
   }
-  expect(block.rows[0]?.material).toEqual([document.materialName])
-  expect(block.rows.slice(1).every(row => row.material.length === 0)).toBe(true)
+  expect(block.rows[0]?.lines).toHaveLength(1)
+  expect(block.rows[0]?.lines[0]).toContain(' — ' + document.materialName)
+  expect(texts.mock.calls.some(([value]) => value === document.materialName)).toBe(false)
   expect(texts.mock.calls.some(([value]) => value === 'Panel / Part' || value === 'Dimensions (mm)')).toBe(false)
+})
+
+it('omits Stock, Catalog and other source names from the panel label without changing title-block geometry', async () => {
+  const { document, page, font, bold } = await fixture()
+  const labels = vi.spyOn(page, 'drawText')
+  const layouts = ['Stock panel', 'Catalog supplier product', 'Other external source'].map(name => {
+    const layout = drawPanelSheet(page, font, bold, { ...document, panel: { ...document.panel, name } }, 'Panel 3')
+    expect(layout.titleBlock.rows[0]?.lines).toEqual(['Panel 3 — Birch plywood'])
+    expect(labels.mock.calls.some(([text]) => text.includes(name))).toBe(false)
+    return { box: layout.panelBox, available: layout.available, transform: layout.transform, top: layout.titleBlock.top, rows: layout.titleBlock.rows.map(row => ({ height: row.height, dimensions: row.dimensions })) }
+  })
+  expect(layouts[0]).toEqual(layouts[1])
+  expect(layouts[1]).toEqual(layouts[2])
+})
+
+it.each(['A4', 'A3'] as const)('stacks a measured full-width list above four technical cells on %s in either orientation', async pageSize => {
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    const { document, page, font, bold } = await fixture({ ...pdfRequest, pageSize, orientation, projectName: 'Kitchen cabinet' })
+    const baseline = layoutPanelDrawing(document, font, bold)
+    page.setSize(baseline.size.width, baseline.size.height)
+    const labels = vi.spyOn(page, 'drawText')
+    const lines = vi.spyOn(page, 'drawLine')
+    const drawn = drawPanelSheet(page, font, bold, document, 'Panel 1')
+    const block = drawn.titleBlock
+    const right = block.x + block.width
+    const projectEnd = block.x + block.technical.projectWidth
+    const settingsEnd = projectEnd + block.technical.contextWidth
+    const scaleEnd = settingsEnd + block.technical.cellWidth
+    expect(block.tableWidth).toBe(block.width)
+    expect(block.tableHeight).toBe(block.rows.reduce((sum, row) => sum + row.height, 0))
+    expect(block.top).toBe(block.technicalTop + block.tableHeight)
+    expect(block.technicalHeight).toBe(52)
+    const headings = ['PROJECT', 'CUTTING SETTINGS', 'SCALE', 'SHEET'].map(label => labels.mock.calls.find(([value]) => value === label)?.[1])
+    expect(headings[0]?.y).toBe(headings[1]?.y)
+    expect(headings[2]?.y).toBe(headings[3]?.y)
+    for (const boundary of [projectEnd, settingsEnd, scaleEnd]) expect(lines.mock.calls.some(([line]) => line.start.x === boundary && line.end.x === boundary && line.start.y === 36 && line.end.y === block.technicalTop && line.thickness === 0.3)).toBe(true)
+    const divider = lines.mock.calls.filter(([line]) => line.start.x === block.x && line.end.x === right && line.start.y === block.technicalTop && line.end.y === block.technicalTop)
+    expect(divider).toHaveLength(1)
+    const project = labels.mock.calls.find(([value]) => value === 'Kitchen cabinet')?.[1]
+    expect(project?.font).toBe(bold)
+    expect(project?.x).toBe(block.x + 6)
+    expect(project?.y).toBe(block.technicalTop - 26)
+    expect(drawn.sheetPosition).toMatchObject({ x: scaleEnd, width: block.technical.cellWidth, bold: true })
+    for (const value of block.content.context.lines) {
+      const options = labels.mock.calls.find(([text]) => text === value)?.[1]
+      expect(options?.x).toBe(projectEnd + 6)
+      expect((options?.x ?? 0) + font.widthOfTextAtSize(value, 7)).toBeLessThanOrEqual(settingsEnd - 6)
+      expect(options?.y).toBeGreaterThanOrEqual(42)
+    }
+    const withoutParts = layoutPanelDrawing({ ...document, scene: { ...document.scene, parts: [] } }, font, bold).titleBlock
+    expect(withoutParts.technicalHeight).toBe(block.technicalHeight)
+    expect(withoutParts.tableHeight).toBe(18)
+    expect(block.rows.every(row => row.height === row.lines.length * 10 + 8)).toBe(true)
+    const long = layoutPanelDrawing({ ...document, projectName: 'A very long project name '.repeat(30) }, font, bold)
+    expect(long.titleBlock.rows).toEqual(block.rows)
+    expect(long.titleBlock.continued).toEqual(block.continued)
+    expect(drawn.panelBox).toEqual(baseline.panelBox)
+  }
 })

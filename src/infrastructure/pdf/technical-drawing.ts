@@ -46,17 +46,29 @@ export function drawWaste(page: PDFPage, box: PdfBox): void {
   for (const line of wasteHatchLines(box)) page.drawLine({ ...line, thickness: 0.25, color: hatchInk })
   page.pushOperators(popGraphicsState())
 }
-export function drawDimensions(page: PDFPage, font: PDFFont, box: PdfBox, lengthMm: number, widthMm: number): void {
+export function drawDimensions(page: PDFPage, font: PDFFont, box: PdfBox, lengthMm: number, widthMm: number, markers: 'ticks' | 'arrows' = 'ticks'): void {
   const line = (x1: number, y1: number, x2: number, y2: number) => { page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.4, color: ink }) }
   const tick = (x: number, y: number) => { line(x - 2.5, y - 2.5, x + 2.5, y + 2.5) }
+  const horizontalEnd = (x: number, y: number, direction: number) => {
+    if (markers === 'ticks') { tick(x, y); return }
+    line(x, y, x + direction * 4, y + 1.5); line(x, y, x + direction * 4, y - 1.5)
+  }
+  const verticalEnd = (x: number, y: number, direction: number) => {
+    if (markers === 'ticks') { tick(x, y); return }
+    line(x, y, x + 1.5, y + direction * 4); line(x, y, x - 1.5, y + direction * 4)
+  }
+  const horizontalOutside = markers === 'arrows' && box.width < 12
+  const verticalOutside = markers === 'arrows' && box.height < 12
   const y = box.y - 20
   line(box.x, box.y - 4, box.x, y - 5); line(box.x + box.width, box.y - 4, box.x + box.width, y - 5)
-  line(box.x, y, box.x + box.width, y); tick(box.x, y); tick(box.x + box.width, y)
+  line(box.x - (horizontalOutside ? 10 : 0), y, box.x + box.width + (horizontalOutside ? 10 : 0), y)
+  horizontalEnd(box.x, y, horizontalOutside ? -1 : 1); horizontalEnd(box.x + box.width, y, horizontalOutside ? 1 : -1)
   const length = `${String(lengthMm)} mm`
   page.drawText(length, { x: box.x + box.width / 2 - font.widthOfTextAtSize(length, 9) / 2, y: y - 13, size: 9, font, color: ink })
   const x = box.x - 20
   line(box.x - 4, box.y, x - 5, box.y); line(box.x - 4, box.y + box.height, x - 5, box.y + box.height)
-  line(x, box.y, x, box.y + box.height); tick(x, box.y); tick(x, box.y + box.height)
+  line(x, box.y - (verticalOutside ? 10 : 0), x, box.y + box.height + (verticalOutside ? 10 : 0))
+  verticalEnd(x, box.y, verticalOutside ? -1 : 1); verticalEnd(x, box.y + box.height, verticalOutside ? 1 : -1)
   const width = `${String(widthMm)} mm`
   page.drawText(width, { x: x - 8, y: box.y + box.height / 2 - font.widthOfTextAtSize(width, 9) / 2, size: 9, font, color: ink, rotate: degrees(90) })
 }

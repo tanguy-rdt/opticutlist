@@ -23,6 +23,8 @@ export function pageOperators(pdf: PDFDocument, pageIndex: number): string {
   return streams.map(stream => new TextDecoder().decode(decodePDFRawStream(stream).decode())).join('\n')
 }
 function hasText(operators: string, text: string): boolean { return operators.includes(Buffer.from(text.replaceAll('—', '\x97'), 'latin1').toString('hex').toUpperCase()) }
+function isPartDrawing(operators: string): boolean { return hasText(operators, 'SCALE') && hasText(operators, 'Millimeters (mm)') }
+function isCuttingDrawing(operators: string): boolean { return [...operators.matchAll(/<([\dA-F]*)> Tj/gu)].some(match => /^Panel [0-9]+ \x97 /u.test(Buffer.from(match[1] ?? '', 'hex').toString('latin1'))) }
 async function exportPdf(request = pdfRequest) {
   const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf }).export(request)
   if (!result.ok) throw new Error(result.error.message)
@@ -45,7 +47,7 @@ describe('Vector cutting plan PDF', () => {
         expect(pageOperators(pdf, index)).not.toMatch(/\bDo\b/u)
       }
     }
-    expect(hasText(pageOperators(pdf, 1), 'Project: Workshop project')).toBe(true)
+    expect(hasText(pageOperators(pdf, 1), 'Workshop project')).toBe(true)
     expect(request).toEqual(before)
   })
   it.each(['portrait', 'landscape'] as const)('exports every multi-panel page in %s A3 with vector paths', async orientation => {
@@ -58,7 +60,7 @@ describe('Vector cutting plan PDF', () => {
       expect(page.getWidth()).toBeCloseTo(orientation === 'portrait' ? 841.88976378 : 1190.5511811)
       expect(page.getHeight()).toBeCloseTo(orientation === 'portrait' ? 1190.5511811 : 841.88976378)
     }
-    const drawing = pdf.getPages().map((_, index) => pageOperators(pdf, index)).find(page => hasText(page, 'Individual part drawing'))
+    const drawing = pdf.getPages().map((_, index) => pageOperators(pdf, index)).find(isPartDrawing)
     expect(drawing).toMatch(/\bm\b/u)
     expect(drawing).toMatch(/\bl\b/u)
     expect(request).toEqual(before)
@@ -159,21 +161,22 @@ describe('Complete multi-panel vector PDF', () => {
     if (!result.ok) throw new Error(result.error.message)
     const pdf = await PDFDocument.load(result.bytes)
     const pages = pdf.getPages().map((_, index) => pageOperators(pdf, index))
-    const positions = ['Workshop cabinet', 'Complete parts list', 'Materials and purchasing', 'Panel inventory', 'Individual part drawing', 'Panel 1 —'].map(title => pages.findIndex(page => hasText(page, title)))
+    const positions = ['Workshop cabinet', 'Complete parts list', 'Materials and purchasing', 'Panel inventory'].map(title => pages.findIndex(page => hasText(page, title))).concat(pages.findIndex(isPartDrawing), pages.findIndex(page => hasText(page, 'Panel 1 —')))
     expect(positions.every(index => index >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
     const firstDrawing = positions[4]
     if (firstDrawing === undefined) throw new Error('Missing drawing')
-    expect(hasText(pages[firstDrawing] ?? '', 'Individual part drawings')).toBe(true)
-    expect(hasText(pages[firstDrawing] ?? '', 'Quantity: 4')).toBe(true)
+    expect(isPartDrawing(pages[firstDrawing] ?? '')).toBe(true)
+    expect(hasText(pages[firstDrawing] ?? '', 'Millimeters (mm)')).toBe(true)
+    expect(hasText(pages[firstDrawing] ?? '', 'Thickness: 18 mm / Qty: 4')).toBe(true)
     expect(hasText(pages[firstDrawing] ?? '', '90 mm')).toBe(true)
     expect(hasText(pages[firstDrawing] ?? '', '80 mm')).toBe(true)
     pages.forEach((operators, index) => {
       if (!hasText(operators, 'SCALE')) return
-      expect(hasText(operators, 'Project: Workshop cabinet')).toBe(!hasText(operators, 'Kerf:') && !hasText(operators, 'Individual part drawings'))
+      expect(hasText(operators, 'Workshop cabinet')).toBe(true)
       expect(hasText(operators, `${String(index + 1)} / ${String(pages.length)}`)).toBe(true)
-      expect(hasText(operators, 'Generated:')).toBe(!hasText(operators, 'Kerf:') && !hasText(operators, 'Individual part drawings'))
-      expect(hasText(operators, 'Actual size / 100%')).toBe(!hasText(operators, 'Kerf:') && !hasText(operators, 'Individual part drawings'))
+      expect(hasText(operators, 'Generated:')).toBe(false)
+      expect(hasText(operators, 'Actual size / 100%')).toBe(false)
       expect(operators).not.toMatch(/\bDo\b/u)
     })
   })
@@ -189,12 +192,22 @@ describe('Complete multi-panel vector PDF', () => {
     if (!result.ok) throw new Error(result.error.message)
     const pdf = await PDFDocument.load(result.bytes)
     const pages = pdf.getPages().map((_, index) => pageOperators(pdf, index))
-    expect(pages.filter(page => hasText(page, 'Individual part drawing'))).toHaveLength(8)
+    expect(pages.filter(isPartDrawing)).toHaveLength(8)
+    const gridReferences: string[] = []
+    for (const [index, operators] of pages.entries()) {
+      if (!isPartDrawing(operators)) continue
+      const rows = printedText(pdf, index)
+      expect(rows.filter(row => row.text === 'SCALE')).toHaveLength(1)
+      expect(rows.filter(row => row.text === 'SHEET')).toHaveLength(1)
+      expect(rows.filter(row => row.text === 'UNITS')).toHaveLength(1)
+      gridReferences.push(...rows.filter(row => /^P[0-9]+ — Tiny part/u.test(row.text)).map(row => row.text.split(/ (?:—|\/) /u)[0] ?? ''))
+    }
+    expect(gridReferences).toEqual(Array.from({ length: 30 }, (_, index) => `P${String(index + 1)}`))
     expect(pages.some(page => hasText(page, 'Labels continued'))).toBe(false)
-    const panelPages = pages.filter(page => hasText(page, 'Kerf:'))
+    const panelPages = pages.filter(page => isCuttingDrawing(page))
     expect(panelPages).toHaveLength(1)
     for (const number of [1, 15, 30]) expect(hasText(panelPages[0] ?? '', `P${String(number)}`)).toBe(true)
-    for (const number of [1, 15, 30]) expect(pages.some(page => hasText(page, 'Individual part drawings') && hasText(page, `P${String(number)}`))).toBe(true)
+    for (const number of [1, 15, 30]) expect(pages.some(page => isPartDrawing(page) && hasText(page, `P${String(number)}`))).toBe(true)
     for (const [index, page] of pages.entries()) expect(hasText(page, `${String(index + 1)} / ${String(pages.length)}`)).toBe(index > 0)
   })
   it.each(['portrait', 'landscape'] as const)('renders a global summary and every %s panel with no images', async orientation => {
@@ -207,7 +220,7 @@ describe('Complete multi-panel vector PDF', () => {
     expect(request.plan.panels).toHaveLength(2)
     expect(pdf.getPageCount()).toBeGreaterThanOrEqual(5)
     const pages = pdf.getPages().map((_page, index) => pageOperators(pdf, index))
-    expect(pages.filter(page => hasText(page, 'Kerf:'))).toHaveLength(request.plan.panels.length)
+    expect(pages.filter(page => isCuttingDrawing(page))).toHaveLength(request.plan.panels.length)
     expect(pages.some(page => hasText(page, 'Placed parts - oriented dimensions'))).toBe(false)
     expect(hasText(pages[0] ?? '', 'Workshop project')).toBe(true)
     expect(hasText(pages[0] ?? '', 'INCOMPLETE')).toBe(false)
@@ -238,10 +251,10 @@ it.each(['A4', 'A3'] as const)('frames every %s sheet with a fixed title block, 
     for (const [index, text] of texts.entries()) {
       if (index === 0) { expect(hasText(text, 'Sheet')).toBe(false); continue }
       expect(hasText(text, `${String(index + 1)} / ${String(pdf.getPageCount())}`)).toBe(true)
-      expect(hasText(text, 'Units: mm')).toBe(!hasText(text, 'Kerf:') && !hasText(text, 'Individual part drawings'))
-      expect(hasText(text, 'Project: Workshop project')).toBe(!hasText(text, 'Kerf:') && !hasText(text, 'Individual part drawings'))
-      // Fixed title-block top at 104pt and outer border starting at 28,36pt.
-      if (!hasText(text, 'Kerf:') && !hasText(text, 'Individual part drawings')) expect(text).toContain('104 m')
+      expect(hasText(text, 'Millimeters (mm)')).toBe(isPartDrawing(text))
+      expect(hasText(text, 'Workshop project')).toBe(true)
+      // Shared title-block top at 78pt and outer border starting at 28,36pt.
+      expect(text).toContain('88 m')
       expect(text).toContain('1 0 0 1 28 36 cm')
       expect(text).not.toMatch(/\bDo\b/u)
       for (const part of request.parts) expect(hasText(text, part.id)).toBe(false)
@@ -316,7 +329,7 @@ it('prints consistent table columns, a hierarchical inventory and exact known co
   expect(child?.x).toBe((panel?.x ?? 0) + 8)
   expect(rows.filter(row => row.y === child?.y).map(row => row.text)).toEqual(['P1', 'Workshop shelf', '', '90 × 80 × 18 mm', '2'])
   expect(rows.filter(row => row.text === '39.90 EUR')).toHaveLength(2) // one purchasing row and one total
-  expect(rows.filter(row => row.text === 'Total:')).toHaveLength(1)
+  expect(rows.filter(row => row.text === 'TOTAL:')).toHaveLength(1)
   const priceHeader = rows.find(row => row.text === 'Unit price')
   const price = rows.find(row => row.text === '19.95 EUR')
   const font = await pdf.embedFont(StandardFonts.Helvetica)
@@ -325,7 +338,7 @@ it('prints consistent table columns, a hierarchical inventory and exact known co
   const all = pdf.getPages().flatMap((_, index) => printedText(pdf, index)).map(row => row.text).join('\n')
   expect(all).not.toContain('Not available'); expect(all).not.toContain('Parts grouped by material')
   expect(all).not.toContain('Utilization'); expect(all).not.toContain('Waste:')
-  const panelPages = pdf.getPages().map((_, index) => printedText(pdf, index)).filter(page => page.some(row => row.text.startsWith('Kerf:')))
+  const panelPages = pdf.getPages().map((_, index) => printedText(pdf, index)).filter(page => page.some(row => /^Panel [0-9]+ — /u.test(row.text)))
   expect(panelPages).toHaveLength(2)
   expect(panelPages.every(page => page.some(row => row.text === 'Workshop shelf') && page.some(row => row.text === '90 × 80 mm'))).toBe(true)
 })
@@ -354,19 +367,19 @@ it.each(['A4', 'A3'] as const)('matches every physical panel table instance to i
     const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
     if (!result.ok) throw new Error(result.error.message)
     const pdf = await PDFDocument.load(result.bytes)
-    const pages = pdf.getPages().map((_, index) => ({ text: pageOperators(pdf, index), rows: printedText(pdf, index) })).filter(page => hasText(page.text, 'Kerf:'))
+    const pages = pdf.getPages().map((_, index) => ({ text: pageOperators(pdf, index), rows: printedText(pdf, index) })).filter(page => isCuttingDrawing(page.text))
     expect(pages).toHaveLength(request.plan.panels.length)
     const references: string[] = []
     for (const [index, page] of pages.entries()) {
       const panel = request.plan.panels[index]
       if (!panel) throw new Error('Missing allocated panel')
-      expect(page.rows.filter(row => row.text === `Panel ${String(index + 1)} — Workshop panel`)).toHaveLength(1)
-      const entries = page.rows.filter(row => row.y < 200 && /^P[0-9]+[.][0-9]+ — /u.test(row.text))
-      expect(entries.map(row => row.text)).toEqual(panel.plan.placements.map(placed => `P1.${String(placed.copyIndex + 1)} — Workshop shelf`))
+      expect(page.rows.filter(row => row.text === `Panel ${String(index + 1)} — Birch plywood`)).toHaveLength(1)
+      const entries = page.rows.filter(row => /^P[0-9]+[.][0-9]+ (?:—|\/) /u.test(row.text))
+      expect(entries.map(row => row.text)).toEqual(panel.plan.placements.map(placed => `P1.${String(placed.copyIndex + 1)} / Workshop shelf`))
       for (const entry of entries) {
-        const row = page.rows.filter(text => text.y === entry.y && text.x < pdf.getPage(0).getWidth() - 173)
+        const row = page.rows.filter(text => text.y === entry.y && text.x < pdf.getPage(0).getWidth() - 28)
         expect(row.map(text => text.text)).toEqual([entry.text, '90 × 80 × 18 mm'])
-        const ref = entry.text.split(' — ')[0]
+        const ref = entry.text.split(/ (?:—|\/) /u)[0]
         if (!ref) throw new Error('Missing copy reference')
         expect(page.rows.some(text => text.y >= 200 && text.text === ref)).toBe(true)
         references.push(ref)
@@ -386,10 +399,10 @@ it.each(['A4', 'A3'] as const)('continues a long copy table on %s without duplic
     const pdf = await exportPdf({ ...pdfRequest, pageSize, orientation, panel, parts: [part], settings, plan: optimized.plan })
     expect(pdf.getPageCount()).toBeGreaterThan(1)
     const pages = pdf.getPages().map((_, index) => ({ operators: pageOperators(pdf, index), rows: printedText(pdf, index) }))
-    expect(pages.filter(page => hasText(page.operators, 'Kerf:'))).toHaveLength(1)
-    const entries = pages.flatMap((page, index) => page.rows.filter(row => (index > 0 || row.y < 200) && /^P1[.][0-9]+ — /u.test(row.text)))
+    expect(pages.filter(page => isCuttingDrawing(page.operators))).toHaveLength(1)
+    const entries = pages.flatMap(page => page.rows.filter(row => /^P1[.][0-9]+ (?:—|\/) /u.test(row.text)))
     expect(entries).toHaveLength(80)
-    expect(entries.map(row => row.text.split(' — ')[0])).toEqual(Array.from({ length: 80 }, (_, index) => `P1.${String(index + 1)}`))
+    expect(entries.map(row => row.text.split(/ (?:—|\/) /u)[0])).toEqual(Array.from({ length: 80 }, (_, index) => `P1.${String(index + 1)}`))
     for (const [index, page] of pages.entries()) {
       expect(hasText(page.operators, 'Panel / Part')).toBe(false)
       expect(hasText(page.operators, 'Dimensions (mm)')).toBe(index > 0)
@@ -398,8 +411,8 @@ it.each(['A4', 'A3'] as const)('continues a long copy table on %s without duplic
         expect(hasText(page.operators, 'Parts continued')).toBe(true)
         expect(hasText(page.operators, '100 mm')).toBe(false)
       }
-      for (const entry of page.rows.filter(row => /^P1[.][0-9]+ — /u.test(row.text) && (index > 0 || row.y < 200))) {
-        expect(page.rows.filter(row => row.y === entry.y && (index > 0 || row.x < pdf.getPage(index).getWidth() - 173)).map(row => row.text)).toEqual([entry.text, '1 × 1 × 18 mm'])
+      for (const entry of page.rows.filter(row => /^P1[.][0-9]+ (?:—|\/) /u.test(row.text))) {
+        expect(page.rows.filter(row => row.y === entry.y && row.x < pdf.getPage(index).getWidth() - 28).map(row => row.text)).toEqual([entry.text, '1 × 1 × 18 mm'])
         expect(entry.y).toBeGreaterThan(index > 0 ? 120 : 36)
       }
     }
@@ -412,7 +425,7 @@ it.each(['A4', 'A3'] as const)('uses two panel columns, one material identificat
     const pdf = await exportPdf({ ...pdfRequest, pageSize, orientation })
     const rows = printedText(pdf, 0)
     expect(rows.some(row => row.text === 'Qty')).toBe(false)
-    expect(rows.filter(row => row.text === 'Birch plywood')).toHaveLength(1)
+    expect(rows.filter(row => row.text.endsWith(' — Birch plywood'))).toHaveLength(1)
     expect(rows.some(row => row.text.startsWith('Panel 1 —'))).toBe(true)
     const scale = rows.find(row => row.text === 'SCALE')
     const sheet = rows.find(row => row.text === 'SHEET')
@@ -423,21 +436,20 @@ it.each(['A4', 'A3'] as const)('uses two panel columns, one material identificat
     expect(actualScale.y).toBe(value.y)
     expect(scale.x).toBeLessThan(sheet.x)
     const font = await pdf.embedFont(StandardFonts.Helvetica)
-    const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
     const right = pdf.getPage(0).getWidth() - 28
     const half = 145 / 2
-    expect(scale.x + bold.widthOfTextAtSize('SCALE', 8) / 2).toBeCloseTo(right - half * 1.5)
-    expect(sheet.x + bold.widthOfTextAtSize('SHEET', 8) / 2).toBeCloseTo(right - half / 2)
+    expect(scale.x + font.widthOfTextAtSize('SCALE', 6) / 2).toBeCloseTo(right - half * 1.5)
+    expect(sheet.x + font.widthOfTextAtSize('SHEET', 6) / 2).toBeCloseTo(right - half / 2)
     expect(actualScale.x + font.widthOfTextAtSize('1:1', 8) / 2).toBeCloseTo(right - half * 1.5)
-    expect(value.x + font.widthOfTextAtSize('1 / 1', 8) / 2).toBeCloseTo(right - half / 2)
+    expect(value.x + (await pdf.embedFont(StandardFonts.HelveticaBold)).widthOfTextAtSize('1 / 1', 8) / 2).toBeCloseTo(right - half / 2)
     const operators = pageOperators(pdf, 0)
-    expect(operators).toContain(`${String(right - 145)} 65 m`)
+    expect(operators).toContain('28 88 m')
     expect(operators).toContain(`${String(right - half)} 36 m`)
     expect(rows.some(row => row.text.startsWith('Scale ') || row.text.startsWith('Sheet '))).toBe(false)
   }
 })
 
-it.each(['A4', 'A3'] as const)('gives each individual drawing its own full-width title block and physical scale on %s', async pageSize => {
+it.each(['A4', 'A3'] as const)('uses one shared project title block with N/A for independently scaled drawings on %s', async pageSize => {
   for (const orientation of ['portrait', 'landscape'] as const) {
     const base = multiPanelPdfRequest()
     const source = base.sources[0]
@@ -449,25 +461,21 @@ it.each(['A4', 'A3'] as const)('gives each individual drawing its own full-width
     const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject({ ...base, pageSize, orientation, parts, plan: plan.plan, sources: [{ ...source, product, quantity: 1 }] })
     if (!result.ok) throw new Error(result.error.message)
     const pdf = await PDFDocument.load(result.bytes)
-    const index = pdf.getPages().findIndex((_, index) => hasText(pageOperators(pdf, index), 'Individual part drawings'))
+    const index = pdf.getPages().findIndex((_, index) => isPartDrawing(pageOperators(pdf, index)))
     expect(index).toBeGreaterThan(0)
     const rows = printedText(pdf, index)
     const footer = rows.filter(row => row.y < 150)
-    const labels = footer.filter(row => row.text === 'SCALE')
-    const sheets = footer.filter(row => row.text === 'SHEET')
-    const numbers = footer.filter(row => row.text === `${String(index + 1)} / ${String(pdf.getPageCount())}`)
-    expect(labels).toHaveLength(2); expect(sheets).toHaveLength(2); expect(numbers).toHaveLength(2)
-    expect(footer.filter(row => /^1:[0-9]+$/u.test(row.text))).toHaveLength(2)
-    for (const [cell, label] of labels.entries()) {
-      expect(label.y).toBe(sheets[cell]?.y)
-      expect(label.x).toBeLessThan(sheets[cell]?.x ?? 0)
-      expect(numbers[cell]?.y).toBeLessThan(label.y)
-    }
-    expect(footer.some(row => row.text === 'PER DRAWING')).toBe(false)
-    expect(footer.some(row => row.text === '50 × 20 × 18 mm')).toBe(true)
-    expect(footer.some(row => row.text === '500 × 200 × 18 mm')).toBe(true)
-    expect(rows.some(row => /Project:|Generated:|Units:|Actual size/u.test(row.text))).toBe(false)
-    expect(rows.filter(row => row.text === 'Individual part drawings')).toHaveLength(1)
+    expect(footer.filter(row => row.text === 'SCALE')).toHaveLength(1)
+    expect(footer.filter(row => row.text === 'SHEET')).toHaveLength(1)
+    expect(footer.filter(row => row.text === `${String(index + 1)} / ${String(pdf.getPageCount())}`)).toHaveLength(1)
+    expect(footer.filter(row => row.text === 'N/A')).toHaveLength(1)
+    expect(footer.filter(row => row.text === 'Varies')).toHaveLength(0)
+    expect(footer.filter(row => row.text === base.title)).toHaveLength(1)
+    expect(footer.filter(row => row.text === 'Millimeters (mm)')).toHaveLength(1)
+    expect(rows.some(row => /Project:|Generated:|Actual size/u.test(row.text))).toBe(false)
+    expect(rows.filter(row => row.text === 'UNITS')).toHaveLength(1)
+    expect(rows.find(row => row.text === 'UNITS')?.y).toBeLessThan(78)
+    expect(footer.some(row => row.text.includes('Qty:'))).toBe(false)
     expect(rows.filter(row => row.text === '50 mm')).toHaveLength(1)
     expect(rows.filter(row => row.text === '500 mm')).toHaveLength(1)
     expect(pageOperators(pdf, index)).toContain('1 0 0 1 28 36 cm') // footer shares the technical frame's bottom edge
@@ -475,18 +483,73 @@ it.each(['A4', 'A3'] as const)('gives each individual drawing its own full-width
 })
 
 
-it('uses the actual scale and production metadata in the individual title block', async () => {
+it('keeps project metadata and N/A scale in the title block, with production metadata in drawing cells', async () => {
   const request = multiPanelPdfRequest()
   const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
   if (!result.ok) throw new Error(result.error.message)
   const pdf = await PDFDocument.load(result.bytes)
-  const index = pdf.getPages().findIndex((_, index) => hasText(pageOperators(pdf, index), 'Individual part drawings'))
+  const index = pdf.getPages().findIndex((_, index) => isPartDrawing(pageOperators(pdf, index)))
   const rows = printedText(pdf, index)
   const footer = rows.filter(row => row.y < 150)
   expect(footer.filter(row => row.text === 'SCALE')).toHaveLength(1)
   expect(footer.filter(row => row.text === 'SHEET')).toHaveLength(1)
-  expect(footer.filter(row => row.text === '1:1')).toHaveLength(1)
+  expect(footer.filter(row => row.text === 'N/A')).toHaveLength(1)
   expect(footer.filter(row => row.text === `${String(index + 1)} / ${String(pdf.getPageCount())}`)).toHaveLength(1)
-  expect(footer.some(row => row.text === 'Quantity: 4')).toBe(true)
-  expect(rows.some(row => row.text.startsWith('Scale ') || row.text.startsWith('Thickness:'))).toBe(false)
+  expect(footer.some(row => row.text === 'Workshop project')).toBe(true)
+  expect(rows.some(row => row.text.includes('Thickness: 18 mm / Qty: 4') && row.y > 78)).toBe(true)
+  expect(footer.some(row => row.text.startsWith('Scale ') || row.text.startsWith('Thickness:'))).toBe(false)
+})
+
+
+it.each(['portrait', 'landscape'] as const)('keeps the shared fabrication footer fixed with a bounded long project name in %s', async orientation => {
+  const request = { ...multiPanelPdfRequest(), orientation, title: 'Workshop cabinetry and storage for the north wing renovation '.repeat(15).trim() }
+  const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject(request)
+  if (!result.ok) throw new Error(result.error.message)
+  const pdf = await PDFDocument.load(result.bytes)
+  const rows = printedText(pdf, 1)
+  expect(rows.filter(row => row.text === 'PROJECT')).toHaveLength(1)
+  expect(rows.filter(row => row.text === 'CUTTING SETTINGS')).toHaveLength(1)
+  expect(rows.filter(row => row.text === 'SCALE')).toHaveLength(1)
+  expect(rows.some(row => row.text === 'N/A')).toBe(true)
+  expect(rows.some(row => row.text.endsWith('...'))).toBe(true)
+  expect(rows.filter(row => row.text === 'Workshop shelf').every(row => row.y > 100)).toBe(true)
+  expect(pageOperators(pdf, 1)).toContain('88 m')
+  expect(pageOperators(pdf, 1)).not.toMatch(/\bDo\b/u)
+})
+
+it.each(['portrait', 'landscape'] as const)('uses one identical four-cell footer on every non-cover %s page, with nomenclature only on cutting drawings', async orientation => {
+  const result = await createCuttingPlanPdfService({ generate: generateCuttingPlanPdf, generateProject: generateProjectCuttingPdf }).exportProject({ ...multiPanelPdfRequest(), orientation })
+  if (!result.ok) throw new Error(result.error.message)
+  const pdf = await PDFDocument.load(result.bytes)
+  const regular = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  expect(hasText(pageOperators(pdf, 0), 'PROJECT')).toBe(false)
+  const positions: number[] = []
+  for (const [index, page] of pdf.getPages().entries()) {
+    if (!index) continue
+    const operators = pageOperators(pdf, index)
+    const rows = printedText(pdf, index)
+    for (const label of ['PROJECT', 'SCALE', 'SHEET']) expect(rows.filter(row => row.text === label)).toHaveLength(1)
+    expect(rows.some(row => row.text === 'Workshop project')).toBe(true)
+    const grid = isPartDrawing(operators)
+    expect(rows.some(row => row.text === 'UNITS')).toBe(grid)
+    expect(rows.some(row => row.text === 'CUTTING SETTINGS')).toBe(!grid)
+    if (!grid) {
+      expect(rows.some(row => row.text === 'Kerf: 2 mm')).toBe(true)
+      expect(rows.some(row => row.text === 'Edge margin: 5 mm')).toBe(true)
+    }
+    const actual = rows.find(row => row.text === `${String(index + 1)} / ${String(pdf.getPageCount())}`)
+    const sheet = rows.find(row => row.text === 'SHEET')
+    if (!actual || !sheet) throw new Error('Missing sheet cell')
+    const center = page.getWidth() - 28 - 72.5 / 2
+    expect(sheet.x + regular.widthOfTextAtSize('SHEET', 6) / 2).toBeCloseTo(center)
+    expect(actual.x + bold.widthOfTextAtSize(actual.text, 8) / 2).toBeCloseTo(center)
+    positions.push(actual.y)
+    expect(operators).toContain('88 m')
+    const nomenclature = rows.filter(row => /^Panel [0-9]+ — /u.test(row.text))
+    expect(nomenclature.length > 0).toBe(isCuttingDrawing(operators))
+    expect(nomenclature.every(row => row.y > 88)).toBe(true)
+    if (!isCuttingDrawing(operators)) expect(rows.some(row => row.text === 'N/A')).toBe(true)
+  }
+  expect(new Set(positions).size).toBe(1)
 })

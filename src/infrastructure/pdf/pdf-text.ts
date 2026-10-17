@@ -18,3 +18,12 @@ export function wrapPdfText(text: string, font: PDFFont, size: number, width: nu
   }
   return lines
 }
+
+/** A visibly abbreviated label; complete definitions remain in the fabrication schedules. */
+export function boundedPdfText(text: string, font: PDFFont, size: number, width: number): string {
+  if (font.widthOfTextAtSize(text, size) <= width) return text
+  let result = text
+  while (result.length && font.widthOfTextAtSize(`${result}...`, size) > width) result = result.slice(0, -1)
+  if (font.widthOfTextAtSize(`${result}...`, size) > width) throw new Error('The PDF text area is too narrow.')
+  return `${result}...`
+}

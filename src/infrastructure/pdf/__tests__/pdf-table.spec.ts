@@ -1,5 +1,6 @@
+import { stockItemIdSchema } from '../../../domain/model/ids'
 import { PDFDocument, StandardFonts } from 'pdf-lib'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createPdfTables, SHEET_MARGIN, TABLE_BOTTOM } from '../pdf-table'
 import { pdfPageSize } from '../pdf-layout'
 import { purchasingSchedule } from '../purchasing-schedule'
@@ -123,4 +124,97 @@ it('formats absent, complete and partial purchasing totals without inventing cos
   const mixed = purchasingSchedule([{ panel: { ...source, pricing: { price: 10, currency: 'EUR' } }, count: 2 }, { panel: { ...source, pricing: { price: 5, currency: 'USD' } }, count: 3 }, { panel: source, count: 1 }])
   expect(mixed.slice(-2).map(row => [row[0], row[6]])).toEqual([['Subtotal (partial):', '20.00 EUR'], ['Subtotal (partial):', '15.00 USD']])
   expect(mixed.flat().join(' ')).not.toContain('partial): N/A')
+})
+
+
+it('uses light fabrication headers, bold panel rows, indented regular children and right-aligned values', async () => {
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const size = pdfPageSize('A4', 'portrait')
+  const page = pdf.addPage([size.width, size.height])
+  vi.spyOn(pdf, 'addPage').mockReturnValue(page)
+  const rectangles = vi.spyOn(page, 'drawRectangle')
+  const text = vi.spyOn(page, 'drawText')
+  const lines = vi.spyOn(page, 'drawLine')
+  const table = createPdfTables(pdf, font, bold, size, () => {}, { appearance: 'fabrication', bottom: 90 })
+  table.table('Panel inventory', [{ label: 'Ref', weight: 1 }, { label: 'Dimensions (mm)', weight: 2, numeric: true }], [{ cells: ['Panel 1', '800 × 600 × 15 mm'], kind: 'parent', keepWithNext: true }, { cells: ['P1', '400 × 200 × 15 mm'], kind: 'child' }])
+  expect(rectangles.mock.calls[0]?.[0]?.color).toEqual({ type: 'RGB', red: 0.82, green: 0.82, blue: 0.82 })
+  expect(rectangles.mock.calls[1]?.[0]?.color).toEqual({ type: 'RGB', red: 0.90, green: 0.90, blue: 0.90 })
+  expect(rectangles.mock.calls[2]?.[0]?.color).toEqual({ type: 'RGB', red: 1, green: 1, blue: 1 })
+  expect(text.mock.calls.find(([label]) => label === 'Ref')?.[1]?.color).toEqual({ type: 'RGB', red: 0.14, green: 0.14, blue: 0.14 })
+  const parent = text.mock.calls.find(([label]) => label === 'Panel 1')?.[1]
+  const child = text.mock.calls.find(([label]) => label === 'P1')?.[1]
+  expect(parent?.font).toBe(bold); expect(child?.font).toBe(font)
+  expect(child?.x).toBe((parent?.x ?? 0) + 8)
+  const dimension = text.mock.calls.find(([label]) => label === '800 × 600 × 15 mm')?.[1]
+  expect((dimension?.x ?? 0) + bold.widthOfTextAtSize('800 × 600 × 15 mm', 8)).toBeCloseTo(size.width - SHEET_MARGIN - 6)
+  expect(lines.mock.calls.filter(([line]) => line.thickness === 0.5)).toHaveLength(1)
+  expect(lines.mock.calls.filter(([line]) => line.thickness === 0.25)).toHaveLength(3)
+})
+
+it.each(['portrait', 'landscape'] as const)('paginates fabrication tables above their measured title block in %s', async orientation => {
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const size = pdfPageSize('A4', orientation)
+  const bottom = 130 // A taller project title block, plus annotation clearance.
+  const table = createPdfTables(pdf, font, bold, size, () => {}, { appearance: 'fabrication', bottom })
+  const input = Array.from({ length: 120 }, (_, index) => ({ cells: [`Panel ${String(index + 1)}`, 'Panel or part with a complete long fabrication label '.repeat(3)], kind: 'parent' as const, keepWithNext: true }))
+  const rows = input.flatMap(parent => [parent, { cells: ['P1', 'Shelf'], kind: 'child' as const }])
+  table.table('Panel inventory', [{ label: 'Ref', weight: 1 }, { label: 'Name', weight: 3 }], rows)
+  expect(table.placements.filter(row => !row.header)).toHaveLength(240)
+  for (const row of table.placements) expect(row.bottom).toBeGreaterThanOrEqual(bottom)
+  const body = table.placements.filter(row => !row.header)
+  for (let index = 0; index < body.length; index += 2) expect(body[index]?.page).toBe(body[index + 1]?.page)
+  for (const page of pdf.getPages()) expect(table.placements.filter(row => row.page === page)[0]?.header).toBe(true)
+})
+
+it('uses known owned-stock reference prices and never double-counts their linked catalog identity', () => {
+  const prepared = prepareProjectPdfDocument(multiPanelPdfRequest())
+  const panel = prepared.ok ? prepared.document.panels[0] : undefined
+  if (!panel) throw new Error('Missing fixture panel')
+  const stock = { ...panel, panel: { ...panel.panel, stockItemId: stockItemIdSchema.parse('owned-panel') }, pricing: { price: 19.95, currency: 'EUR' } }
+  const rows = purchasingSchedule([{ panel: stock, count: 2 }, { panel: { ...panel, pricing: { price: 19.95, currency: 'EUR' } }, count: 1 }, { panel, count: 1 }])
+  expect(rows[0]?.slice(3)).toEqual(['2', 'Owned stock', '19.95 EUR', '39.90 EUR'])
+  expect(rows[1]?.slice(-2)).toEqual(['19.95 EUR', '19.95 EUR'])
+  expect(rows[2]?.slice(-2)).toEqual(['N/A', 'N/A'])
+  expect(rows.at(-1)?.[6]).toBe('59.85 EUR')
+  expect(rows.at(-1)?.[0]).toBe('Subtotal (partial):')
+})
+
+it('emphasizes explicit total rows without changing ordinary parts row styling or cell data', async () => {
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const size = pdfPageSize('A4', 'portrait')
+  const page = pdf.addPage([size.width, size.height])
+  vi.spyOn(pdf, 'addPage').mockReturnValue(page)
+  const text = vi.spyOn(page, 'drawText')
+  const lines = vi.spyOn(page, 'drawLine')
+  const rectangles = vi.spyOn(page, 'drawRectangle')
+  const table = createPdfTables(pdf, font, bold, size, () => {}, { appearance: 'fabrication' })
+  const cells = ['Subtotal (partial):', '39.90 EUR']
+  table.table('Materials and purchasing', [{ label: 'Reference', weight: 2 }, { label: 'Material', weight: 1 }, { label: 'Unit price', weight: 1, numeric: true }, { label: 'Total', weight: 1, numeric: true }], [['Panel reference', 'MDF', '19.95 EUR', '19.95 EUR'], { cells: [cells[0] ?? '', '', '', cells[1] ?? ''], kind: 'total' }])
+  const total = table.placements.find(row => row.rowIndex === 1)
+  expect(text.mock.calls.find(([label]) => label === '39.90 EUR')?.[1]?.font).toBe(bold)
+  expect(text.mock.calls.find(([label]) => label === 'Panel reference')?.[1]?.font).toBe(font)
+  const rule = lines.mock.calls.find(([line]) => line.thickness === 0.5 && line.start.y === total?.top)?.[0]
+  const summaryStart = SHEET_MARGIN + (total?.widths.slice(0, -2).reduce((sum, value) => sum + value, 0) ?? 0)
+  expect(rule?.start.x).toBeCloseTo(summaryStart)
+  expect(rule?.start.x).toBeGreaterThan(SHEET_MARGIN)
+  expect(rule?.end.x).toBeCloseTo(size.width - SHEET_MARGIN)
+  expect(lines.mock.calls.filter(([line]) => line.start.y === total?.top)).toHaveLength(1)
+  expect(rectangles.mock.calls).toHaveLength(2) // Header and source row only; no full-width summary background.
+  expect(text.mock.calls.some(([label]) => label === 'Subtotal (partial):')).toBe(false)
+  expect(text.mock.calls.find(([label]) => label === 'TOTAL:')?.[1]?.font).toBe(bold)
+  expect(text.mock.calls.some(([label]) => label === 'Known prices only')).toBe(false)
+  const amount = text.mock.calls.find(([label]) => label === '39.90 EUR')?.[1]
+  expect((amount?.x ?? 0) + bold.widthOfTextAtSize('39.90 EUR', 8)).toBeCloseTo(size.width - SHEET_MARGIN - 6)
+  expect(cells).toEqual(['Subtotal (partial):', '39.90 EUR'])
+  text.mockClear(); rectangles.mockClear(); lines.mockClear()
+  table.table('Complete parts list', [{ label: 'Part', weight: 1 }], [['Shelf'], ['Door']])
+  for (const label of ['Shelf', 'Door']) expect(text.mock.calls.find(([value]) => value === label)?.[1]?.font).toBe(font)
+  expect(rectangles.mock.calls.slice(1).every(([options]) => options?.color && 'red' in options.color && options.color.red === 1)).toBe(true)
+  expect(lines.mock.calls.every(([line]) => line.thickness === 0.25)).toBe(true)
 })

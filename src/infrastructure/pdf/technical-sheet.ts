@@ -4,7 +4,7 @@ export const technicalInk = rgb(0.14, 0.14, 0.14)
 export const technicalRule = rgb(0.5, 0.5, 0.5)
 export const technicalTextSize = 8
 export const technicalLineHeight = 10
-export type SheetNumberPosition = { x: number; y: number; width: number; fontSize: number }
+export type SheetNumberPosition = { x: number; y: number; width: number; fontSize: number; bold?: boolean }
 
 /** Shared print frame; all measurements here are PDF points, never source geometry. */
 export function drawTechnicalFrame(page: PDFPage): void {

@@ -301,7 +301,7 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
           Document settings
         </h2>
         <section
-          class="cover-settings space-y-3"
+          class="cover-settings settings-section"
           aria-labelledby="cover-page-title"
         >
           <h3
@@ -326,7 +326,7 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
           </FormField>
           <FormField
             id="pdf-description"
-            label="Description (optional)"
+            label="Description"
           >
             <template #default="{ controlAttrs }">
               <textarea
@@ -341,7 +341,7 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
           </FormField>
           <FormField
             id="pdf-cover-image-picker"
-            label="Cover image (optional)"
+            label="Cover image"
             :error="imageError"
           >
             <template #default="{ controlAttrs }">
@@ -358,15 +358,15 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
               >
               <div
                 v-if="coverImageUrl"
-                class="space-y-2"
+                class="cover-image-preview"
               >
                 <img
                   :src="coverImageUrl"
                   alt="Selected cover image"
-                  class="max-h-28 w-full rounded object-contain"
+                  class="cover-image-thumbnail"
                   @error="imageError = 'The saved cover image cannot be displayed. Replace or remove it.'"
                 >
-                <div class="flex items-center gap-2">
+                <div class="cover-image-actions">
                   <AppButton
                     v-bind="controlAttrs"
                     size="small"
@@ -418,52 +418,57 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
             </AppButton>
           </div>
         </section>
-        <fieldset
-          class="setting"
-          aria-label="Page size"
+        <section
+          class="page-layout settings-section"
+          aria-labelledby="page-layout-title"
         >
-          <legend>Paper size</legend>
-          <div class="options">
-            <button
-              v-for="size in ['A4', 'A3'] as const"
-              :key="size"
-              type="button"
-              :aria-pressed="pageSize === size"
-              @click="updateSettings({ ...configuration, pageSize: size })"
-            >
-              {{ size }}
-            </button>
-          </div>
-        </fieldset>
-        <fieldset
-          class="setting"
-          aria-label="Orientation"
-        >
-          <legend>Orientation</legend>
-          <div class="options">
-            <button
-              v-for="direction in ['portrait', 'landscape'] as const"
-              :key="direction"
-              type="button"
-              :aria-pressed="orientation === direction"
-              @click="updateSettings({ ...configuration, orientation: direction })"
-            >
-              {{ direction === 'portrait' ? 'Portrait' : 'Landscape' }}
-            </button>
-          </div>
-        </fieldset>
-        <div class="setting">
-          <p class="setting-label">
-            Scaling
-          </p>
-          <p class="text-sm">
-            Fit to page
-          </p>
-        </div>
+          <h3
+            id="page-layout-title"
+            class="text-sm font-semibold"
+          >
+            Page layout
+          </h3>
+          <fieldset
+            class="setting"
+            aria-label="Page size"
+          >
+            <legend>Paper size</legend>
+            <div class="options">
+              <button
+                v-for="size in ['A4', 'A3'] as const"
+                :key="size"
+                type="button"
+                :aria-pressed="pageSize === size"
+                @click="updateSettings({ ...configuration, pageSize: size })"
+              >
+                {{ size }}
+              </button>
+            </div>
+          </fieldset>
+          <fieldset
+            class="setting"
+            aria-label="Orientation"
+          >
+            <legend>Orientation</legend>
+            <div class="options">
+              <button
+                v-for="direction in ['portrait', 'landscape'] as const"
+                :key="direction"
+                type="button"
+                :aria-pressed="orientation === direction"
+                @click="updateSettings({ ...configuration, orientation: direction })"
+              >
+                {{ direction === 'portrait' ? 'Portrait' : 'Landscape' }}
+              </button>
+            </div>
+          </fieldset>
+        </section>
         <div class="document-action">
           <AppButton
             size="small"
+            variant="secondary"
             class="print-action"
+            :label="action === 'print' ? 'Preparing…' : 'Print'"
             :disabled="generating || action !== null || !service"
             :loading="action === 'print'"
             @click="exportPdf('print')"
@@ -472,12 +477,13 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
               v-if="action !== 'print'"
               name="printer"
             />
-            {{ action === 'print' ? 'Preparing…' : 'Print' }}
+            <span class="action-label">{{ action === 'print' ? 'Preparing…' : 'Print' }}</span>
           </AppButton>
           <AppButton
             variant="primary"
             size="small"
             class="download-action"
+            :label="action === 'download' ? 'Generating PDF…' : 'Download PDF'"
             :disabled="generating || action !== null || !service"
             :loading="action === 'download'"
             @click="exportPdf('download')"
@@ -486,7 +492,7 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
               v-if="action !== 'download'"
               name="export"
             />
-            {{ action === 'download' ? 'Generating PDF…' : 'Download PDF' }}
+            <span class="action-label">{{ action === 'download' ? 'Generating PDF…' : 'Download PDF' }}</span>
           </AppButton>
           <span
             class="sr-only"
@@ -511,18 +517,25 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
 .paper { width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
 .paper :deep(.pdf-page) { flex: none; background: white; box-shadow: 0 1px 3px rgb(0 0 0 / .07), 0 5px 16px rgb(0 0 0 / .08); }
 .paper :deep(canvas) { display: block; }
-.document-settings { max-height: 100%; overflow-y: auto; padding: 1.25rem; background: color-mix(in srgb, var(--surface) 92%, var(--canvas)); border: 1px solid var(--line); border-radius: .75rem; box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 4%, transparent); }
-.cover-settings { margin-top: 1rem; min-width: 0; }
-.setting { margin-top: 1.25rem; min-width: 0; }
-.setting legend, .setting-label { margin-bottom: .5rem; font-size: .75rem; color: var(--muted); font-weight: 600; }
+.document-settings { min-width: 0; max-height: 100%; overflow-y: auto; padding: 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: .75rem; }
+.settings-section { display: grid; gap: .875rem; min-width: 0; }
+.cover-settings { margin-top: 1rem; }
+.page-layout { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.document-settings :deep(label), .setting legend { font-size: .75rem; color: var(--muted); font-weight: 600; }
+.cover-settings textarea.field { min-height: 6.5rem; line-height: 1.5; resize: vertical; }
+.cover-image-preview { display: flex; align-items: center; gap: .75rem; min-width: 0; }
+.cover-image-thumbnail { flex: none; width: 4rem; height: 4rem; object-fit: contain; padding: .2rem; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--quiet-surface); }
+.cover-image-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; min-width: 0; }
+.cover-image-actions .button { padding-inline: .5rem; font-size: .75rem; }
+.setting { min-width: 0; }
+.setting legend { margin-bottom: .375rem; }
 .options { display: flex; gap: .25rem; padding: .2rem; background: var(--canvas); border-radius: .45rem; }
 .options button { flex: 1; height: var(--control-height-small); min-height: var(--control-height-small); padding: .3rem .5rem; border-radius: var(--control-radius); font-size: .8125rem; }
 .options button[aria-pressed='true'] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
 .options button:hover { color: var(--accent); }
-.document-action { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
-.print-action { min-width: 7rem; }
-.download-action { min-width: 10.5rem; }
-@media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .75rem; } .document-settings { grid-row: 1; max-height: min(45dvh, 24rem); display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; padding: 1rem; } .document-settings h2, .cover-settings { flex-basis: 100%; } .cover-settings { margin-top: 1rem; min-width: 0; }
-.setting { margin-top: 0; } .document-action { margin: 0 0 0 auto; padding: 0; border: 0; } }
-@media (max-width: 640px) { .document-viewport { padding: 1rem; } .paper { gap: 1.25rem; } .document-settings { gap: .75rem 1rem; } }
+.document-action { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: .5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.document-action .button { width: 100%; min-width: 0; padding-inline: .25rem; gap: .25rem; font-size: .75rem; white-space: nowrap; }
+.action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1000px) { .document-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .75rem; } .document-settings { grid-row: 1; max-height: min(45dvh, 24rem); } }
+@media (max-width: 640px) { .document-viewport { padding: 1rem; } .paper { gap: 1.25rem; } }
 </style>

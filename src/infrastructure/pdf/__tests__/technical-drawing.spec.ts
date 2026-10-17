@@ -1,6 +1,6 @@
-import { PDFDocument } from 'pdf-lib'
+import { PDFDocument, StandardFonts } from 'pdf-lib'
 import { describe, expect, it, vi } from 'vitest'
-import { DIMENSION_CLEARANCE, drawGrain, scaleLabel, technicalTransform, wasteHatchLines } from '../technical-drawing'
+import { DIMENSION_CLEARANCE, drawDimensions, drawGrain, scaleLabel, technicalTransform, wasteHatchLines } from '../technical-drawing'
 import { millimetresToPoints, pdfPageSize, pdfRect } from '../pdf-layout'
 
 describe('Physical technical drawing geometry', () => {
@@ -65,4 +65,43 @@ describe('Physical technical drawing geometry', () => {
     const panel = pdfRect({ xMm: 0, yMm: 0, lengthMm: 100, widthMm: 80 }, transform)
     expect(usable.x - panel.x).toBeCloseTo(millimetresToPoints(2.5))
   })
+})
+
+
+it('draws vector arrowheads and extension lines at literal part edges, with labels outside the geometry', async () => {
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const page = pdf.addPage()
+  const lines = vi.spyOn(page, 'drawLine')
+  const texts = vi.spyOn(page, 'drawText')
+  drawDimensions(page, font, { x: 100, y: 200, width: 80, height: 40 }, 400, 200, 'arrows')
+  const segments = lines.mock.calls.map(([line]) => ({ start: line.start, end: line.end }))
+  for (const segment of [
+    { start: { x: 100, y: 196 }, end: { x: 100, y: 175 } },
+    { start: { x: 180, y: 196 }, end: { x: 180, y: 175 } },
+    { start: { x: 100, y: 180 }, end: { x: 180, y: 180 } },
+    { start: { x: 100, y: 180 }, end: { x: 104, y: 181.5 } },
+    { start: { x: 180, y: 180 }, end: { x: 176, y: 178.5 } },
+    { start: { x: 96, y: 200 }, end: { x: 75, y: 200 } },
+    { start: { x: 96, y: 240 }, end: { x: 75, y: 240 } },
+    { start: { x: 80, y: 200 }, end: { x: 80, y: 240 } },
+    { start: { x: 80, y: 200 }, end: { x: 81.5, y: 204 } },
+    { start: { x: 80, y: 240 }, end: { x: 78.5, y: 236 } },
+  ]) expect(segments).toContainEqual(segment)
+  expect(texts.mock.calls.map(([text]) => text)).toEqual(['400 mm', '200 mm'])
+  expect(texts.mock.calls[0]?.[1]?.y).toBe(167)
+  expect(texts.mock.calls[1]?.[1]?.x).toBe(72)
+})
+
+it('places arrowheads outside tiny spans instead of dropping dimensions or drawing overlapping inward arrows', async () => {
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const page = pdf.addPage()
+  const lines = vi.spyOn(page, 'drawLine')
+  const texts = vi.spyOn(page, 'drawText')
+  drawDimensions(page, font, { x: 100, y: 200, width: 1, height: 2 }, 0.1, 0.2, 'arrows')
+  expect(lines.mock.calls[2]?.[0]).toMatchObject({ start: { x: 90, y: 180 }, end: { x: 111, y: 180 } })
+  expect(lines.mock.calls[3]?.[0]).toMatchObject({ start: { x: 100, y: 180 }, end: { x: 96, y: 181.5 } })
+  expect(lines.mock.calls[5]?.[0]).toMatchObject({ start: { x: 101, y: 180 }, end: { x: 105, y: 181.5 } })
+  expect(texts.mock.calls.map(([text]) => text)).toEqual(['0.1 mm', '0.2 mm'])
 })
