@@ -20,7 +20,7 @@ async function closeCreation(): Promise<void> {
         Welcome to OptiCutList.
       </h1>
       <p class="max-w-2xl text-lg leading-relaxed text-muted">
-        Your workspace for planning projects, organizing materials, and making every cut count.
+        Smarter cuts. Less waste.
       </p>
     </div>
 
