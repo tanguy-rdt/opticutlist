@@ -1,0 +1,71 @@
+# Getting started
+
+Read [AGENTS.md](../AGENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md) before editing. The application is a browser-only Vue/TypeScript modular monolith, targeting a first stable 1.0 release. There is no backend, account service or cloud database to start.
+
+## Environment
+
+Use Node.js 24 from [.nvmrc](../.nvmrc); [package.json](../package.json) permits Node 22 or newer. The root [README](../README.md) recommends npm 11+. Use the committed [package-lock.json](../package-lock.json) for reproducible dependencies. IndexedDB and Web Workers are browser requirements; PDF preview additionally uses a locally bundled PDF.js worker.
+
+```sh
+nvm use
+npm ci
+npm run dev
+```
+
+Open the URL printed by Vite. The configured application base is `/opticutlist/`, including development/preview asset URLs. Vue Router uses hash history so static hosting can serve deep links without server rewrites. Data belongs to the browser origin: switching development port/origin or browser profile changes which IndexedDB data is visible.
+
+Do not install system software, browsers or browser binaries without explicit permission. No special external services or credentials are required for local development.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Vite development server |
+| `npm run lint` | ESLint with zero warnings allowed |
+| `npm run typecheck` | `vue-tsc --build --force` across project references |
+| `npm run test:unit` | Full Vitest run, including persistence and component tests |
+| `npm test` | Vitest watch mode |
+| `npm run build` | Production output in `dist/` |
+| `npm run preview` | Serve the built application locally |
+
+For one regression suite:
+
+```sh
+npm run test:unit -- src/application/inventory/__tests__/project-stock-service.spec.ts
+```
+
+Run all four validation commands before committing; see [testing](testing.md). A build alone does not replace TypeScript checking or tests.
+
+## Repository map
+
+| Directory/file | Responsibility |
+| --- | --- |
+| [src/main.ts](../src/main.ts) | Composition root: factories, dependency injection and app mount |
+| [src/app](../src/app/) | Shell, router, theme, settings and top-level views |
+| [src/domain](../src/domain/) | Pure validated models, geometry, cutting trees and optimization |
+| [src/application](../src/application/) | Use cases, repository/worker/PDF ports and business coordination |
+| [src/infrastructure](../src/infrastructure/) | Dexie, JSON adapter and pdf-lib rendering |
+| [src/features](../src/features/) | Project and global Vue workflows; presentation adapters |
+| [src/shared/ui](../src/shared/ui/) | Shared controls, notifications, technical previews and browser helpers |
+| [src/workers](../src/workers/) | Thin optimization worker adapters |
+| [public/materials](../public/materials/) | Local material preview assets and manifest |
+| [docs](./) | Developer and portable-format references |
+
+Tests live beside their implementation under `__tests__/*.spec.ts`, rather than in a separate global test package.
+
+## Contribution workflow
+
+1. Trace the feature from Vue injection key to application service, domain rules and persistence adapter. Identify the owning layer before editing.
+2. Inspect existing tests and neighboring shared controls. Preserve IDs, audit snapshots, compatibility fields and typed failure handling.
+3. Make the smallest scoped change and add meaningful regression coverage. Do not put persistence in a component or algorithms in a worker.
+4. Update documentation when contracts or responsibilities change. Database versions are append-only; never repair a migration by deleting a database.
+5. Run lint, typecheck, tests and build. Inspect `git diff` for unrelated changes and secrets.
+6. Create a local Conventional Commit. Follow the repository's no-push and history rules in AGENTS.md.
+
+Use schema-inferred types, branded IDs and complete-record validation. Empty numeric form fields stay empty until validation; do not substitute zero for missing physical dimensions or prices.
+
+## Build and hosting
+
+[Vite configuration](../vite.config.ts) sets the Pages base and emits module workers as ES chunks. [CI](../.github/workflows/ci.yml) currently runs Node setup, `npm ci`, lint, typecheck, tests and build. It uploads a Pages artifact for default-branch pushes. **The deployment job is commented out**, despite the root README describing automatic deployment. Repository Pages settings and deployed runtime behavior were not verified in this audit. See the [discrepancy register](architecture.md#guidance-and-implementation-discrepancies).
+
+Local business data is not a backup. Before testing destructive workflows against useful data, use the supported transfers and understand their [backup limitations](persistence-and-json.md#backup-boundaries).
