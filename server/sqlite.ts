@@ -303,7 +303,16 @@ export function createSqlitePersistence(filename: string) {
   const persistence: Persistence = {
     ...repositories,
     transaction,
-    open: () => Promise.resolve(closed ? { ok: false, error: { kind: 'storageFailure', message: 'Server database is closed.' } } : { ok: true, value: undefined }),
+    open: () => {
+      if (closed) {
+        return Promise.resolve({ ok: false, error: { kind: 'storageFailure', message: 'Server database is closed.' } })
+      }
+      return run(() => {
+        if (db.prepare('SELECT version FROM schema_migrations WHERE version = 1').get()?.version !== 1) {
+          throw new Error('SQLite migration metadata is unavailable.')
+        }
+      })
+    },
     close: () => {
       closed = true
       db.close()

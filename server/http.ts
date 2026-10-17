@@ -144,6 +144,11 @@ export function createSelfHostedServer(options: { databasePath: string; frontend
     }
     const url = new URL(req.url ?? '/', origin)
     if (url.pathname === '/api/v1/health' && req.method === 'GET') {
+      const ready = await storage.persistence.open()
+      if (!ready.ok) {
+        send(res, 503, { status: 'unavailable' })
+        return
+      }
       send(res, 200, { status: 'ok', storage: 'sqlite', schemaVersion: 1 })
       return
     }
