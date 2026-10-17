@@ -31,7 +31,9 @@ function safePath(root: string, name: string): string {
   if (!inside(root, target)) throw new Error(`Path escapes its root: ${name}`)
   let cursor = target
   while (inside(root, cursor)) {
-    if (lstatSync(cursor, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`Symbolic links are not supported: ${name}`)
+    const stat = lstatSync(cursor, { throwIfNoEntry: false })
+    if (stat?.isSymbolicLink()) throw new Error(`Symbolic links are not supported: ${name}`)
+    if (cursor !== target && stat && !stat.isDirectory()) throw new Error(`Path parent is not a directory: ${name}`)
     if (cursor === root) break
     cursor = dirname(cursor)
   }
@@ -241,7 +243,6 @@ export function syncWiki(options: WikiOptions): { changed: string[]; removed: st
     ancestor = dirname(ancestor)
   }
   safePath(destination, '')
-  mkdirSync(destination, { recursive: true })
   const manifestPath = safePath(destination, MANIFEST)
   const previous = existsSync(manifestPath) ? manifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8'))) : undefined
   if (previous && previous.repository !== options.repository) throw new Error('Wiki manifest belongs to another repository.')
@@ -249,7 +250,7 @@ export function syncWiki(options: WikiOptions): { changed: string[]; removed: st
   if (Object.keys(priorFiles).some(name => !managed(name))) throw new Error('Unsafe managed path in Wiki manifest.')
   const next = Object.fromEntries([...output].map(([name, content]) => [name, hash(content)]))
   // Preflight all ownership, manual edits, symlinks and page collisions before writing anything.
-  const existingPages = files(destination).filter(name => PAGE_EXTENSION.test(name))
+  const existingPages = (existsSync(destination) ? files(destination) : []).filter(name => PAGE_EXTENSION.test(name))
   for (const name of new Set([...Object.keys(priorFiles), ...output.keys()])) {
     const path = safePath(destination, name)
     if (!managed(name)) throw new Error(`Unsafe output path: ${name}`)

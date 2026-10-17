@@ -1,5 +1,4 @@
 import { extname } from 'node:path'
-import { crc32 } from 'node:zlib'
 
 export function hasControlCharacters(value: string): boolean {
   for (const character of value) if (character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) return true
@@ -24,70 +23,29 @@ export function validateMarkdown(data: Buffer): void {
   if (/-----BEGIN (?:[A-Z ]*PRIVATE KEY|CERTIFICATE)-----|SQLite format 3|^-- (?:MySQL|PostgreSQL).*dump/im.test(data.toString('utf8'))) throw new Error('Sensitive content is not documentation.')
 }
 
-/** Structural signatures and bounded containers, not an extension-only decision.
- * Metadata chunks are rejected: re-export documentation images without metadata.
- * This is not a steganography detector or a complete image decoder.
+/** Publication allowlist, not an image decoder or metadata/secret scanner.
+ * Check familiar file signatures and end markers; leave image decoding to viewers.
  */
 export function validateImage(name: string, data: Buffer): void {
   const extension = extname(name).toLowerCase()
   if (extension === '.svg') throw new Error('SVG is not supported. Export a PNG, JPEG or WebP instead.')
   if (!['.png', '.jpg', '.jpeg', '.webp'].includes(extension)) throw new Error('Only referenced PNG, JPEG and WebP documentation images are allowed.')
   if (!data.length || data.length > 5 * 1024 * 1024) throw new Error('Image must be nonempty and at most 5 MiB.')
-  function invalid(): never { throw new Error('Image content does not match a safe supported image container; re-export without metadata.') }
+
+  let matches: boolean
   if (extension === '.png') {
-    if (!data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) invalid()
-    let offset = 8; let header = false; let pixels = false
-    while (offset + 12 <= data.length) {
-      const length = data.readUInt32BE(offset)
-      const type = data.toString('ascii', offset + 4, offset + 8)
-      if (offset + 12 + length > data.length || !['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS'].includes(type)) invalid()
-      if (crc32(data.subarray(offset + 4, offset + 8 + length)) !== data.readUInt32BE(offset + 8 + length)) invalid()
-      if (!header && (type !== 'IHDR' || length !== 13)) invalid()
-      if (type === 'IHDR') {
-        if (header || length !== 13 || !data.readUInt32BE(offset + 8) || !data.readUInt32BE(offset + 12)) invalid()
-        header = true
-      }
-      if (type === 'IDAT') pixels = true
-      offset += length + 12
-      if (type === 'IEND') { if (length || offset !== data.length || !pixels) invalid(); return }
-    }
-    invalid()
+    matches = data.length >= 45
+      && data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      && data.subarray(-12).equals(Buffer.from([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]))
   } else if (extension === '.webp') {
-    if (data.length < 20 || data.toString('ascii', 0, 4) !== 'RIFF' || data.toString('ascii', 8, 12) !== 'WEBP' || data.readUInt32LE(4) + 8 !== data.length) invalid()
-    let offset = 12; let pixels = false
-    while (offset + 8 <= data.length) {
-      const type = data.toString('ascii', offset, offset + 4)
-      const length = data.readUInt32LE(offset + 4)
-      if (!['VP8 ', 'VP8L', 'VP8X', 'ALPH'].includes(type) || !length) invalid()
-      if (type === 'VP8 ' || type === 'VP8L') pixels = true
-      offset += 8 + length + length % 2
-      if (offset > data.length) invalid()
-    }
-    if (!pixels || offset !== data.length) invalid()
+    matches = data.length >= 20
+      && data.subarray(0, 4).equals(Buffer.from('RIFF'))
+      && data.subarray(8, 12).equals(Buffer.from('WEBP'))
+      && data.readUInt32LE(4) === data.length - 8
   } else {
-    if (data[0] !== 255 || data[1] !== 216) invalid()
-    let offset = 2; let frame = false; let scan = false
-    while (offset < data.length) {
-      if (data[offset++] !== 255) invalid()
-      while (data[offset] === 255) offset++
-      const marker = data.at(offset++)
-      if (marker === 217) { if (!frame || !scan || offset !== data.length) invalid(); return }
-      if (marker === undefined || marker === 0 || marker === 216 || marker >= 208 && marker <= 215 || offset + 2 > data.length) invalid()
-      const length = data.readUInt16BE(offset)
-      if (length < 2 || offset + length > data.length || marker === 254 || marker >= 225 && marker <= 239) invalid()
-      if (marker === 224 && (length < 16 || data.toString('ascii', offset + 2, offset + 7) !== 'JFIF\0' || length !== 16 + 3 * (data[offset + 14] ?? 0) * (data[offset + 15] ?? 0))) invalid()
-      if ([192, 193, 194].includes(marker)) { if (length < 8 || !data.readUInt16BE(offset + 3) || !data.readUInt16BE(offset + 5)) invalid(); frame = true }
-      offset += length
-      if (marker === 218) {
-        scan = true
-        while (offset < data.length) {
-          if (data[offset] !== 255) { offset++; continue }
-          const next = data.at(offset + 1)
-          if (next === 0 || next !== undefined && next >= 208 && next <= 215) { offset += 2; continue }
-          break
-        }
-      }
-    }
-    invalid()
+    matches = data.length >= 4
+      && data.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
+      && data.subarray(-2).equals(Buffer.from([255, 217]))
   }
+  if (!matches) throw new Error('Image content does not match its PNG, JPEG or WebP format; re-export the image.')
 }

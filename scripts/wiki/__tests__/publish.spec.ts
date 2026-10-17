@@ -225,7 +225,7 @@ describe('Wiki generation and managed synchronization', () => {
     expect(existsSync(options.destination)).toBe(false)
   })
 
-  it('rejects disguised images, image metadata and trailing payloads', () => {
+  it('rejects disguised images and trailing payloads', () => {
     for (const data of [Buffer.from('not an image'), Buffer.concat([png, Buffer.from('payload')]), Buffer.from('<svg/>')]) {
       const options = fixture()
       put(options, 'docs/image.png', data)
@@ -264,30 +264,57 @@ describe('Wiki generation and managed synchronization', () => {
     expect(output.has('Docs-wiki-publishing.md')).toBe(true)
   })
 
-  it('accepts verified JPEG and WebP images and rejects JPEG metadata', () => {
-    const original = Buffer.from(jpegCover.data, 'base64')
-    const profile = original.indexOf(Buffer.from([255, 226]))
-    expect(profile).toBeGreaterThan(0)
-    const jpeg = Buffer.concat([original.subarray(0, profile), original.subarray(profile + 2 + original.readUInt16BE(profile + 2))])
-    for (const [name, data] of [['panel.jpeg', jpeg], ['panel.webp', readFileSync('public/materials/previews/mdf.webp')]] as const) {
+  it('publishes PNG, JPEG and WebP unchanged, including ordinary JPEG metadata', () => {
+    for (const [name, data] of [
+      ['panel.png', png],
+      ['panel.jpg', Buffer.from(jpegCover.data, 'base64')],
+      ['panel.jpeg', Buffer.from(jpegCover.data, 'base64')],
+      ['panel.webp', readFileSync('public/materials/previews/mdf.webp')],
+    ] as const) {
       const options = fixture()
       put(options, `docs/${name}`, data)
       put(options, 'docs/image.md', `![Panel](${name})`)
       expect(buildWiki(options).get(`_assets/opticutlist-docs/docs/${name}`)).toEqual(data)
     }
-    const options = fixture()
-    put(options, 'docs/image.jpeg', original)
-    put(options, 'docs/image.md', '![Panel](image.jpeg)')
-    expect(() => buildWiki(options)).toThrow(/Image content/)
   })
 
-  it('rejects PNG metadata chunks even with a valid container signature', () => {
+  it.each(['image.png', 'image.jpg', 'image.webp'])('rejects empty, oversized and mismatched image signatures before writes: %s', name => {
+    for (const data of [Buffer.alloc(0), Buffer.alloc(5 * 1024 * 1024 + 1), Buffer.from('not an image')]) {
+      const options = fixture()
+      put(options, `docs/${name}`, data)
+      put(options, 'docs/image.md', `![Panel](${name})`)
+      expect(() => syncWiki(options)).toThrow(/Image/)
+      expect(existsSync(options.destination)).toBe(false)
+    }
+  })
+
+  it.each([
+    ['panel.jpeg', png],
+    ['panel.webp', png],
+    ['panel.png', Buffer.from(jpegCover.data, 'base64')],
+    ['panel.gif', png],
+    ['panel.png', png.subarray(0, 12)],
+    ['panel.jpeg', Buffer.from([255, 216, 255])],
+    ['panel.webp', Buffer.from('RIFF')],
+  ] as const)('rejects unsupported, truncated or mislabeled image files: %s', (name, data) => {
     const options = fixture()
-    const modified = Buffer.from(png)
-    modified.write('tEXt', 37, 'ascii')
-    put(options, 'docs/image.png', modified)
+    put(options, `docs/${name}`, data)
+    put(options, 'docs/image.md', `![Panel](${name})`)
+    expect(() => syncWiki(options)).toThrow(/Image content|Only referenced/)
+    expect(existsSync(options.destination)).toBe(false)
+  })
+
+  it('does not modify any Wiki files when an asset output parent is a regular file', () => {
+    const options = fixture()
+    syncWiki(options)
+    const before = readdirSync(options.destination).map(name => [name, readFileSync(join(options.destination, name))] as const)
+    put(options, 'docs/README.md', '# Changed home')
+    put(options, 'docs/image.png', png)
     put(options, 'docs/image.md', '![Panel](image.png)')
-    expect(() => buildWiki(options)).toThrow(/Image content/)
+    writeFileSync(join(options.destination, '_assets'), 'Manual file')
+    expect(() => syncWiki(options)).toThrow(/not a directory/)
+    for (const [name, content] of before) expect(readFileSync(join(options.destination, name))).toEqual(content)
+    expect(readFileSync(join(options.destination, '_assets'), 'utf8')).toBe('Manual file')
   })
 
   it('validates through the CLI without requiring or creating a destination', () => {
