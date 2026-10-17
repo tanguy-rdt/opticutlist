@@ -70,7 +70,8 @@ export function isOptimizeRequest(data: unknown): data is OptimizeRequest {
 
 export function isOptimizeProjectRequest(data: unknown): data is OptimizeProjectRequest {
   if (!isRecord(data) || data.type !== 'optimizeProject' || !isRequestId(data.requestId) || !isRecord(data.input)) return false
-  return Array.isArray(data.input.panels) && data.input.panels.every((source: unknown) => isRecord(source) && optimizationPanelSchema.safeParse(source.product).success && panelQuantitySchema.safeParse(source.quantity).success) &&
+  return Array.isArray(data.input.panels)
+    && data.input.panels.every((source: unknown) => isRecord(source) && optimizationPanelSchema.safeParse(source.product).success && panelQuantitySchema.safeParse(source.quantity).success) &&
     Array.isArray(data.input.parts) && data.input.parts.every((part: unknown) => partSchema.safeParse(part).success) && cuttingSettingsSchema.safeParse(data.input.settings).success
 }
 
@@ -104,9 +105,11 @@ export function isOptimizationResponse(data: unknown): data is OptimizationRespo
   if (data.type === 'projectResult') {
     if (!isRequestId(data.requestId) || !isRecord(data.selection)) return false
     const selection = data.selection
-    if (selection.ok === false) return isRecord(selection.error) && (selection.error.kind === 'invalidInput' || selection.error.kind === 'invalidPlan') && typeof selection.error.message === 'string' && Array.isArray(selection.error.issues) && selection.error.issues.every((issue: unknown) => isRecord(issue) &&
-      typeof issue.kind === 'string' && ['invalidTree', 'invalidPanel', 'panelLimit', 'emptyPanel', 'invalidAccounting', 'invalidMetrics'].includes(issue.kind) && typeof issue.message === 'string' &&
-      (issue.panelIndex === undefined || typeof issue.panelIndex === 'number' && Number.isSafeInteger(issue.panelIndex) && issue.panelIndex >= 0))
+    if (selection.ok === false) return isRecord(selection.error) && (selection.error.kind === 'invalidInput' || selection.error.kind === 'invalidPlan')
+      && typeof selection.error.message === 'string'
+      && Array.isArray(selection.error.issues) && selection.error.issues.every((issue: unknown) => isRecord(issue) &&
+        typeof issue.kind === 'string' && ['invalidTree', 'invalidPanel', 'panelLimit', 'emptyPanel', 'invalidAccounting', 'invalidMetrics'].includes(issue.kind) && typeof issue.message === 'string' &&
+        (issue.panelIndex === undefined || typeof issue.panelIndex === 'number' && Number.isSafeInteger(issue.panelIndex) && issue.panelIndex >= 0))
     if (selection.ok !== true || !isRecord(selection.plan)) return false
     const plan = selection.plan
     return Array.isArray(plan.panels) && plan.panels.every((panel: unknown) => isRecord(panel) && panelSnapshotSchema.shape.id.safeParse(panel.supplierProductId).success &&

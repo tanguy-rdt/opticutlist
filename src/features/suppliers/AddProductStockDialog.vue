@@ -18,16 +18,28 @@ const error = ref('')
 const busy = ref(false)
 async function submit(): Promise<void> {
   if (busy.value) return
-  quantityError.value = ''; error.value = ''
+  quantityError.value = '';
+  error.value = ''
   const parsed = quantitySchema.safeParse(quantity.value)
-  if (!parsed.success) { quantityError.value = 'Enter a positive whole number.'; return }
-  if (!repository) { error.value = 'Stock is unavailable. Reopen the application and try again.'; return }
+  if (!parsed.success) {
+    quantityError.value = 'Enter a positive whole number.';
+    return
+  }
+  if (!repository) {
+    error.value = 'Stock is unavailable. Reopen the application and try again.';
+    return
+  }
   busy.value = true
   try {
     const result = await repository.addFromProduct(props.product, parsed.data)
-    if (!result.ok) { error.value = persistenceErrorMessage(result.error, 'Stock item'); return }
+    if (!result.ok) {
+      error.value = persistenceErrorMessage(result.error, 'Stock item');
+      return
+    }
     emit('added', result.value)
-  } catch { error.value = 'Could not add panels to stock. Nothing was added. Try again.' }
+  } catch {
+    error.value = 'Could not add panels to stock. Nothing was added. Try again.'
+  }
   finally { busy.value = false }
 }
 </script>

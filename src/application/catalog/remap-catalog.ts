@@ -16,7 +16,10 @@ export function ids<T extends string>(incoming: readonly T[], existing: readonly
     if (!existing.includes(id)) return [id, id]
     for (let attempts = 0; attempts < 100; attempts += 1) {
       const fresh = parseId(crypto.randomUUID())
-      if (!used.has(fresh)) { used.add(fresh); return [id, fresh] }
+      if (!used.has(fresh)) {
+        used.add(fresh);
+        return [id, fresh]
+      }
     }
     throw new Error('Could not allocate a unique imported entity ID.')
   }))

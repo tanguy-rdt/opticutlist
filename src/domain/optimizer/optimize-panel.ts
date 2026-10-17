@@ -35,6 +35,15 @@ export type OptimizePanelSelection =
   | { readonly ok: false; readonly error: { readonly kind: 'noUsableArea' } }
   | { readonly ok: false; readonly error: { readonly kind: 'noValidCandidate'; readonly comparison: readonly StrategyCandidate[] } }
 
+interface RankedCandidate {
+  readonly strategy: PlacementStrategy
+  readonly plan: PanelCuttingPlan
+  readonly unplacedCount: number
+  readonly usedUm2: number
+  readonly largestWasteUm2: number
+}
+
+
 function largestWasteUm2(node: CuttingTreeNode): number {
   switch (node.kind) {
     case 'waste':
@@ -44,14 +53,6 @@ function largestWasteUm2(node: CuttingTreeNode): number {
     case 'cut':
       return Math.max(largestWasteUm2(node.first), largestWasteUm2(node.second))
   }
-}
-
-interface RankedCandidate {
-  readonly strategy: PlacementStrategy
-  readonly plan: PanelCuttingPlan
-  readonly unplacedCount: number
-  readonly usedUm2: number
-  readonly largestWasteUm2: number
 }
 
 /**

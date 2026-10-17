@@ -6,7 +6,10 @@ const props = withDefaults(defineProps<{ websiteUrl: string | undefined; size?: 
 const source = computed(() => supplierFaviconUrl(props.websiteUrl))
 const loaded = ref(false)
 const failed = ref(false)
-watch(source, () => { loaded.value = false; failed.value = false }, { flush: 'sync' })
+watch(source, () => {
+  loaded.value = false;
+  failed.value = false
+}, { flush: 'sync' })
 function imageState(event: Event, successful: boolean): void {
   if (!(event.currentTarget instanceof HTMLImageElement) || event.currentTarget.getAttribute('src') !== source.value) return
   loaded.value = successful

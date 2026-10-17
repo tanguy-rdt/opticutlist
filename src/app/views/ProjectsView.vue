@@ -44,23 +44,41 @@ let generation = 0
 onBeforeUnmount(() => { generation++ })
 async function load(): Promise<void> {
   const current = ++generation
-  loading.value = true; error.value = ''
+  loading.value = true;
+  error.value = ''
   const result = await service.projects.list()
   if (current !== generation) return
   loading.value = false
-  if (!result.ok) { error.value = persistenceErrorMessage(result.error, 'Project'); return }
+  if (!result.ok) {
+    error.value = persistenceErrorMessage(result.error, 'Project');
+    return
+  }
   projects.value = result.value
 }
 async function openForm(project: CuttingProject | null = null): Promise<void> {
   if (busy.value || loading.value || error.value) return
-  editing.value = project; formMode.value = project ? 'edit' : 'create'; name.value = project?.name ?? ''; description.value = project?.description ?? ''
-  nameError.value = ''; descriptionError.value = ''; formError.value = ''; notice.value = ''
-  await nextTick(); nameInput.value?.focus()
+  editing.value = project;
+  formMode.value = project ? 'edit' : 'create';
+  name.value = project?.name ?? '';
+  description.value = project?.description ?? ''
+  nameError.value = '';
+  descriptionError.value = '';
+  formError.value = '';
+  notice.value = ''
+  await nextTick();
+  nameInput.value?.focus()
 }
-function closeForm(): void { if (!busy.value) { formMode.value = null; editing.value = null } }
+function closeForm(): void {
+  if (!busy.value) {
+    formMode.value = null;
+    editing.value = null
+  }
+}
 async function save(): Promise<void> {
   if (busy.value) return
-  nameError.value = ''; descriptionError.value = ''; formError.value = ''
+  nameError.value = '';
+  descriptionError.value = '';
+  formError.value = ''
   if (!editing.value) return
   const parsed = cuttingProjectSchema.safeParse({ ...editing.value, name: name.value, description: description.value })
   if (!parsed.success) {
@@ -77,13 +95,21 @@ async function save(): Promise<void> {
   const result = latest.ok ? await service.projects.update(latest.value.id, { ...latest.value, name: parsed.data.name, description: parsed.data.description ?? '' }) : latest
   if (current !== generation) return
   busy.value = false
-  if (!result.ok) { formError.value = persistenceErrorMessage(result.error, 'Project'); return }
+  if (!result.ok) {
+    formError.value = persistenceErrorMessage(result.error, 'Project');
+    return
+  }
   closeForm()
-  notice.value = 'Project updated.'; await load()
+  notice.value = 'Project updated.';
+  await load()
 }
 async function remove(project: CuttingProject): Promise<void> {
   if (busy.value) return
-  deleting.value = project; stockHandling.value = 'keep'; deletionError.value = ''; restorationIssues.value = []; deletionLoading.value = true
+  deleting.value = project;
+  stockHandling.value = 'keep';
+  deletionError.value = '';
+  restorationIssues.value = [];
+  deletionLoading.value = true
   const current = ++deletionGeneration
   const preview = await service.deletionPreview(project.id)
   if (current !== deletionGeneration) return
@@ -91,17 +117,31 @@ async function remove(project: CuttingProject): Promise<void> {
   if (preview.ok) restorationIssues.value = preview.value.restorationIssues
   else restorationIssues.value = [persistenceErrorMessage(preview.error, 'Project')]
 }
-function closeDeletion(): void { if (!busy.value) { deletionGeneration++; deleting.value = null; deletionLoading.value = false } }
+function closeDeletion(): void {
+  if (!busy.value) {
+    deletionGeneration++;
+    deleting.value = null;
+    deletionLoading.value = false
+  }
+}
 async function confirmDeletion(): Promise<void> {
   const project = deleting.value
   if (!project || busy.value || deletionLoading.value) return
-  busy.value = true; deletionError.value = ''; notice.value = ''
+  busy.value = true;
+  deletionError.value = '';
+  notice.value = ''
   const current = generation
   const result = await service.deleteProject(project.id, stockHandling.value)
   if (current !== generation) return
   busy.value = false
   if (!result.ok) deletionError.value = persistenceErrorMessage(result.error, 'Project')
-  else { if (navigation?.activeId === project.id) navigation.activeId = null; if (navigation) navigation.tabs.delete(project.id); closeDeletion(); notice.value = 'Project deleted.'; await load() }
+  else {
+    if (navigation?.activeId === project.id) navigation.activeId = null;
+    if (navigation) navigation.tabs.delete(project.id);
+    closeDeletion();
+    notice.value = 'Project deleted.';
+    await load()
+  }
 }
 
 onMounted(load)

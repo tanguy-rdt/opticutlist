@@ -4,7 +4,13 @@ import type { Material } from '../../domain/model/material'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
 import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
 
-defineProps<{ item: StockItem; material: Material | undefined; history: readonly CuttingConfirmation[]; historyLoading: boolean; historyError: string }>()
+defineProps<{
+  item: StockItem;
+  material: Material | undefined;
+  history: readonly CuttingConfirmation[];
+  historyLoading: boolean;
+  historyError: string
+}>()
 </script>
 <template>
   <section

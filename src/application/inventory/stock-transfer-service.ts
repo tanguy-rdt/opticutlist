@@ -10,22 +10,33 @@ function conflict(message: string): Extract<PersistenceResult<never>, { ok: fals
 // Parsed schemas establish property order before structural comparison.
 function identical(a: StockItem, b: StockItem): boolean { return JSON.stringify(a) === JSON.stringify(b) }
 async function inspect(repositories: Repositories, file: StockTransfer): Promise<PersistenceResult<StockImportPreview>> {
-  const materials = await repositories.materials.list(); if (!materials.ok) return materials
+  const materials = await repositories.materials.list();
+  if (!materials.ok) return materials
   for (const material of file.materials) {
     const existing = materials.value.find(record => record.id === material.id)
     if (!existing) return conflict(`Missing material "${material.name}" (${material.id}). Import its matching catalog first; stock import does not create materials.`)
     if (JSON.stringify(existing) !== JSON.stringify(material)) return conflict(`Material identity ${material.id} differs from this installation. Resolve the catalog conflict before importing stock.`)
   }
-  const stock = await repositories.stockItems.list(); if (!stock.ok) return stock
-  const projects = await repositories.projects.list(); if (!projects.ok) return projects
-  const ledgers = await repositories.projectStock.list(); if (!ledgers.ok) return ledgers
-  const receipts = await repositories.cuttingConfirmations.list(); if (!receipts.ok) return receipts
-  const products = await repositories.supplierProducts.list(); if (!products.ok) return products
-  const suppliers = await repositories.suppliers.list(); if (!suppliers.ok) return suppliers
-  const summaries = await repositories.savedPlanSummaries.list(); if (!summaries.ok) return summaries
+  const stock = await repositories.stockItems.list();
+  if (!stock.ok) return stock
+  const projects = await repositories.projects.list();
+  if (!projects.ok) return projects
+  const ledgers = await repositories.projectStock.list();
+  if (!ledgers.ok) return ledgers
+  const receipts = await repositories.cuttingConfirmations.list();
+  if (!receipts.ok) return receipts
+  const products = await repositories.supplierProducts.list();
+  if (!products.ok) return products
+  const suppliers = await repositories.suppliers.list();
+  if (!suppliers.ok) return suppliers
+  const summaries = await repositories.savedPlanSummaries.list();
+  if (!summaries.ok) return summaries
   const historicalIds = new Set<string>()
   for (const state of ledgers.value) {
-    for (const entry of state.entries) { historicalIds.add(entry.id); if (entry.stock) historicalIds.add(entry.stock.id) }
+    for (const entry of state.entries) {
+      historicalIds.add(entry.id);
+      if (entry.stock) historicalIds.add(entry.stock.id)
+    }
     for (const movement of state.consumed) historicalIds.add(movement.stock.id)
     for (const movement of state.movements) for (const item of [...movement.added, ...movement.removed, ...movement.consumed.map(value => value.stock), ...movement.restored.map(value => value.stock)]) historicalIds.add(item.id)
   }
@@ -33,11 +44,13 @@ async function inspect(repositories: Repositories, file: StockTransfer): Promise
   for (const project of projects.value) for (const id of project.stockItemIds ?? []) historicalIds.add(id)
   // Missing identities in historical plans are dependencies, not unowned new stock.
   if (file.stockItems.some(item => !stock.value.some(existing => existing.id === item.id))) {
-    const contents = await repositories.savedPlanContents.list(); if (!contents.ok) return contents
+    const contents = await repositories.savedPlanContents.list();
+    if (!contents.ok) return contents
     for (const plan of contents.value) for (const source of plan.sources) if (source.product.stockItemId) historicalIds.add(source.product.stockItemId)
   }
   if (file.stockOrders?.length) {
-    const orders = await repositories.stockOrders.list(); if (!orders.ok) return orders
+    const orders = await repositories.stockOrders.list();
+    if (!orders.ok) return orders
     for (const imported of file.stockOrders) {
       const existing = orders.value.find(order => order.id === imported.id)
       const liveIds = existing?.stockItemIds.filter(id => stock.value.some(item => item.id === id && item.materialId === imported.id)) ?? []
@@ -72,11 +85,20 @@ export function createStockTransferService(persistence: LocalPersistence, json: 
   return {
     export(): Promise<PersistenceResult<string>> {
       return persistence.transaction(async repositories => {
-        const stock = await repositories.stockItems.list(); if (!stock.ok) return stock
-        const materials = await repositories.materials.list(); if (!materials.ok) return materials
-        const order = await repositories.stockOrders.list(); if (!order.ok) return order
+        const stock = await repositories.stockItems.list();
+        if (!stock.ok) return stock
+        const materials = await repositories.materials.list();
+        if (!materials.ok) return materials
+        const order = await repositories.stockOrders.list();
+        if (!order.ok) return order
         const stockOrders = order.value.map(row => ({ ...row, stockItemIds: row.stockItemIds.filter(id => stock.value.some(item => item.id === id && item.materialId === row.id)) })).filter(row => row.stockItemIds.length)
-        const file = validateStockTransfer({ ...(stockOrders.length ? { stockOrders } : {}), format: 'opticutlist-stock', schemaVersion: 1, stockItems: stock.value, materials: materials.value.filter(material => stock.value.some(item => item.materialId === material.id)) })
+        const file = validateStockTransfer({
+          ...(stockOrders.length ? { stockOrders } : {}),
+          format: 'opticutlist-stock',
+          schemaVersion: 1,
+          stockItems: stock.value,
+          materials: materials.value.filter(material => stock.value.some(item => item.materialId === material.id))
+        })
         return file.ok ? { ok: true, value: json.stringify(file.value) } : file
       })
     },
@@ -84,22 +106,32 @@ export function createStockTransferService(persistence: LocalPersistence, json: 
       try {
         const file = validateStockTransfer(json.parse(text))
         return file.ok ? persistence.transaction(repositories => inspect(repositories, file.value)) : Promise.resolve(file)
-      } catch (cause) { return Promise.resolve(invalidStockTransfer(cause instanceof Error ? cause.message : 'Could not read the stock file.')) }
+      } catch (cause) {
+        return Promise.resolve(invalidStockTransfer(cause instanceof Error ? cause.message : 'Could not read the stock file.'))
+      }
     },
     import(input: unknown, confirmed: boolean): Promise<PersistenceResult<StockTransfer>> {
       if (!confirmed) return Promise.resolve(invalidStockTransfer('Explicit confirmation is required before importing stock.'))
-      const file = validateStockTransfer(input); if (!file.ok) return Promise.resolve(file)
+      const file = validateStockTransfer(input);
+      if (!file.ok) return Promise.resolve(file)
       return persistence.transaction(async repositories => {
-        const checked = await inspect(repositories, file.value); if (!checked.ok) return checked
-        const existing = await repositories.stockItems.list(); if (!existing.ok) return existing
+        const checked = await inspect(repositories, file.value);
+        if (!checked.ok) return checked
+        const existing = await repositories.stockItems.list();
+        if (!existing.ok) return existing
         for (const item of file.value.stockItems) {
-          if (!existing.value.some(record => record.id === item.id)) { const created = await repositories.stockItems.create(item); if (!created.ok) return created }
+          if (!existing.value.some(record => record.id === item.id)) {
+            const created = await repositories.stockItems.create(item);
+            if (!created.ok) return created
+          }
         }
         if (file.value.stockOrders?.length) {
-          const orders = await repositories.stockOrders.list(); if (!orders.ok) return orders
+          const orders = await repositories.stockOrders.list();
+          if (!orders.ok) return orders
           for (const row of file.value.stockOrders) {
             if (!orders.value.some(existing => existing.id === row.id)) {
-              const created = await repositories.stockOrders.create(row); if (!created.ok) return created
+              const created = await repositories.stockOrders.create(row);
+              if (!created.ok) return created
             }
           }
         }

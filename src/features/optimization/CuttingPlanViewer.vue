@@ -13,7 +13,17 @@ import { createPlanCanvas, type PlanCanvas, type PlanPalette } from './viewer/pl
 import { fitDimensionedViewport } from './viewer/dimensions'
 import { panViewport, zoomViewport, type CanvasSize, type Viewport } from './viewer/viewport'
 
-const props = defineProps<{ plan: PanelCuttingPlan | null; panel: PanelSnapshot; parts: readonly Part[]; settings: CuttingSettings; savedBaseline?: boolean; panelLabel?: string | undefined; fitRequest?: number | undefined; selectedCopyKey?: string | undefined; confirmReset?: (() => boolean) | undefined }>()
+const props = defineProps<{
+  plan: PanelCuttingPlan | null;
+  panel: PanelSnapshot;
+  parts: readonly Part[];
+  settings: CuttingSettings;
+  savedBaseline?: boolean;
+  panelLabel?: string | undefined;
+  fitRequest?: number | undefined;
+  selectedCopyKey?: string | undefined;
+  confirmReset?: (() => boolean) | undefined
+}>()
 const emit = defineEmits<{ 'plan-change': [plan: PanelCuttingPlan, modified: boolean]; 'select-copy': [key: string] }>()
 const session = shallowRef<PlanEditingSession | null>(null)
 const editFeedback = ref('')
@@ -41,7 +51,11 @@ watch(() => props.selectedCopyKey, key => { if (key !== undefined) selectedKey.v
 const selectedPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === selectedKey.value) : undefined)
 const swapPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === swapKey.value) : undefined)
 const rotationEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === undefined ? null : { kind: 'rotate', copy: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex } })
-const swapEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === undefined || swapPart.value === undefined ? null : { kind: 'swap', first: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex }, second: { partId: swapPart.value.part.id, copyIndex: swapPart.value.copyIndex } })
+const swapEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === undefined || swapPart.value === undefined ? null : {
+  kind: 'swap',
+  first: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex },
+  second: { partId: swapPart.value.part.id, copyIndex: swapPart.value.copyIndex }
+})
 function unavailableReason(edit: CuttingTreeEdit | null, emptyMessage: string): string {
   if (session.value === null) return 'A valid cutting plan is required.'
   if (edit === null) return emptyMessage
@@ -57,7 +71,10 @@ const compatibleSwaps = computed(() => {
     second: { partId: part.part.id, copyIndex: part.copyIndex },
   }).ok)
 })
-watch(selectedKey, () => { swapOpen.value = false; swapKey.value = '' })
+watch(selectedKey, () => {
+  swapOpen.value = false;
+  swapKey.value = ''
+})
 const rotationReason = computed(() => unavailableReason(rotationEdit.value, 'Select a placed copy to rotate.'))
 const swapReason = computed(() => unavailableReason(swapEdit.value, 'Select two different placed copies to swap.'))
 function announceSession(next: PlanEditingSession, message: string): void {
@@ -69,16 +86,25 @@ function announceSession(next: PlanEditingSession, message: string): void {
 function applyEdit(edit: CuttingTreeEdit | null): void {
   if (session.value === null || edit === null) return
   const outcome = applyPlanEdit(session.value, edit)
-  if (!outcome.ok) { editError.value = outcome.error.message; editFeedback.value = ''; return }
+  if (!outcome.ok) {
+    editError.value = outcome.error.message;
+    editFeedback.value = '';
+    return
+  }
   swapOpen.value = false
   swapKey.value = ''
   announceSession(outcome.session, edit.kind === 'rotate' ? 'Rotation accepted and independently validated.' : 'Swap accepted and independently validated.')
 }
-function undo(): void { if (session.value !== null) announceSession(undoPlanEdit(session.value), 'Edit undone.') }
-function redo(): void { if (session.value !== null) announceSession(redoPlanEdit(session.value), 'Edit restored.') }
+function undo(): void {
+  if (session.value !== null) announceSession(undoPlanEdit(session.value), 'Edit undone.')
+}
+function redo(): void {
+  if (session.value !== null) announceSession(redoPlanEdit(session.value), 'Edit restored.')
+}
 function resetOptimized(): void {
   if (session.value !== null && session.value.cursor > 0 && props.confirmReset?.() === false) return
-  if (session.value !== null) announceSession(resetPlanEdits(session.value), props.savedBaseline ? 'Saved plan restored. Edit history cleared.' : 'Optimized plan restored. Edit history cleared.') }
+  if (session.value !== null) announceSession(resetPlanEdits(session.value), props.savedBaseline ? 'Saved plan restored. Edit history cleared.' : 'Optimized plan restored. Edit history cleared.')
+}
 const canvasError = ref('')
 const canvasReady = ref(false)
 const view = ref<Viewport>({ x: 0, y: 0, scale: 1 })
@@ -94,16 +120,38 @@ let paused = false
 function palette(): PlanPalette {
   const style = getComputedStyle(document.documentElement)
   const token = (name: string) => style.getPropertyValue(`--${name}`).trim()
-  return { surface: token('cutting-panel'), margin: token('cutting-waste'), ink: token('cutting-ink'), muted: token('cutting-line'), part: token('cutting-part'), partBorder: token('cutting-line'), selected: token('cutting-selection'), kerf: token('cutting-cut'), annotation: token('muted') }
+  return {
+    surface: token('cutting-panel'),
+    margin: token('cutting-waste'),
+    ink: token('cutting-ink'),
+    muted: token('cutting-line'),
+    part: token('cutting-part'),
+    partBorder: token('cutting-line'),
+    selected: token('cutting-selection'),
+    kerf: token('cutting-cut'),
+    annotation: token('muted')
+  }
 }
-function setView(next: Viewport): void { view.value = next; canvas?.setViewport(next) }
-function fit(): void { isFitted = true; setView(fittedView.value) }
-function reset(): void { selectedKey.value = ''; fit() }
+function setView(next: Viewport): void {
+  view.value = next;
+  canvas?.setViewport(next)
+}
+function fit(): void {
+  isFitted = true;
+  setView(fittedView.value)
+}
+function reset(): void {
+  selectedKey.value = '';
+  fit()
+}
 function zoom(factor: number): void {
   isFitted = false
   setView(zoomViewport(view.value, factor, { x: size.width / 2, y: size.height / 2 }, fittedView.value.scale / 8, fittedView.value.scale * 32))
 }
-function pan(x: number, y: number): void { isFitted = false; setView(panViewport(view.value, { x, y })) }
+function pan(x: number, y: number): void {
+  isFitted = false;
+  setView(panViewport(view.value, { x, y }))
+}
 function keyboard(event: KeyboardEvent): void {
   if (canvas === null) return
   switch (event.key) {
@@ -124,9 +172,15 @@ function sizeToViewport(): void {
   const top = host.value.getBoundingClientRect().top
   host.value.style.height = `${String(Math.max(240, window.innerHeight - top - 24))}px`
 }
-function windowResized(): void { sizeToViewport(); resize() }
+function windowResized(): void {
+  sizeToViewport();
+  resize()
+}
 watch(() => props.plan, () => { isFitted = true })
-watch(() => props.fitRequest, () => { isFitted = true; if (canvas) fit() })
+watch(() => props.fitRequest, () => {
+  isFitted = true;
+  if (canvas) fit()
+})
 function resize(): void {
   if (paused || host.value === null || projection.value.status !== 'valid') return
   const next = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
@@ -139,7 +193,8 @@ function resize(): void {
 function themeChanged(): void { canvas?.setPalette(palette()) }
 function render(): void {
   resizeObserver?.disconnect()
-  canvas?.destroy(); canvas = null
+  canvas?.destroy();
+  canvas = null
   canvasReady.value = false
   canvasError.value = ''
   if (projection.value.status !== 'valid' || !projection.value.scene.parts.some(part => part.key === selectedKey.value)) selectedKey.value = ''
@@ -148,7 +203,10 @@ function render(): void {
     sizeToViewport()
     size = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
     fittedView.value = fitDimensionedViewport(projection.value.scene.panel, size)
-    canvas = createPlanCanvas(host.value, projection.value.scene, size, palette(), key => { selectedKey.value = key }, next => { isFitted = false; view.value = next })
+    canvas = createPlanCanvas(host.value, projection.value.scene, size, palette(), key => { selectedKey.value = key }, next => {
+      isFitted = false;
+      view.value = next
+    })
     canvasReady.value = true
     if (isFitted) fit()
     else canvas.setViewport(view.value)
@@ -159,13 +217,17 @@ function render(): void {
     const toolbar = host.value.closest('section')?.querySelector('.canvas-toolbar')
     if (toolbar) resizeObserver?.observe(toolbar)
   } catch {
-    canvas?.destroy(); canvas = null
+    canvas?.destroy();
+    canvas = null
     canvasReady.value = false
     canvasError.value = 'The graphical viewer is unavailable. The textual cutting summary remains available.'
   }
 }
 watch(projection, render, { flush: 'post' })
-watch(selectedKey, key => { canvas?.setSelection(key); emit('select-copy', key) })
+watch(selectedKey, key => {
+  canvas?.setSelection(key);
+  emit('select-copy', key)
+})
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined') resizeObserver = new ResizeObserver(windowResized)
   window.addEventListener('resize', windowResized)
@@ -182,15 +244,24 @@ onMounted(() => {
 onDeactivated(() => {
   paused = true
   resizeObserver?.disconnect()
-  canvas?.destroy(); canvas = null
+  canvas?.destroy();
+  canvas = null
   canvasReady.value = false
 })
-onActivated(() => { if (paused) { paused = false; sizeToViewport(); render() } })
+onActivated(() => {
+  if (paused) {
+    paused = false;
+    sizeToViewport();
+    render()
+  }
+})
 onBeforeUnmount(() => {
-  resizeObserver?.disconnect(); themeObserver?.disconnect()
+  resizeObserver?.disconnect();
+  themeObserver?.disconnect()
   window.removeEventListener('resize', windowResized)
   media?.removeEventListener('change', themeChanged)
-  canvas?.destroy(); canvas = null
+  canvas?.destroy();
+  canvas = null
 })
 </script>
 <template>

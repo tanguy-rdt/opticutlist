@@ -4,8 +4,13 @@ import type { GrainDirection } from '../../domain/model/orientation'
 import { fitPanelDimensionPreview, previewGrainIllustration, type PanelPreviewSize } from './panel-dimension-preview'
 const props = withDefaults(defineProps<{ lengthMm: number; widthMm: number; grainDirection?: GrainDirection; size?: PanelPreviewSize; label?: string }>(), { grainDirection: 'none', size: 'default', label: 'Panel dimension preview' })
 const drawing = computed(() => {
-  try { return fitPanelDimensionPreview(props.lengthMm, props.widthMm, props.size) }
-  catch (cause) { if (cause instanceof RangeError) return null; throw cause }
+  try {
+    return fitPanelDimensionPreview(props.lengthMm, props.widthMm, props.size)
+  }
+  catch (cause) {
+    if (cause instanceof RangeError) return null;
+    throw cause
+  }
 })
 const clipId = useId()
 const grainIllustration = computed(() => drawing.value ? previewGrainIllustration(drawing.value.panel, props.grainDirection) : null)

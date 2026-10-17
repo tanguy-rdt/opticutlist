@@ -12,7 +12,15 @@ export type StockItemKind = z.infer<typeof stockItemKindSchema>
 export const stockProvenanceSchema = z.discriminatedUnion('source', [
   z.strictObject({ source: z.literal('manual') }),
   z.strictObject({ source: z.literal('purchase'), supplierProductId: supplierProductIdSchema }),
-  z.strictObject({ source: z.literal('cutting'), projectId: cuttingProjectIdSchema, savedPlanId: savedCuttingPlanIdSchema, sourceStockItemId: stockItemIdSchema.optional(), supplierProductId: supplierProductIdSchema.optional(), panelIndex: z.number().int().nonnegative(), wasteIndex: z.number().int().nonnegative() }).refine(value => value.sourceStockItemId !== undefined || value.supplierProductId !== undefined, 'Cutting provenance requires an exact physical or catalogue source identity'),
+  z.strictObject({
+    source: z.literal('cutting'),
+    projectId: cuttingProjectIdSchema,
+    savedPlanId: savedCuttingPlanIdSchema,
+    sourceStockItemId: stockItemIdSchema.optional(),
+    supplierProductId: supplierProductIdSchema.optional(),
+    panelIndex: z.number().int().nonnegative(),
+    wasteIndex: z.number().int().nonnegative()
+  }).refine(value => value.sourceStockItemId !== undefined || value.supplierProductId !== undefined, 'Cutting provenance requires an exact physical or catalogue source identity'),
 ])
 export type StockProvenance = z.infer<typeof stockProvenanceSchema>
 

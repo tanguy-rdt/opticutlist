@@ -44,36 +44,37 @@ export type CuttingTreeValidation =
 interface UmRect {
   readonly x: number
   readonly y: number
-  readonly l: number
-  readonly w: number
-}
-
-function toUmRect(rect: Rect): UmRect | null {
-  const x = tryToMicrometres(rect.xMm, 0)
-  const y = tryToMicrometres(rect.yMm, 0)
-  const l = tryToMicrometres(rect.lengthMm, 1)
-  const w = tryToMicrometres(rect.widthMm, 1)
-
-  return x === null || y === null || l === null || w === null ? null : { x, y, l, w }
-}
-
-function exceeds(inner: UmRect, outer: UmRect): boolean {
-  return inner.x < outer.x || inner.y < outer.y || inner.x + inner.l > outer.x + outer.l || inner.y + inner.w > outer.y + outer.w
-}
-
-function intersect(a: UmRect, b: UmRect): UmRect | null {
-  const x = Math.max(a.x, b.x)
-  const y = Math.max(a.y, b.y)
-  const l = Math.min(a.x + a.l, b.x + b.l) - x
-  const w = Math.min(a.y + a.w, b.y + b.w) - y
-
-  return l > 0 && w > 0 ? { x, y, l, w } : null
+  readonly length: number
+  readonly width: number
 }
 
 /** Where a node must lie: exactly `slot`, inside `bounds` (the parent region, or the usable area for the root). */
 interface Expectation {
   readonly slot: Rect
   readonly bounds: Rect
+}
+
+
+function toUmRect(rect: Rect): UmRect | null {
+  const x = tryToMicrometres(rect.xMm, 0)
+  const y = tryToMicrometres(rect.yMm, 0)
+  const length = tryToMicrometres(rect.lengthMm, 1)
+  const width = tryToMicrometres(rect.widthMm, 1)
+
+  return x === null || y === null || length === null || width === null ? null : { x, y, length, width }
+}
+
+function exceeds(inner: UmRect, outer: UmRect): boolean {
+  return inner.x < outer.x || inner.y < outer.y || inner.x + inner.length > outer.x + outer.length || inner.y + inner.width > outer.y + outer.width
+}
+
+function intersect(a: UmRect, b: UmRect): UmRect | null {
+  const x = Math.max(a.x, b.x)
+  const y = Math.max(a.y, b.y)
+  const length = Math.min(a.x + a.length, b.x + b.length) - x
+  const width = Math.min(a.y + a.width, b.y + b.width) - y
+
+  return length > 0 && width > 0 ? { x, y, length, width } : null
 }
 
 /**
@@ -136,7 +137,7 @@ export function validateCuttingTree(root: CuttingTreeNode, context: CuttingTreeC
       return null
     }
 
-    const extentUm = node.cut.axis === 'length' ? region.l : region.w
+    const extentUm = node.cut.axis === 'length' ? region.length : region.width
     const extentMm = node.cut.axis === 'length' ? node.region.lengthMm : node.region.widthMm
     if (offsetUm <= 0 || offsetUm >= extentUm) {
       report(path, { kind: 'cutOutOfBounds', offsetMm: node.cut.offsetMm, extentMm })
@@ -180,7 +181,7 @@ export function validateCuttingTree(root: CuttingTreeNode, context: CuttingTreeC
     }
 
     const oriented = getOrientedDimensions(part, leaf.orientation)
-    if (region !== null && (toPositiveUm(oriented.lengthMm) !== region.l || toPositiveUm(oriented.widthMm) !== region.w)) {
+    if (region !== null && (toPositiveUm(oriented.lengthMm) !== region.length || toPositiveUm(oriented.widthMm) !== region.width)) {
       report(path, {
         kind: 'partSizeMismatch',
         expected: { lengthMm: oriented.lengthMm, widthMm: oriented.widthMm },

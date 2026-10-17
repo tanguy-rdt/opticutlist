@@ -21,7 +21,12 @@ const hoveredKey = ref('')
 const workspace = ref<HTMLElement | null>(null)
 const currentRows = computed(() => preview.value?.rows.filter(row => row.status !== 'Outdated') ?? [])
 let active = true
-const panels = computed(() => preview.value?.saved?.plan.panels.map((allocation, index) => ({ index, allocation, rows: currentRows.value.filter(row => row.candidate.panelIndex === index).sort((a, b) => a.candidate.wasteIndex - b.candidate.wasteIndex).map((row, offcutIndex) => ({ ...row, label: `Offcut ${String(offcutIndex + 1)}` })), source: preview.value?.saved?.contents.sources.find(source => source.product.id === allocation.supplierProductId) })) ?? [])
+const panels = computed(() => preview.value?.saved?.plan.panels.map((allocation, index) => ({
+  index,
+  allocation,
+  rows: currentRows.value.filter(row => row.candidate.panelIndex === index).sort((a, b) => a.candidate.wasteIndex - b.candidate.wasteIndex).map((row, offcutIndex) => ({ ...row, label: `Offcut ${String(offcutIndex + 1)}` })),
+  source: preview.value?.saved?.contents.sources.find(source => source.product.id === allocation.supplierProductId)
+})) ?? [])
 const panel = computed(() => panels.value[currentRows.value.find(row => row.key === hoveredKey.value)?.candidate.panelIndex ?? panelIndex.value])
 const kept = computed(() => preview.value?.rows.filter(row => row.candidate.panelIndex === panel.value?.index && row.status !== 'Outdated' && row.keep).map(row => row.candidate.wasteIndex) ?? [])
 const offcutLabels = computed(() => panel.value?.rows.map(row => ({ index: row.candidate.wasteIndex, label: row.label })) ?? [])
@@ -72,17 +77,27 @@ async function select(key: string, event: Event): Promise<void> {
   if (!(event.target instanceof HTMLInputElement) || busy.value) return
   const control = event.target
   const checked = control.checked
-  busy.value = true; error.value = ''
+  busy.value = true;
+  error.value = ''
   const result = await service.setKeep(key, checked)
   if (!active) return
-  if (!result.ok) { control.checked = !checked; error.value = persistenceErrorMessage(result.error, 'Stock item') }
+  if (!result.ok) {
+    control.checked = !checked;
+    error.value = persistenceErrorMessage(result.error, 'Stock item')
+  }
   await load()
   busy.value = false
 }
 function beforeUnload(event: BeforeUnloadEvent): void { if (busy.value) event.preventDefault() }
 onBeforeRouteLeave(() => !busy.value)
-onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
-onBeforeUnmount(() => { active = false; window.removeEventListener('beforeunload', beforeUnload) })
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload);
+  void load()
+})
+onBeforeUnmount(() => {
+  active = false;
+  window.removeEventListener('beforeunload', beforeUnload)
+})
 </script>
 <template>
   <section

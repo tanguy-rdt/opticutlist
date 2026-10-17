@@ -9,7 +9,10 @@ export function openPdfPrintView(): PdfPrintView {
   if (!viewer) throw new Error('Allow popups for OptiCutList, then try Print again.')
   viewer.opener = null
   let release: (() => void) | undefined
-  const close = () => { release?.(); if (!viewer.closed) viewer.close() }
+  const close = () => {
+    release?.();
+    if (!viewer.closed) viewer.close()
+  }
   try {
     viewer.document.title = 'Preparing PDF…'
     viewer.document.body.textContent = 'Preparing PDF…'
@@ -24,7 +27,8 @@ export function openPdfPrintView(): PdfPrintView {
         let released = false
         release = () => {
           if (released) return
-          released = true; urls.revokeObjectURL(url)
+          released = true;
+          urls.revokeObjectURL(url)
           viewer.removeEventListener('pagehide', releaseUrl)
         }
         const releaseUrl = () => { release?.() }
@@ -37,8 +41,14 @@ export function openPdfPrintView(): PdfPrintView {
           viewer.document.title = 'Print cutting plans'
           viewer.document.body.style.margin = '0'
           viewer.document.body.replaceChildren(frame)
-        } catch (cause) { close(); throw cause }
+        } catch (cause) {
+          close();
+          throw cause
+        }
       },
     }
-  } catch (cause) { close(); throw cause }
+  } catch (cause) {
+    close();
+    throw cause
+  }
 }

@@ -7,6 +7,9 @@ import { pdfPageSize } from './pdf-layout'
 import { drawTechnicalFrame, type SheetNumberPosition } from './technical-sheet'
 import { drawPanelSheet } from './panel-drawing'
 
+type NumberedSheet = { page: PDFPage; position: SheetNumberPosition }
+
+
 const ink = rgb(0.12, 0.15, 0.17)
 const margin = 36
 
@@ -28,7 +31,10 @@ function appendCuttingPlanPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, do
   if (drawing.titleBlock.continued.length) {
     const tables = createPdfTables(pdf, font, bold, size, continuation => {
       drawTechnicalFrame(continuation)
-      sheets.push({ page: continuation, position: drawTechnicalTitleBlock(continuation, font, bold, technicalTitleBlockLayout(size.width - 56), { projectName: document.projectName ?? 'N/A', context: cuttingSettingsContext(document.settings), scale: drawing.scale }) })
+      sheets.push({
+        page: continuation,
+        position: drawTechnicalTitleBlock(continuation, font, bold, technicalTitleBlockLayout(size.width - 56), { projectName: document.projectName ?? 'N/A', context: cuttingSettingsContext(document.settings), scale: drawing.scale })
+      })
     })
     tables.table(`${heading} / Parts continued`, [{ label: 'Part reference / name', weight: 3 }, { label: 'Dimensions (mm)', weight: 1, nowrap: true, numeric: true }], drawing.titleBlock.continued.map(row => ({ cells: [`${row.ref} — ${row.name}`, row.dimensions], kind: 'child' })))
   }
@@ -59,7 +65,11 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
   ], purchasingSchedule([...sources.values()]).map(cells => ({ cells, ...(cells[0] === 'Total:' || cells[0] === 'Subtotal (partial):' ? { kind: 'total' as const } : {}) })))
   const inventory: TableRow[] = []
   for (const [index, panel] of document.panels.entries()) {
-    inventory.push({ cells: [`Panel ${String(index + 1)}`, panel.panel.name, panel.materialName, dimensions(panel.panel), '1'], kind: 'parent', keepWithNext: panel.scene.parts.length > 0 })
+    inventory.push({
+      cells: [`Panel ${String(index + 1)}`, panel.panel.name, panel.materialName, dimensions(panel.panel), '1'],
+      kind: 'parent',
+      keepWithNext: panel.scene.parts.length > 0
+    })
     const grouped = new Map<string, { ref: string; name: string; dimensions: string; count: number }>()
     for (const placed of panel.scene.parts) {
       const ref = partCode(document.parts, placed.part.id)
@@ -71,7 +81,11 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
   }
   tables.table('Panel inventory', [{ label: 'Ref', weight: 1.2, nowrap: true }, { label: 'Panel / Part name', weight: 2.4 }, { label: 'Material', weight: 2 }, { label: 'Dimensions (mm)', weight: 1.8, nowrap: true, numeric: true }, { label: 'Qty', weight: 1, numeric: true }], inventory)
   if (document.unplaced.length) {
-    const reasons = { noCompatiblePanel: 'No compatible panel', constraintsPreventPlacement: 'Cutting constraints prevent placement', panelLimitReached: 'Insufficient panels or usable space' }
+    const reasons = {
+      noCompatiblePanel: 'No compatible panel',
+      constraintsPreventPlacement: 'Cutting constraints prevent placement',
+      panelLimitReached: 'Insufficient panels or usable space'
+    }
     tables.table('Unplaced parts', [...columns, { label: 'Reason', weight: 2 }], document.unplaced.map(missing => {
       const part = document.parts.find(part => part.id === missing.partId)
       return [partCode(document.parts, missing.partId), part?.name ?? 'N/A', part ? materialName(document, part) : 'N/A', part ? dimensions(part) : 'N/A', String(missing.count), reasons[missing.reason]]
@@ -81,7 +95,6 @@ function appendFabricationSections(pdf: PDFDocument, font: PDFFont, bold: PDFFon
     drawingSheets.push({ page, position })
   }, document.title)
 }
-type NumberedSheet = { page: PDFPage; position: SheetNumberPosition }
 async function finishPdf(pdf: PDFDocument, font: PDFFont, bold: PDFFont, cover?: PDFPage, technicalSheets: readonly NumberedSheet[] = [], title = 'OptiCutList cutting plan'): Promise<Uint8Array<ArrayBuffer>> {
   for (const [index, current] of pdf.getPages().entries()) {
     if (current === cover) continue

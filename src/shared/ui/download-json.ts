@@ -5,6 +5,10 @@ export function downloadJson(text: string, name: string, extension: 'pocl' | 'co
   try {
     link.href = url
     link.download = extension === 'oclproject.json' ? projectFilename(name) : `${name.replace(/[^\p{L}\p{N}._-]+/gu, '-').slice(0, 100) || 'opticutlist'}.${extension}`
-    document.body.append(link); link.click()
-  } finally { link.remove(); window.setTimeout(() => { URL.revokeObjectURL(url) }, 1000) }
+    document.body.append(link);
+    link.click()
+  } finally {
+    link.remove();
+    window.setTimeout(() => { URL.revokeObjectURL(url) }, 1000)
+  }
 }

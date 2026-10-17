@@ -6,11 +6,20 @@ import type { SupplierProduct } from '../../domain/model/supplier-product'
 import type { StockItem } from '../../domain/model/stock-item'
 import PanelDimensionPreview from '../../shared/ui/PanelDimensionPreview.vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
-const props = defineProps<{ product: SupplierProduct | undefined; materials: readonly Material[]; suppliers: readonly Supplier[]; stock: readonly StockItem[]; stockAvailable: boolean; stockError: string }>()
+const props = defineProps<{
+  product: SupplierProduct | undefined;
+  materials: readonly Material[];
+  suppliers: readonly Supplier[];
+  stock: readonly StockItem[];
+  stockAvailable: boolean;
+  stockError: string
+}>()
 const material = computed(() => props.materials.find(item => item.id === props.product?.materialId))
 const materialName = computed(() => material.value?.name ?? 'Missing material')
 const ownedQuantity = computed(() => props.stock.reduce((quantity, item) => quantity + item.quantity, 0))
-function grain(product: SupplierProduct): string { return product.grainDirection === 'none' ? 'None' : product.grainDirection === 'length' ? 'Along length' : 'Along width' }
+function grain(product: SupplierProduct): string {
+  return product.grainDirection === 'none' ? 'None' : product.grainDirection === 'length' ? 'Along length' : 'Along width'
+}
 </script>
 <template>
   <aside

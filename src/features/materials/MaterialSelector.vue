@@ -16,10 +16,15 @@ const query = ref('')
 const active = ref(0)
 const selected = computed(() => props.options.find(option => option.value === props.modelValue))
 const visible = computed(() => props.options.filter(option => option.name.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())))
-const activeOptionId = computed(() => { const option = visible.value[active.value]; return option ? optionId(option) : undefined })
+const activeOptionId = computed(() => {
+  const option = visible.value[active.value];
+  return option ? optionId(option) : undefined
+})
 const groups = computed(() => [...new Set(visible.value.map(option => option.group))])
 const listId = computed(() => `${props.id}-list`)
-function optionId(option: MaterialOption): string { return `${props.id}-option-${String(props.options.indexOf(option))}` }
+function optionId(option: MaterialOption): string {
+  return `${props.id}-option-${String(props.options.indexOf(option))}`
+}
 function close(restoreFocus = false): void {
   open.value = false
   if (restoreFocus) trigger.value?.focus()
@@ -45,14 +50,23 @@ function choose(option: MaterialOption): void {
 }
 function keyboard(event: KeyboardEvent): void {
   if (!open.value) {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); void show() }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      void show()
+    }
     return
   }
-  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true) }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    close(true)
+  }
   else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
     event.preventDefault()
     const last = Math.max(0, visible.value.length - 1)
-    active.value = event.key === 'Home' ? 0 : event.key === 'End' ? last : Math.min(last, Math.max(0, active.value + (event.key === 'ArrowDown' ? 1 : -1)))
+    if (event.key === 'Home') active.value = 0
+    else if (event.key === 'End') active.value = last
+    else active.value = Math.min(last, Math.max(0, active.value + (event.key === 'ArrowDown' ? 1 : -1)))
     scrollActive()
   } else if (event.key === 'Enter' && event.target === search.value) {
     event.preventDefault()
@@ -60,9 +74,16 @@ function keyboard(event: KeyboardEvent): void {
     if (option) choose(option)
   }
 }
-function outside(event: PointerEvent): void { if (event.target instanceof Node && !root.value?.contains(event.target)) close() }
-function focusOut(event: FocusEvent): void { if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) close() }
-function create(): void { close(); emit('create') }
+function outside(event: PointerEvent): void {
+  if (event.target instanceof Node && !root.value?.contains(event.target)) close()
+}
+function focusOut(event: FocusEvent): void {
+  if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) close()
+}
+function create(): void {
+  close();
+  emit('create')
+}
 watch(query, () => { active.value = 0 })
 watch(() => props.disabled, disabled => { if (disabled) close() })
 onMounted(() => { document.addEventListener('pointerdown', outside); })

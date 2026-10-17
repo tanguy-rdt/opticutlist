@@ -13,7 +13,10 @@ export async function loadPdfPreview(bytes: Uint8Array<ArrayBuffer>, signal: Abo
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
   const loading = pdfjs.getDocument({ data: bytes.slice() })
   let destruction: Promise<void> | undefined
-  const destroy = () => { destruction ??= loading.destroy(); return destruction }
+  const destroy = () => {
+    destruction ??= loading.destroy();
+    return destruction
+  }
   const abort = () => { void destroy().catch(() => { /* obsolete load */ }) }
   signal.addEventListener('abort', abort, { once: true })
   try {
@@ -27,15 +30,26 @@ export async function loadPdfPreview(bytes: Uint8Array<ArrayBuffer>, signal: Abo
         const natural = page.getViewport({ scale: 1 })
         const viewport = page.getViewport({ scale: Math.max(1, width - 40) / natural.width * zoom })
         const ratio = Math.min(window.devicePixelRatio || 1, 2)
-        canvas.width = Math.ceil(viewport.width * ratio); canvas.height = Math.ceil(viewport.height * ratio)
-        canvas.style.width = `${String(viewport.width)}px`; canvas.style.height = `${String(viewport.height)}px`
+        canvas.width = Math.ceil(viewport.width * ratio);
+        canvas.height = Math.ceil(viewport.height * ratio)
+        canvas.style.width = `${String(viewport.width)}px`;
+        canvas.style.height = `${String(viewport.height)}px`
         const task = page.render({ canvas, viewport, transform: [ratio, 0, 0, ratio, 0, 0] })
         const cancel = () => { task.cancel() }
         renderSignal.addEventListener('abort', cancel, { once: true })
-        try { await task.promise; renderSignal.throwIfAborted() }
-        finally { renderSignal.removeEventListener('abort', cancel); page.cleanup() }
+        try {
+          await task.promise;
+          renderSignal.throwIfAborted()
+        }
+        finally {
+          renderSignal.removeEventListener('abort', cancel);
+          page.cleanup()
+        }
       },
-      async destroy() { signal.removeEventListener('abort', abort); await destroy() },
+      async destroy() {
+        signal.removeEventListener('abort', abort);
+        await destroy()
+      },
     }
   } catch (error) {
     signal.removeEventListener('abort', abort)

@@ -14,7 +14,12 @@ export const projectOffcutSchema = z.strictObject({
   wasteIndex: z.number().int().nonnegative(),
   panel: panelSnapshotSchema,
   materialName: nameSchema,
-  region: z.strictObject({ xMm: z.number().nonnegative(), yMm: z.number().nonnegative(), lengthMm: dimensions3DSchema.shape.lengthMm, widthMm: dimensions3DSchema.shape.widthMm }),
+  region: z.strictObject({
+    xMm: z.number().nonnegative(),
+    yMm: z.number().nonnegative(),
+    lengthMm: dimensions3DSchema.shape.lengthMm,
+    widthMm: dimensions3DSchema.shape.widthMm
+  }),
   keep: z.boolean(),
   removed: z.boolean().default(false),
   stock: stockItemSchema.nullable(),
@@ -25,11 +30,30 @@ export const projectOffcutSchema = z.strictObject({
   const width = tryToMicrometres(entry.region.widthMm, 1)
   const panelLength = tryToMicrometres(entry.panel.lengthMm, 1)
   const panelWidth = tryToMicrometres(entry.panel.widthMm, 1)
-  if (x === null || y === null || length === null || width === null || panelLength === null || panelWidth === null || !Number.isSafeInteger(x + length) || !Number.isSafeInteger(y + width) || x + length > panelLength || y + width > panelWidth) context.addIssue({ code: 'custom', path: ['region'], message: 'The offcut must lie within its physical source panel at supported geometry resolution.' })
+  if (x === null || y === null || length === null || width === null || panelLength === null || panelWidth === null || !Number.isSafeInteger(x + length)
+    || !Number.isSafeInteger(y + width)
+    || x + length > panelLength
+    || y + width > panelWidth) context.addIssue({
+      code: 'custom',
+      path: ['region'],
+      message: 'The offcut must lie within its physical source panel at supported geometry resolution.'
+    })
   const stock = entry.stock
   if (!stock) return
   const provenance = stock.provenance
-  if (stock.kind !== 'offcut' || stock.quantity !== 1 || stock.materialId !== entry.panel.materialId || stock.thicknessMm !== entry.panel.thicknessMm || stock.grainDirection !== entry.panel.grainDirection || tryToMicrometres(stock.lengthMm, 1) !== length || tryToMicrometres(stock.widthMm, 1) !== width || provenance.source !== 'cutting' || provenance.savedPlanId !== entry.planId || provenance.panelIndex !== entry.panelIndex || provenance.wasteIndex !== entry.wasteIndex || entry.panel.stockItemId !== undefined && provenance.sourceStockItemId !== entry.panel.stockItemId) context.addIssue({ code: 'custom', path: ['stock'], message: 'The original offcut snapshot must match its geometry, material, grain and cutting provenance.' })
+  if (stock.kind !== 'offcut' || stock.quantity !== 1 || stock.materialId !== entry.panel.materialId || stock.thicknessMm !== entry.panel.thicknessMm
+    || stock.grainDirection !== entry.panel.grainDirection
+    || tryToMicrometres(stock.lengthMm, 1) !== length
+    || tryToMicrometres(stock.widthMm, 1) !== width
+    || provenance.source !== 'cutting'
+    || provenance.savedPlanId !== entry.planId
+    || provenance.panelIndex !== entry.panelIndex
+    || provenance.wasteIndex !== entry.wasteIndex
+    || entry.panel.stockItemId !== undefined && provenance.sourceStockItemId !== entry.panel.stockItemId) context.addIssue({
+      code: 'custom',
+      path: ['stock'],
+      message: 'The original offcut snapshot must match its geometry, material, grain and cutting provenance.'
+    })
 })
 export type ProjectOffcut = z.infer<typeof projectOffcutSchema>
 export const projectStockSchema = z.strictObject({

@@ -2,7 +2,15 @@
 import AppIcon from './AppIcon.vue'
 import AppButton from './AppButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-const props = withDefaults(defineProps<{ title: string; busy: boolean; closeLabel?: string; drawer?: boolean; open?: boolean; titleId?: string; size?: 'small' | 'default' | 'large' }>(), { titleId: '', size: 'default', open: true, closeLabel: 'Close form', drawer: false })
+const props = withDefaults(defineProps<{
+  title: string;
+  busy: boolean;
+  closeLabel?: string;
+  drawer?: boolean;
+  open?: boolean;
+  titleId?: string;
+  size?: 'small' | 'default' | 'large'
+}>(), { titleId: '', size: 'default', open: true, closeLabel: 'Close form', drawer: false })
 const emit = defineEmits<{ close: [] }>()
 const generatedId = `dialog-${useId()}`
 const headingId = computed(() => props.titleId || generatedId)
@@ -25,7 +33,10 @@ function syncOpen(): void {
 }
 onMounted(syncOpen)
 watch(() => props.open, syncOpen)
-onBeforeUnmount(() => { if (typeof dialog.value?.close === 'function') dialog.value.close(); previousFocus?.focus() })
+onBeforeUnmount(() => {
+  if (typeof dialog.value?.close === 'function') dialog.value.close();
+  previousFocus?.focus()
+})
 </script>
 <template>
   <dialog

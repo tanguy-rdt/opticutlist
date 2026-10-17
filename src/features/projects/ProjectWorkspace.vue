@@ -27,7 +27,11 @@ const sections = [
 function remember(): void {
   if (route.params.projectId !== props.projectId || !project.value) return
   workspaceRoute.value = { ...route }
-  if (navigation) { navigation.activeId = project.value.id; navigation.destination = 'workspace'; navigation.tabs.set(project.value.id, route.fullPath) }
+  if (navigation) {
+    navigation.activeId = project.value.id;
+    navigation.destination = 'workspace';
+    navigation.tabs.set(project.value.id, route.fullPath)
+  }
 }
 watch(() => route.fullPath, remember)
 const parsedId = cuttingProjectIdSchema.safeParse(props.projectId)
@@ -60,11 +64,20 @@ async function load(): Promise<void> {
 }
 let activated = false
 onActivated(async () => {
-  if (!activated) { activated = true; return }
+  if (!activated) {
+    activated = true;
+    return
+  }
   if (!parsedId.success) return
   const latest = await service.projects.get(parsedId.data)
-  if (latest.ok) { project.value = latest.value; remember() }
-  else { project.value = null; error.value = persistenceErrorMessage(latest.error, 'Project') }
+  if (latest.ok) {
+    project.value = latest.value;
+    remember()
+  }
+  else {
+    project.value = null;
+    error.value = persistenceErrorMessage(latest.error, 'Project')
+  }
 })
 onMounted(load)
 </script>

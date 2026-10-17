@@ -52,12 +52,14 @@ export function createCatalogRepositories(persistence: LocalPersistence): Pick<R
       ...persistence.supplierProducts,
       ordering: () => persistence.catalogOrders.list(),
       move: (id, targetId, position) => persistence.transaction(async repositories => {
-        const products = await repositories.supplierProducts.list(); if (!products.ok) return products
+        const products = await repositories.supplierProducts.list();
+        if (!products.ok) return products
         const source = products.value.find(product => product.id === id)
         const target = products.value.find(product => product.id === targetId)
         if (!source || !target) return { ok: false, error: { kind: 'notFound', id: !source ? id : targetId } }
         if (source.supplierId !== target.supplierId || source.materialId !== target.materialId) return conflict('Products can only be reordered within the same supplier and material.')
-        const orders = await repositories.catalogOrders.list(); if (!orders.ok) return orders
+        const orders = await repositories.catalogOrders.list();
+        if (!orders.ok) return orders
         const previous = orders.value.find(order => order.id === source.supplierId)
         const productIds = orderCatalogProducts(products.value.filter(product => product.supplierId === source.supplierId), orders.value).map(product => product.id)
         if (id !== targetId) {

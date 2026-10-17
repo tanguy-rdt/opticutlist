@@ -15,7 +15,10 @@ const error = ref('')
 async function load(): Promise<void> {
   loading.value = true
   const result = await service.listLegacyParts()
-  if (result.ok) { parts.value = result.value; selected.value = [] }
+  if (result.ok) {
+    parts.value = result.value;
+    selected.value = []
+  }
   error.value = result.ok ? '' : persistenceErrorMessage(result.error, 'Part')
   loading.value = false
 }
@@ -24,7 +27,10 @@ async function adopt(): Promise<void> {
   if (!window.confirm('Move the selected legacy parts into this project? Their IDs and dimensions will be preserved. This assigns ownership; it does not copy parts.')) return
   busy.value = true
   const result = await service.adoptLegacyParts(projectId, selected.value)
-  if (result.ok) { await load(); emit('adopted') }
+  if (result.ok) {
+    await load();
+    emit('adopted')
+  }
   else error.value = persistenceErrorMessage(result.error, 'Part')
   busy.value = false
 }

@@ -45,7 +45,12 @@ export function createCurrentResultService(persistence: LocalPersistence) {
         })
       },
       replace(input: SavePlanInput, signal?: AbortSignal): Promise<PersistenceResult<OpenedSavedPlan>> {
-        const prepared = prepareSavedPlan({ id: savedCuttingPlanIdSchema.parse(crypto.randomUUID()), projectId, name: 'Current cutting result', createdAt: new Date().toISOString() }, input)
+        const prepared = prepareSavedPlan({
+          id: savedCuttingPlanIdSchema.parse(crypto.randomUUID()),
+          projectId,
+          name: 'Current cutting result',
+          createdAt: new Date().toISOString()
+        }, input)
         if (!prepared.ok) return Promise.resolve(prepared)
         return scope(async repositories => {
           if (signal?.aborted) return conflict('The result changed before automatic persistence completed.')

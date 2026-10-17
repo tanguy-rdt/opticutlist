@@ -21,7 +21,9 @@ export interface StockRepository extends Repository<StockItem> {
   planningStock(projectId: CuttingProjectId): Promise<PersistenceResult<readonly StockItem[]>>
   history(id: StockItem['id']): Promise<PersistenceResult<readonly CuttingConfirmation[]>>
 }
-function conflict(message: string): Extract<PersistenceResult<never>, { ok: false }> { return { ok: false, error: { kind: 'referenceConflict', message } } }
+function conflict(message: string): Extract<PersistenceResult<never>, { ok: false }> {
+  return { ok: false, error: { kind: 'referenceConflict', message } }
+}
 function sameRecord(a: StockItem, b: StockItem): boolean { return JSON.stringify(a) === JSON.stringify(b) }
 
 async function checkNewStockIds(repositories: Repositories, ids: readonly StockItemId[]): Promise<PersistenceResult<void>> {
@@ -30,7 +32,8 @@ async function checkNewStockIds(repositories: Repositories, ids: readonly StockI
   const projectStock = await repositories.projectStock.list()
   if (!projectStock.ok) return projectStock
   const candidates = new Set(ids)
-  if (projectStock.value.some(state => state.entries.some(entry => entry.stock && candidates.has(entry.stock.id)) || state.movements.some(movement => [...movement.added, ...movement.removed, ...movement.consumed.map(item => item.stock), ...movement.restored.map(item => item.stock)].some(item => candidates.has(item.id))))) return conflict('This stock ID belongs to project inventory history. Create a new stock reference instead.')
+  if (projectStock.value.some(state => state.entries.some(entry => entry.stock && candidates.has(entry.stock.id))
+    || state.movements.some(movement => [...movement.added, ...movement.removed, ...movement.consumed.map(item => item.stock), ...movement.restored.map(item => item.stock)].some(item => candidates.has(item.id))))) return conflict('This stock ID belongs to project inventory history. Create a new stock reference instead.')
   if (receipts.value.some(receipt => receipt.consumed.some(movement => candidates.has(movement.stock.id)) || receipt.offcuts.some(offcut => candidates.has(offcut.id)))) return conflict('This stock ID belongs to historical inventory. Create a new stock reference instead.')
   return { ok: true, value: undefined }
 }
@@ -81,7 +84,17 @@ export function createStockRepository(persistence: LocalPersistence): StockRepos
         const panels: StockItem[] = []
         for (let index = 0; index < parsedQuantity.data; index++) {
           const { materialId, lengthMm, widthMm, thicknessMm, grainDirection, id } = current.value
-          panels.push(stockItemSchema.parse({ id: stockItemIdSchema.parse(crypto.randomUUID()), kind: 'fullPanel', materialId, lengthMm, widthMm, thicknessMm, grainDirection, quantity: 1, provenance: { source: 'purchase', supplierProductId: id } }))
+          panels.push(stockItemSchema.parse({
+            id: stockItemIdSchema.parse(crypto.randomUUID()),
+            kind: 'fullPanel',
+            materialId,
+            lengthMm,
+            widthMm,
+            thicknessMm,
+            grainDirection,
+            quantity: 1,
+            provenance: { source: 'purchase', supplierProductId: id }
+          }))
         }
         if (new Set(panels.map(panel => panel.id)).size !== panels.length) return conflict('Could not generate distinct panel identities. Try again; nothing was added.')
         const identities = await checkNewStockIds(repositories, panels.map(panel => panel.id))
@@ -95,12 +108,14 @@ export function createStockRepository(persistence: LocalPersistence): StockRepos
     },
     ordering: () => persistence.stockOrders.list(),
     move: (id, targetId, position) => persistence.transaction(async repositories => {
-      const items = await repositories.stockItems.list(); if (!items.ok) return items
+      const items = await repositories.stockItems.list();
+      if (!items.ok) return items
       const source = items.value.find(item => item.id === id)
       const target = items.value.find(item => item.id === targetId)
       if (!source || !target) return { ok: false, error: { kind: 'notFound', id: !source ? id : targetId } }
       if (source.materialId !== target.materialId) return conflict('Stock can only be reordered within the same material.')
-      const orders = await repositories.stockOrders.list(); if (!orders.ok) return orders
+      const orders = await repositories.stockOrders.list();
+      if (!orders.ok) return orders
       const previous = orders.value.find(order => order.id === source.materialId)
       const ids = orderStockItems(items.value.filter(item => item.materialId === source.materialId), orders.value).map(item => item.id)
       if (id !== targetId) {
@@ -134,7 +149,10 @@ export function createStockRepository(persistence: LocalPersistence): StockRepos
     }),
     history: async id => {
       const receipts = await persistence.cuttingConfirmations.list()
-      return receipts.ok ? { ok: true, value: receipts.value.filter(receipt => receipt.consumed.some(movement => movement.stock.id === id) || receipt.offcuts.some(offcut => offcut.id === id)).sort((a, b) => a.confirmedAt.localeCompare(b.confirmedAt) || a.id.localeCompare(b.id)) } : receipts
+      return receipts.ok ? {
+        ok: true,
+        value: receipts.value.filter(receipt => receipt.consumed.some(movement => movement.stock.id === id) || receipt.offcuts.some(offcut => offcut.id === id)).sort((a, b) => a.confirmedAt.localeCompare(b.confirmedAt) || a.id.localeCompare(b.id))
+      } : receipts
     },
   }
 }

@@ -34,4 +34,7 @@ export interface ProjectPlanIssue {
 }
 export type OptimizeProjectResult =
   | { readonly ok: true; readonly plan: ProjectCuttingPlan }
-  | { readonly ok: false; readonly error: { readonly kind: 'invalidInput' | 'invalidPlan'; readonly message: string; readonly issues: readonly ProjectPlanIssue[] } }
+  | {
+    readonly ok: false;
+    readonly error: { readonly kind: 'invalidInput' | 'invalidPlan'; readonly message: string; readonly issues: readonly ProjectPlanIssue[] }
+  }

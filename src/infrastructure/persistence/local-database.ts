@@ -16,6 +16,9 @@ import { stockItemSchema } from '../../domain/model/stock-item'
 import { supplierSchema } from '../../domain/model/supplier'
 import { supplierProductSchema } from '../../domain/model/supplier-product'
 
+type Execute = <T>(mode: 'r' | 'rw', table: Table<unknown, string>, work: () => Promise<T>) => Promise<PersistenceResult<T>>
+
+
 export const DATABASE_NAME = 'opticutlist'
 export const DATABASE_VERSION = 8
 export const DATABASE_V1_STORES = {
@@ -53,8 +56,6 @@ function parse<T>(schema: z.ZodType<T>, record: unknown): T {
   }
   return result.data
 }
-
-type Execute = <T>(mode: 'r' | 'rw', table: Table<unknown, string>, work: () => Promise<T>) => Promise<PersistenceResult<T>>
 
 function createRepository<Entity extends { id: string }>(
   table: Table<unknown, string>, schema: z.ZodType<Entity>, idSchema: z.ZodType, execute: Execute,
@@ -114,32 +115,32 @@ function createRepository<Entity extends { id: string }>(
 
 /** Independent instances, no singleton or business-data cache. Options inject IndexedDB in tests. */
 export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOptions): LocalPersistence {
-  const db = new Dexie(name, options)
+  const database = new Dexie(name, options)
   // Keep this declaration immutable. Append versions with transactional upgrade callbacks when
   // records need transformation; a failed migration must abort, never clear or recreate the DB.
-  db.version(1).stores(DATABASE_V1_STORES)
+  database.version(1).stores(DATABASE_V1_STORES)
   // Additive upgrade: existing records are untouched. Legacy parts remain unassigned
   // until the user explicitly adopts them through the project application service.
-  db.version(2).stores(DATABASE_V2_STORES)
+  database.version(2).stores(DATABASE_V2_STORES)
   // Add plan summaries and payloads without rewriting any existing records.
-  db.version(3).stores(DATABASE_V3_STORES)
-  db.version(4).stores(DATABASE_V4_STORES)
+  database.version(3).stores(DATABASE_V3_STORES)
+  database.version(4).stores(DATABASE_V4_STORES)
   // Add only a project-keyed reference; never select or delete legacy layouts during upgrade.
-  db.version(5).stores(DATABASE_V5_STORES)
-  db.version(6).stores(DATABASE_V6_STORES)
+  database.version(5).stores(DATABASE_V5_STORES)
+  database.version(6).stores(DATABASE_V6_STORES)
   // Presentation order is additive; inventory and audit records remain byte-for-byte unchanged.
-  db.version(7).stores(DATABASE_V7_STORES)
-  db.version(DATABASE_VERSION).stores(DATABASE_STORES)
-  db.on('ready', () => {
+  database.version(7).stores(DATABASE_V7_STORES)
+  database.version(DATABASE_VERSION).stores(DATABASE_STORES)
+  database.on('ready', () => {
     // Dexie versions are multiplied by ten in the native IndexedDB version.
-    if (db.backendDB().version > DATABASE_VERSION * 10) {
-      throw new Error(`Database version ${String(db.backendDB().version / 10)} is newer than supported version ${String(DATABASE_VERSION)}`)
+    if (database.backendDB().version > DATABASE_VERSION * 10) {
+      throw new Error(`Database version ${String(database.backendDB().version / 10)} is newer than supported version ${String(DATABASE_VERSION)}`)
     }
   }, true)
 
   const execute: Execute = async (mode, table, work) => {
     try {
-      return { ok: true, value: await db.transaction(mode, table, work) }
+      return { ok: true, value: await database.transaction(mode, table, work) }
     } catch (error) {
       return { ok: false, error: failure(error) }
     }
@@ -211,21 +212,21 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
   }
 
   return {
-    ...repositories((tableName) => db.table<unknown, string>(tableName), execute),
+    ...repositories((tableName) => database.table<unknown, string>(tableName), execute),
     async open() {
       try {
-        await db.open()
+        await database.open()
         return { ok: true, value: undefined }
       } catch (error) {
         return { ok: false, error: failure(error) }
       }
     },
     close() {
-      db.close()
+      database.close()
     },
     async transaction(work) {
       try {
-        const value = await db.transaction('rw', db.tables, async (transaction) => {
+        const value = await database.transaction('rw', database.tables, async (transaction) => {
           let firstFailure: PersistenceError | undefined
           let active = true
           const safeExecute: Execute = async (_mode, _table, operation) => {

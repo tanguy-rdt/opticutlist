@@ -14,7 +14,12 @@ const form = ref<HTMLFormElement | null>(null)
 const materialId = ref<string>(props.item?.materialId ?? '')
 const kind = ref(props.item?.kind ?? 'fullPanel')
 const grain = ref(props.item?.grainDirection ?? 'none')
-const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; thicknessMm: number | string; quantity: number | string }>({ lengthMm: props.item?.lengthMm ?? '', widthMm: props.item?.widthMm ?? '', thicknessMm: props.item?.thicknessMm ?? '', quantity: props.item?.quantity ?? 1 })
+const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; thicknessMm: number | string; quantity: number | string }>({
+  lengthMm: props.item?.lengthMm ?? '',
+  widthMm: props.item?.widthMm ?? '',
+  thicknessMm: props.item?.thicknessMm ?? '',
+  quantity: props.item?.quantity ?? 1
+})
 const dimensions = [{ key: 'lengthMm', label: 'Length (mm)' }, { key: 'widthMm', label: 'Width (mm)' }, { key: 'thicknessMm', label: 'Thickness (mm)' }] as const
 const errors = shallowRef<ReadonlyMap<string, string>>(new Map())
 function presetValue(id: string): string {
@@ -27,14 +32,29 @@ const options = computed(() => [
   ...materialPresets.map(item => ({ value: presetValue(item.id), name: item.name, group: item.category, presetId: item.id })),
   ...props.materials.map(item => ({ value: item.id, name: item.name, group: 'Existing catalog materials', presetId: item.libraryPresetId })),
 ])
-function numeric(value: number | string): number | undefined { return typeof value === 'string' && value.trim() === '' ? undefined : Number(value) }
+function numeric(value: number | string): number | undefined {
+  return typeof value === 'string' && value.trim() === '' ? undefined : Number(value)
+}
 async function submit(): Promise<void> {
   if (props.disabled) return
-  const parsed = stockItemSchema.safeParse({ id: props.item?.id ?? crypto.randomUUID(), materialId: preset.value ? crypto.randomUUID() : materialId.value, kind: kind.value, lengthMm: numeric(numbers.lengthMm), widthMm: numeric(numbers.widthMm), thicknessMm: numeric(numbers.thicknessMm), quantity: numeric(numbers.quantity), grainDirection: grain.value, provenance: props.item?.provenance ?? { source: 'manual' } })
+  const parsed = stockItemSchema.safeParse({
+    id: props.item?.id ?? crypto.randomUUID(),
+    materialId: preset.value ? crypto.randomUUID() : materialId.value,
+    kind: kind.value,
+    lengthMm: numeric(numbers.lengthMm),
+    widthMm: numeric(numbers.widthMm),
+    thicknessMm: numeric(numbers.thicknessMm),
+    quantity: numeric(numbers.quantity),
+    grainDirection: grain.value,
+    provenance: props.item?.provenance ?? { source: 'manual' }
+  })
   const issues = new Map(parsed.success ? [] : parsed.error.issues.map(issue => [String(issue.path[0]), issue.message]))
   if (!preset.value && !props.materials.some(item => item.id === materialId.value)) issues.set('materialId', 'Choose a material or built-in preset.')
   errors.value = issues
-  if (issues.size) { await nextTick(); form.value?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus() }
+  if (issues.size) {
+    await nextTick();
+    form.value?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  }
   else if (parsed.success) emit('save', parsed.data, preset.value?.id)
 }
 </script>

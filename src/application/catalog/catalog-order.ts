@@ -13,6 +13,7 @@ export function orderCatalogProducts(products: readonly SupplierProduct[], order
   return [...products].sort((a, b) => {
     if (a.supplierId !== b.supplierId) return a.supplierId < b.supplierId ? -1 : 1
     const supplierRanks = ranks.get(a.supplierId)
-    return ((supplierRanks?.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (supplierRanks?.get(b.id) ?? Number.MAX_SAFE_INTEGER)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    return ((supplierRanks?.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (supplierRanks?.get(b.id) ?? Number.MAX_SAFE_INTEGER))
+      || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
   })
 }

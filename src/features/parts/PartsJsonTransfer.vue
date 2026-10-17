@@ -27,20 +27,37 @@ onBeforeUnmount(() => { generation++ })
 function message(failure: PersistenceError): string {
   return failure.kind === 'invalidRecord' ? failure.issues.map(issue => `${issue.path.join('.') || 'File'}: ${issue.message}`).join('; ') : persistenceErrorMessage(failure, 'Part')
 }
-function start(): void { open.value = true; preview.value = null; error.value = ''; materialIds.value = [] }
-function close(): void { if (!busy.value) { generation++; open.value = false } }
+function start(): void {
+  open.value = true;
+  preview.value = null;
+  error.value = '';
+  materialIds.value = []
+}
+function close(): void {
+  if (!busy.value) {
+    generation++;
+    open.value = false
+  }
+}
 async function select(event: Event): Promise<void> {
   if (!service || busy.value || !(event.target instanceof HTMLInputElement)) return
   const file = event.target.files?.[0]
   if (!file) return
   const current = ++generation
-  busy.value = true; error.value = ''; preview.value = null
+  busy.value = true;
+  error.value = '';
+  preview.value = null
   try {
     const result = await service.preview(projectId, await file.text())
     if (current !== generation) return
-    if (result.ok) { preview.value = result.value; materialIds.value = result.value.materialIds }
+    if (result.ok) {
+      preview.value = result.value;
+      materialIds.value = result.value.materialIds
+    }
     else error.value = message(result.error)
-  } catch { if (current === generation) error.value = 'Could not read the selected JSON file.' }
+  } catch {
+    if (current === generation) error.value = 'Could not read the selected JSON file.'
+  }
   finally { if (current === generation) busy.value = false }
 }
 function choose(index: number, value: string): void {
@@ -50,12 +67,18 @@ function choose(index: number, value: string): void {
 async function confirm(): Promise<void> {
   if (!service || !preview.value || busy.value || props.disabled) return
   const current = ++generation
-  busy.value = true; error.value = ''
+  busy.value = true;
+  error.value = ''
   const result = await service.import(projectId, preview.value.file, materialIds.value, true)
   if (current !== generation) return
   busy.value = false
-  if (!result.ok) { error.value = message(result.error); return }
-  close(); toasts.success('Parts imported', `${String(result.value)} ${result.value === 1 ? 'part' : 'parts'} added`); emit('imported')
+  if (!result.ok) {
+    error.value = message(result.error);
+    return
+  }
+  close();
+  toasts.success('Parts imported', `${String(result.value)} ${result.value === 1 ? 'part' : 'parts'} added`);
+  emit('imported')
 }
 </script>
 <template>

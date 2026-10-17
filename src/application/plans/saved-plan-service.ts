@@ -11,7 +11,13 @@ export interface SavePlanInput extends Pick<SavedPlanContents, 'parts' | 'settin
   readonly editedPanelIndices: readonly number[]
 }
 function invalid(cause: unknown): Extract<PersistenceResult<never>, { ok: false }> {
-  return { ok: false, error: { kind: 'invalidRecord', issues: [{ path: ['plan'], message: cause instanceof Error ? cause.message : 'The saved plan is invalid.' }] } }
+  return {
+    ok: false,
+    error: {
+      kind: 'invalidRecord',
+      issues: [{ path: ['plan'], message: cause instanceof Error ? cause.message : 'The saved plan is invalid.' }]
+    }
+  }
 }
 export function prepareSavedPlan(metadata: unknown, input: SavePlanInput): PersistenceResult<OpenedSavedPlan> {
   try {
@@ -25,7 +31,8 @@ export function prepareSavedPlan(metadata: unknown, input: SavePlanInput): Persi
     const contents = savedPlanContentsSchema.safeParse({
       id: summary.data.id, projectId: summary.data.projectId, formatVersion: 1, parts: snapshot.parts, settings: snapshot.settings,
       sources: snapshot.sources.filter(source => used.has(source.product.id)),
-      panels: snapshot.plan.panels.map((panel, index) => ({ supplierProductId: panel.supplierProductId, panelCopyIndex: panel.panelCopyIndex, strategy: panel.strategy, edited: snapshot.editedPanelIndices.includes(index), tree: compactTree(panel.plan.tree),
+      panels: snapshot.plan.panels.map((panel, index) => ({
+        supplierProductId: panel.supplierProductId, panelCopyIndex: panel.panelCopyIndex, strategy: panel.strategy, edited: snapshot.editedPanelIndices.includes(index), tree: compactTree(panel.plan.tree),
         ...(panel.plan.unplaced.some(range => missingIds.has(range.partId) && (range.reason.kind === 'cannotFitPanel' || range.reason.kind === 'remainderNarrowerThanKerf')) ? { unplacedReasons: [...new Map(panel.plan.unplaced.filter(range => missingIds.has(range.partId) && (range.reason.kind === 'cannotFitPanel' || range.reason.kind === 'remainderNarrowerThanKerf')).map(range => [range.partId, { partId: range.partId, kind: range.reason.kind }])).values()] } : {}),
       })),
       unplaced: snapshot.plan.unplaced, metrics: snapshot.plan.metrics,
@@ -43,7 +50,9 @@ export async function readSavedPlan(repositories: Repositories, projectId: Cutti
   const contents = await repositories.savedPlanContents.get(id)
   if (!contents.ok) return contents
   if (contents.value.projectId !== projectId) return invalid(new Error('The saved plan owner does not match its summary.'))
-  try { return { ok: true, value: { summary: summary.value, contents: contents.value, plan: restoreSavedPlan(contents.value) } } }
+  try {
+    return { ok: true, value: { summary: summary.value, contents: contents.value, plan: restoreSavedPlan(contents.value) } }
+  }
   catch (cause) { return invalid(cause) }
 }
 /** Scoped, insert-only snapshots. Metadata and all trees commit or roll back together. */
@@ -92,10 +101,16 @@ export function createSavedPlanService(persistence: LocalPersistence) {
           if (contents.value.projectId !== projectId) return invalid(new Error('The saved plan owner does not match its summary.'))
           const current = await repositories.currentCuttingResults.find(projectId)
           if (!current.ok) return current
-          if (current.value?.planId === id) return { ok: false, error: { kind: 'referenceConflict', message: 'The current result cannot be deleted through the legacy plan repository.' } }
+          if (current.value?.planId === id) return {
+            ok: false,
+            error: { kind: 'referenceConflict', message: 'The current result cannot be deleted through the legacy plan repository.' }
+          }
           const confirmed = await repositories.cuttingConfirmations.find(id)
           if (!confirmed.ok) return confirmed
-          if (confirmed.value !== null) return { ok: false, error: { kind: 'referenceConflict', message: 'Confirmed plans are retained for inventory movement history and cannot be deleted.' } }
+          if (confirmed.value !== null) return {
+            ok: false,
+            error: { kind: 'referenceConflict', message: 'Confirmed plans are retained for inventory movement history and cannot be deleted.' }
+          }
           const offcuts = await repositories.projectStock.find(projectId)
           if (!offcuts.ok) return offcuts
           if (offcuts.value?.movements.some(movement => movement.planId === id)) return { ok: false, error: { kind: 'referenceConflict', message: 'Inventory audit origins cannot be deleted.' } }

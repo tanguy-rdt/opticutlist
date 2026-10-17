@@ -57,12 +57,30 @@ export function createCuttingPlanScene(plan: PanelCuttingPlan | null, input: Omi
         case 'part': {
           const part = byId.get(node.partId)
           if (part === undefined) return { status: 'invalid', message: 'A placed part is unavailable.' }
-          parts.push({ key: JSON.stringify([part.id, node.copyIndex]), part, copyIndex: node.copyIndex, orientation: node.orientation, region: { ...node.region }, dimensions: getOrientedDimensions(part, node.orientation), grain: grainInPanelAxes(part.grainDirection, node.orientation) })
+          parts.push({
+            key: JSON.stringify([part.id, node.copyIndex]),
+            part,
+            copyIndex: node.copyIndex,
+            orientation: node.orientation,
+            region: { ...node.region },
+            dimensions: getOrientedDimensions(part, node.orientation),
+            grain: grainInPanelAxes(part.grainDirection, node.orientation)
+          })
           break
         }
       }
     }
-    return { status: 'valid', scene: { panel: { xMm: 0, yMm: 0, lengthMm: input.panel.lengthMm, widthMm: input.panel.widthMm }, usableArea, panelGrain: input.panel.grainDirection, parts, waste, kerfs } }
+    return {
+      status: 'valid',
+      scene: {
+        panel: { xMm: 0, yMm: 0, lengthMm: input.panel.lengthMm, widthMm: input.panel.widthMm },
+        usableArea,
+        panelGrain: input.panel.grainDirection,
+        parts,
+        waste,
+        kerfs
+      }
+    }
   } catch (cause) {
     return { status: 'invalid', message: cause instanceof Error ? cause.message : 'The cutting plan could not be validated.' }
   }

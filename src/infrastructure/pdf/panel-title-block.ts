@@ -53,18 +53,39 @@ export function layoutPanelTitleBlock(document: CuttingPlanPdfDocument, font: PD
   const height = tableHeight + technicalHeight
   if (height + 160 > size.height) throw new Error('A panel or material name is too tall for this paper size. Choose a larger sheet.')
   const technicalTop = 36 + technicalHeight
-  return { x, width, tableWidth, nameWidth, dimensionWidth, tableHeight, top: 36 + height, technicalTop, technicalHeight, technical, content: { projectName: document.projectName ?? 'N/A', context: cuttingSettingsContext(document.settings) }, rows: visible, parts, continued: rows.slice(visible.length) }
+  return {
+    x,
+    width,
+    tableWidth,
+    nameWidth,
+    dimensionWidth,
+    tableHeight,
+    top: 36 + height,
+    technicalTop,
+    technicalHeight,
+    technical,
+    content: { projectName: document.projectName ?? 'N/A', context: cuttingSettingsContext(document.settings) },
+    rows: visible,
+    parts,
+    continued: rows.slice(visible.length)
+  }
 }
 
 export function drawPanelTitleBlock(page: PDFPage, font: PDFFont, bold: PDFFont, block: ReturnType<typeof layoutPanelTitleBlock>, scale: string) {
-  const line = (x1: number, y1: number, x2: number, y2: number) => { page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.3, color: rule }) }
-  const text = (value: string, x: number, y: number, selected = font) => { page.drawText(value, { x, y, size: textSize, font: selected, color: ink }) }
+  const line = (x1: number, y1: number, x2: number, y2: number) => {
+    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.3, color: rule })
+  }
+  const text = (value: string, x: number, y: number, selected = font) => {
+    page.drawText(value, { x, y, size: textSize, font: selected, color: ink })
+  }
   drawTechnicalFrame(page)
   line(block.x, block.top, block.x + block.width, block.top)
   const tableEnd = block.x + block.tableWidth
   let y = block.top
   for (const row of block.rows) {
-    row.lines.forEach((value, index) => { text(value, block.x + (row.parent ? 6 : 14), y - 12 - index * lineHeight, row.parent ? bold : font) })
+    row.lines.forEach((value, index) => {
+      text(value, block.x + (row.parent ? 6 : 14), y - 12 - index * lineHeight, row.parent ? bold : font)
+    })
     const dimensionFont = row.parent ? bold : font
     text(row.dimensions, tableEnd - 6 - dimensionFont.widthOfTextAtSize(row.dimensions, textSize), y - 12, dimensionFont)
     y -= row.height

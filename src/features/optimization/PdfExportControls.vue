@@ -13,21 +13,40 @@ const exporting = ref(false)
 const error = ref('')
 const feedback = ref('')
 const previewUrl = ref('')
-function clearPreview(): void { if (previewUrl.value) URL.revokeObjectURL(previewUrl.value); previewUrl.value = '' }
+function clearPreview(): void {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = ''
+}
 let generation = 0
 watch([() => props.input, () => props.title, orientation], () => {
-  generation += 1; clearPreview(); exporting.value = false; error.value = ''; feedback.value = ''
+  generation += 1;
+  clearPreview();
+  exporting.value = false;
+  error.value = '';
+  feedback.value = ''
 }, { flush: 'sync' })
-onBeforeUnmount(() => { generation += 1; clearPreview() })
-onDeactivated(() => { generation += 1; clearPreview(); exporting.value = false })
+onBeforeUnmount(() => {
+  generation += 1;
+  clearPreview()
+})
+onDeactivated(() => {
+  generation += 1;
+  clearPreview();
+  exporting.value = false
+})
 async function exportPdf(download: boolean): Promise<void> {
   if (exporting.value || service === undefined) return
   const current = ++generation
-  exporting.value = true; error.value = ''; feedback.value = ''
+  exporting.value = true;
+  error.value = '';
+  feedback.value = ''
   try {
     const result = await service.exportProject({ ...toRaw(props.input), title: props.title, orientation: orientation.value })
     if (current !== generation) return
-    if (!result.ok) { error.value = `PDF export failed: ${result.error.message}`; return }
+    if (!result.ok) {
+      error.value = `PDF export failed: ${result.error.message}`;
+      return
+    }
     clearPreview()
     previewUrl.value = URL.createObjectURL(new Blob([result.bytes], { type: 'application/pdf' }))
     if (download) downloadCuttingPlanPdf(result.bytes)

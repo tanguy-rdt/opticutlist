@@ -9,7 +9,10 @@ const root = ref<HTMLElement | null>(null)
 const trigger = ref<InstanceType<typeof AppButton> | null>(null)
 const menu = ref<HTMLElement | null>(null)
 const menuId = useId()
-function close(restoreFocus = false): void { open.value = false; if (restoreFocus) trigger.value?.focus() }
+function close(restoreFocus = false): void {
+  open.value = false;
+  if (restoreFocus) trigger.value?.focus()
+}
 async function show(last = false): Promise<void> {
   if (props.disabled) return
   open.value = true
@@ -19,17 +22,31 @@ async function show(last = false): Promise<void> {
 }
 async function toggle(): Promise<void> { if (open.value) close(); else await show() }
 function keyboard(event: KeyboardEvent): void {
-  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); return }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    close(true);
+    return
+  }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
   const items = [...(menu.value?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])]
   const index = items.findIndex(item => item === document.activeElement)
-  const position = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+  let position: number
+  if (event.key === 'Home') position = 0
+  else if (event.key === 'End') position = items.length - 1
+  else position = (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
   items[position]?.focus()
 }
-function focusOut(event: FocusEvent): void { if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) close() }
-function outside(event: PointerEvent): void { if (event.target instanceof Node && !root.value?.contains(event.target)) close() }
-watch(open, value => { if (value) document.addEventListener('pointerdown', outside); else document.removeEventListener('pointerdown', outside) })
+function focusOut(event: FocusEvent): void {
+  if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) close()
+}
+function outside(event: PointerEvent): void {
+  if (event.target instanceof Node && !root.value?.contains(event.target)) close()
+}
+watch(open, value => {
+  if (value) document.addEventListener('pointerdown', outside); else document.removeEventListener('pointerdown', outside)
+})
 watch(() => props.disabled, value => { if (value) close() })
 onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
 </script>

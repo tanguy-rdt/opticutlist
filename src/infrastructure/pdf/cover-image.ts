@@ -10,7 +10,9 @@ export async function prepareCoverImage(file: Blob): Promise<CoverImage> {
   try {
     const image = file.type === 'image/png' ? await pdf.embedPng(buffer) : await pdf.embedJpg(buffer)
     if (!image.width || !image.height || image.width * image.height > 40_000_000) throw new Error('Image exceeds 40 megapixels.')
-  } catch { throw new Error('This image cannot be read. Choose a valid PNG or JPEG of at most 40 megapixels.') }
+  } catch {
+    throw new Error('This image cannot be read. Choose a valid PNG or JPEG of at most 40 megapixels.')
+  }
   let binary = ''
   for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte)
   return coverImageSchema.parse({ mimeType: file.type, data: btoa(binary) })

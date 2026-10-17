@@ -64,7 +64,13 @@ function panelDocument(snapshot: CuttingPlanPdfRequest): CuttingPlanPdfDocument 
   const projection = createCuttingPlanScene(snapshot.plan, snapshot)
   if (projection.status !== 'valid') throw new Error(projection.status === 'invalid' ? projection.message : 'No cutting plan to export.')
   const { plan, ...metadata } = snapshot
-  const placements = projection.scene.parts.map(part => ({ partId: part.part.id, copyIndex: part.copyIndex, orientation: part.orientation, region: part.region, dimensions: part.dimensions }))
+  const placements = projection.scene.parts.map(part => ({
+    partId: part.part.id,
+    copyIndex: part.copyIndex,
+    orientation: part.orientation,
+    region: part.region,
+    dimensions: part.dimensions
+  }))
   return { ...metadata, scene: projection.scene, metrics: computeAreaMetrics(snapshot.panel, placements), unplaced: plan.unplaced }
 }
 export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { ok: true; document: ProjectCuttingPdfDocument } | { ok: false; error: { kind: 'invalidPlan'; message: string } } {
@@ -89,10 +95,37 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
       const source = snapshot.sources.find(source => source.product.id === allocation.supplierProductId)
       if (!source) throw new Error('Missing historical panel reference.')
       const pricing = prices.get(source.product.id)
-      return panelDocument({ ...(pricing ? { pricing: { price: pricing.price, currency: pricing.currency } } : {}), plan: allocation.plan, panel: source.product, parts: snapshot.parts, settings: snapshot.settings, materialName: source.materialName, projectName: snapshot.title, supplierName: source.supplierName, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, edited: snapshot.editedPanelIndices.includes(index) })
+      return panelDocument({
+        ...(pricing ? { pricing: { price: pricing.price, currency: pricing.currency } } : {}),
+        plan: allocation.plan,
+        panel: source.product,
+        parts: snapshot.parts,
+        settings: snapshot.settings,
+        materialName: source.materialName,
+        projectName: snapshot.title,
+        supplierName: source.supplierName,
+        pageSize: snapshot.pageSize ?? 'A4',
+        orientation: snapshot.orientation,
+        edited: snapshot.editedPanelIndices.includes(index)
+      })
     })
-    return { ok: true, document: { settings: snapshot.settings, ...(snapshot.cover ? { cover: snapshot.cover } : {}), title: snapshot.title, pageSize: snapshot.pageSize ?? 'A4', orientation: snapshot.orientation, metrics: snapshot.plan.metrics, unplaced: snapshot.plan.unplaced, parts: snapshot.parts, panels } }
-  } catch (cause) { return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting result.' } } }
+    return {
+      ok: true,
+      document: {
+        settings: snapshot.settings,
+        ...(snapshot.cover ? { cover: snapshot.cover } : {}),
+        title: snapshot.title,
+        pageSize: snapshot.pageSize ?? 'A4',
+        orientation: snapshot.orientation,
+        metrics: snapshot.plan.metrics,
+        unplaced: snapshot.plan.unplaced,
+        parts: snapshot.parts,
+        panels
+      }
+    }
+  } catch (cause) {
+    return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting result.' } }
+  }
 }
 
 /** Independently validate a detached snapshot; adapters never receive unvalidated geometry. */
@@ -105,18 +138,28 @@ export function createCuttingPlanPdfService(port: CuttingPlanPdfPort, pricingRep
         if (!port.generateProject) throw new Error('Complete cutting-result PDF export is unavailable.')
         const document = pricingRepositories ? await resolveProjectPdfPricing(prepared.document, pricingRepositories) : prepared.document
         return { ok: true, bytes: await port.generateProject(document) }
-      } catch (cause) { return { ok: false, error: { kind: 'generationFailure', message: cause instanceof Error ? cause.message : 'Could not generate the cutting result PDF.' } } }
+      } catch (cause) {
+        return {
+          ok: false,
+          error: { kind: 'generationFailure', message: cause instanceof Error ? cause.message : 'Could not generate the cutting result PDF.' }
+        }
+      }
     },
     async export(request: CuttingPlanPdfRequest): Promise<CuttingPlanPdfResult> {
       try {
         const snapshot = structuredClone(request)
         let document: CuttingPlanPdfDocument
         try { document = panelDocument(snapshot) }
-        catch (cause) { return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting plan.' } } }
+        catch (cause) {
+          return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting plan.' } }
+        }
         const bytes = await port.generate(document)
         return { ok: true, bytes }
       } catch (cause) {
-        return { ok: false, error: { kind: 'generationFailure', message: cause instanceof Error ? cause.message : 'Could not generate the cutting plan PDF.' } }
+        return {
+          ok: false,
+          error: { kind: 'generationFailure', message: cause instanceof Error ? cause.message : 'Could not generate the cutting plan PDF.' }
+        }
       }
     },
   }

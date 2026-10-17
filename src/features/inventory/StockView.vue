@@ -41,28 +41,56 @@ const grainFilter = ref('')
 const selectedId = ref('')
 let generation = 0
 let historyGeneration = 0
-onBeforeUnmount(() => { generation++; historyGeneration++; window.removeEventListener('focus', refreshOnFocus) })
-function materialName(id: string): string { return materials.value.find(material => material.id === id)?.name ?? 'Missing material' }
-const materialGroups = computed(() => [...new Set(stock.value.map(item => item.materialId))].map(id => ({ id, material: materials.value.find(material => material.id === id), name: materialName(id), items: stock.value.filter(item => item.materialId === id) })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)))
+onBeforeUnmount(() => {
+  generation++;
+  historyGeneration++;
+  window.removeEventListener('focus', refreshOnFocus)
+})
+function materialName(id: string): string {
+  return materials.value.find(material => material.id === id)?.name ?? 'Missing material'
+}
+const materialGroups = computed(() => [...new Set(stock.value.map(item => item.materialId))].map(id => ({
+  id,
+  material: materials.value.find(material => material.id === id),
+  name: materialName(id),
+  items: stock.value.filter(item => item.materialId === id)
+})).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)))
 const visible = computed(() => orderStockItems(stock.value, orders.value).filter(item => {
   const text = `${materialName(item.materialId)} ${item.id} ${item.kind === 'offcut' ? 'Offcut' : 'Full panel'} ${String(item.lengthMm)} ${String(item.widthMm)} ${String(item.thicknessMm)} ${item.provenance.source}`.toLocaleLowerCase()
-  return (!materialFilter.value || item.materialId === materialFilter.value) && (!kindFilter.value || item.kind === kindFilter.value) && (!grainFilter.value || item.grainDirection === grainFilter.value) && text.includes(search.value.trim().toLocaleLowerCase())
+  return (!materialFilter.value || item.materialId === materialFilter.value) && (!kindFilter.value || item.kind === kindFilter.value)
+    && (!grainFilter.value || item.grainDirection === grainFilter.value)
+    && text.includes(search.value.trim().toLocaleLowerCase())
 }))
 const sections = computed(() => materialGroups.value.map(group => ({ ...group, items: visible.value.filter(item => item.materialId === group.id) })).filter(group => group.items.length))
 const selected = computed(() => visible.value.find(item => item.id === selectedId.value))
 const selectedMaterial = computed(() => materials.value.find(material => material.id === selected.value?.materialId))
 const summaries = computed(() => [
-  { label: 'Owned panels', value: stock.value.filter(item => item.kind === 'fullPanel').reduce((sum, item) => sum + item.quantity, 0), icon: 'stock' as const },
-  { label: 'Owned offcuts', value: stock.value.filter(item => item.kind === 'offcut').reduce((sum, item) => sum + item.quantity, 0), icon: 'products' as const },
+  {
+    label: 'Owned panels',
+    value: stock.value.filter(item => item.kind === 'fullPanel').reduce((sum, item) => sum + item.quantity, 0),
+    icon: 'stock' as const
+  },
+  {
+    label: 'Owned offcuts',
+    value: stock.value.filter(item => item.kind === 'offcut').reduce((sum, item) => sum + item.quantity, 0),
+    icon: 'products' as const
+  },
   { label: 'Materials in stock', value: materialGroups.value.length, icon: 'layers' as const },
   { label: 'Stock references', value: stock.value.length, icon: 'info' as const },
 ])
-watch(visible, items => { if (!items.some(item => item.id === selectedId.value)) selectedId.value = items[0]?.id ?? '' })
+watch(visible, items => {
+  if (!items.some(item => item.id === selectedId.value)) selectedId.value = items[0]?.id ?? ''
+})
 watch(selected, async item => {
   const current = ++historyGeneration
-  history.value = []; historyError.value = ''; historyLoading.value = false
+  history.value = [];
+  historyError.value = '';
+  historyLoading.value = false
   if (!item) return
-  if (!writer) { historyError.value = 'Movement history is unavailable.'; return }
+  if (!writer) {
+    historyError.value = 'Movement history is unavailable.';
+    return
+  }
   historyLoading.value = true
   const result = await writer.history(item.id)
   if (current !== historyGeneration) return
@@ -71,24 +99,40 @@ watch(selected, async item => {
   else historyError.value = persistenceErrorMessage(result.error, 'Cutting confirmation')
 })
 async function load(): Promise<void> {
-  const current = ++generation; loading.value = true; error.value = ''
-  if (!repository) { error.value = 'Inventory information is not available.'; loading.value = false; return }
-  const [items, names, ordering] = await Promise.all([repository.list(), materialRepository.list(), writer ? writer.ordering() : Promise.resolve({ ok: true as const, value: [] })])
+  const current = ++generation;
+  loading.value = true;
+  error.value = ''
+  if (!repository) {
+    error.value = 'Inventory information is not available.';
+    loading.value = false;
+    return
+  }
+  const [stockResult, materialResult, ordering] = await Promise.all([repository.list(), materialRepository.list(), writer ? writer.ordering() : Promise.resolve({ ok: true as const, value: [] })])
   if (current !== generation) return
-  if (!items.ok) error.value = persistenceErrorMessage(items.error, 'Stock item')
-  else if (!names.ok) error.value = persistenceErrorMessage(names.error, 'Material')
+  if (!stockResult.ok) error.value = persistenceErrorMessage(stockResult.error, 'Stock item')
+  else if (!materialResult.ok) error.value = persistenceErrorMessage(materialResult.error, 'Material')
   else if (!ordering.ok) error.value = persistenceErrorMessage(ordering.error, 'Stock item')
-  else { orders.value = ordering.value; stock.value = items.value; materials.value = names.value; if (materialFilter.value && !items.value.some(item => item.materialId === materialFilter.value)) materialFilter.value = '' }
+  else {
+    orders.value = ordering.value;
+    stock.value = stockResult.value;
+    materials.value = materialResult.value;
+    if (materialFilter.value && !stockResult.value.some(item => item.materialId === materialFilter.value)) materialFilter.value = ''
+  }
   loading.value = false
 }
 const filtered = computed(() => Boolean(search.value.trim() || kindFilter.value || grainFilter.value))
 const canReorder = computed(() => Boolean(writer) && !loading.value && !busy.value && !error.value && !formOpen.value && !filtered.value)
 const dragged = shallowRef<StockItem | null>(null)
 const dropTarget = shallowRef<{ id: string; position: 'before' | 'after' } | null>(null)
-function clearDrag(): void { dragged.value = null; dropTarget.value = null }
+function clearDrag(): void {
+  dragged.value = null;
+  dropTarget.value = null
+}
 async function moveRow(item: StockItem, target: StockItem, position: 'before' | 'after'): Promise<void> {
   if (!writer || !canReorder.value || item.materialId !== target.materialId) return
-  busy.value = true; writeError.value = ''; notice.value = ''
+  busy.value = true;
+  writeError.value = '';
+  notice.value = ''
   const current = generation
   const result = await writer.move(item.id, target.id, position)
   if (current !== generation) return
@@ -110,12 +154,21 @@ async function moveBy(item: StockItem, direction: number, event: KeyboardEvent):
   }
 }
 function dragStart(event: DragEvent, item: StockItem): void {
-  if (!canReorder.value) { event.preventDefault(); return }
+  if (!canReorder.value) {
+    event.preventDefault();
+    return
+  }
   dragged.value = item
-  if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id) }
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', item.id)
+  }
 }
 function dragOver(event: DragEvent, item: StockItem): void {
-  if (!canReorder.value || !dragged.value || dragged.value.id === item.id || dragged.value.materialId !== item.materialId) { dropTarget.value = null; return }
+  if (!canReorder.value || !dragged.value || dragged.value.id === item.id || dragged.value.materialId !== item.materialId) {
+    dropTarget.value = null;
+    return
+  }
   event.preventDefault()
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
   const bounds = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
@@ -123,41 +176,70 @@ function dragOver(event: DragEvent, item: StockItem): void {
 }
 async function drop(event: DragEvent, target: StockItem): Promise<void> {
   event.preventDefault()
-  const source = dragged.value; const position = dropTarget.value?.id === target.id ? dropTarget.value.position : null
+  const source = dragged.value;
+  const position = dropTarget.value?.id === target.id ? dropTarget.value.position : null
   clearDrag()
   if (source && position) await moveRow(source, target, position)
 }
 async function openForm(item: StockItem | null = null): Promise<void> {
   if (!writer || busy.value || loading.value || error.value) return
-  detailsOpen.value = false; editing.value = item; writeError.value = ''; formOpen.value = true
-  await nextTick(); document.getElementById('stock-material')?.focus()
+  detailsOpen.value = false;
+  editing.value = item;
+  writeError.value = '';
+  formOpen.value = true
+  await nextTick();
+  document.getElementById('stock-material')?.focus()
 }
-function closeForm(): void { if (!busy.value) { formOpen.value = false; editing.value = null; writeError.value = '' } }
+function closeForm(): void {
+  if (!busy.value) {
+    formOpen.value = false;
+    editing.value = null;
+    writeError.value = ''
+  }
+}
 async function save(item: StockItem, presetId?: string): Promise<void> {
   if (!writer || busy.value) return
-  busy.value = true; writeError.value = ''; notice.value = ''
+  busy.value = true;
+  writeError.value = '';
+  notice.value = ''
   const current = generation
   const result = presetId !== undefined ? await writer.saveWithPreset(item, presetId, editing.value ?? undefined) : editing.value ? await writer.update(editing.value.id, item, editing.value) : await writer.create(item)
   if (current !== generation) return
   busy.value = false
   if (result.ok) {
     notice.value = editing.value ? 'Stock item updated.' : 'Stock item added.'
-    formOpen.value = false; editing.value = null; selectedId.value = result.value.id; materialFilter.value = ''; search.value = ''; kindFilter.value = ''; grainFilter.value = ''
+    formOpen.value = false;
+    editing.value = null;
+    selectedId.value = result.value.id;
+    materialFilter.value = '';
+    search.value = '';
+    kindFilter.value = '';
+    grainFilter.value = ''
     await load()
   } else writeError.value = persistenceErrorMessage(result.error, 'Stock item')
 }
 async function remove(item: StockItem): Promise<void> {
-  if (!writer || busy.value || !window.confirm(`Delete this ${item.kind === 'offcut' ? 'offcut' : 'panel'} stock reference and all ${String(item.quantity)} owned items? Past cutting records will be preserved.`)) return
-  busy.value = true; writeError.value = ''; notice.value = ''
+  if (!writer || busy.value
+    || !window.confirm(`Delete this ${item.kind === 'offcut' ? 'offcut' : 'panel'} stock reference and all ${String(item.quantity)} owned items? Past cutting records will be preserved.`)) return
+  busy.value = true;
+  writeError.value = '';
+  notice.value = ''
   const current = generation
   const result = await writer.delete(item.id, item)
   if (current !== generation) return
   busy.value = false
-  if (result.ok) { detailsOpen.value = false; notice.value = 'Stock item deleted.'; await load() }
+  if (result.ok) {
+    detailsOpen.value = false;
+    notice.value = 'Stock item deleted.';
+    await load()
+  }
   else writeError.value = persistenceErrorMessage(result.error, 'Stock item')
 }
 function refreshOnFocus(): void { if (!loading.value && !busy.value && !formOpen.value) void load() }
-onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() })
+onMounted(() => {
+  window.addEventListener('focus', refreshOnFocus);
+  void load()
+})
 </script>
 <template>
   <section class="space-y-5">

@@ -9,12 +9,10 @@ import { partSchema, type Part } from '../../domain/model/part'
 import type { CuttingProjectId, PartId } from '../../domain/model/ids'
 import type { LocalPersistence, PersistenceResult, Repositories, Repository } from '../persistence/repositories'
 
-const conflict = (message: string): Extract<PersistenceResult<never>, { ok: false }> => ({ ok: false, error: { kind: 'referenceConflict', message } })
-const missing = (id: string): Extract<PersistenceResult<never>, { ok: false }> => ({ ok: false, error: { kind: 'notFound', id } })
-
 export interface ProjectPartsRepository extends Repository<Part> {
   createMany(records: readonly unknown[]): Promise<PersistenceResult<readonly Part[]>>
 }
+
 export interface ProjectService {
   readonly projects: Repository<CuttingProject>
   readonly deletionPreview: (id: CuttingProjectId) => Promise<PersistenceResult<ProjectDeletionPreview>>
@@ -23,6 +21,10 @@ export interface ProjectService {
   listLegacyParts(): Promise<PersistenceResult<readonly Part[]>>
   adoptLegacyParts(projectId: CuttingProjectId, ids: readonly PartId[]): Promise<PersistenceResult<void>>
 }
+
+
+const conflict = (message: string): Extract<PersistenceResult<never>, { ok: false }> => ({ ok: false, error: { kind: 'referenceConflict', message } })
+const missing = (id: string): Extract<PersistenceResult<never>, { ok: false }> => ({ ok: false, error: { kind: 'notFound', id } })
 
 /** Atomic ownership guards around the existing record repositories. No entity cache. */
 export function createProjectService(persistence: LocalPersistence): ProjectService {
@@ -75,7 +77,10 @@ export function createProjectService(persistence: LocalPersistence): ProjectServ
         return conflict('Part ownership must be changed through the project Parts workflow. Refresh and try again.')
       }
       const selections = await validateSelections(repositories, parsed.data, previous)
-      if (!selections.ok) { selectionFailure = selections; return selections }
+      if (!selections.ok) {
+        selectionFailure = selections;
+        return selections
+      }
       return id === undefined ? repositories.projects.create(parsed.data) : repositories.projects.update(id, parsed.data)
     })
     // Scoped failures abort the transaction with the first storage error. Translate

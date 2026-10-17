@@ -45,7 +45,8 @@ function rotationRegions(node: CuttingTreeNode, leaf: PartLeaf): { count: number
   const second = rotationRegions(node.second, leaf)
   const count = first.count + second.count
   const regions = [...first.regions, ...second.regions]
-  if (count === 1 && regions.length > 0 && toNonNegativeUm(node.region.xMm) === toNonNegativeUm(leaf.region.xMm) && toNonNegativeUm(node.region.yMm) === toNonNegativeUm(leaf.region.yMm)) regions.push(node)
+  if (count === 1 && regions.length > 0 && toNonNegativeUm(node.region.xMm) === toNonNegativeUm(leaf.region.xMm)
+    && toNonNegativeUm(node.region.yMm) === toNonNegativeUm(leaf.region.yMm)) regions.push(node)
   return { count, regions }
 }
 /** Recut only the reserved region, length then width, using the existing split geometry. */
@@ -54,13 +55,25 @@ function trimmedLeaf(region: Rect, size: Size2D, leaf: PartLeaf, orientation: Or
     const cut = { axis: 'length' as const, offsetMm: size.lengthMm }
     const { first, second } = splitRect(region, cut, context.settings)
     if (second === null) throw new RangeError('Cut must retain a waste region')
-    return { kind: 'cut', region, cut, first: trimmedLeaf(first, size, leaf, orientation, context), second: { kind: 'waste', region: second } }
+    return {
+      kind: 'cut',
+      region,
+      cut,
+      first: trimmedLeaf(first, size, leaf, orientation, context),
+      second: { kind: 'waste', region: second }
+    }
   }
   if (toPositiveUm(size.widthMm) !== toPositiveUm(region.widthMm)) {
     const cut = { axis: 'width' as const, offsetMm: size.widthMm }
     const { first, second } = splitRect(region, cut, context.settings)
     if (second === null) throw new RangeError('Cut must retain a waste region')
-    return { kind: 'cut', region, cut, first: trimmedLeaf(first, size, leaf, orientation, context), second: { kind: 'waste', region: second } }
+    return {
+      kind: 'cut',
+      region,
+      cut,
+      first: trimmedLeaf(first, size, leaf, orientation, context),
+      second: { kind: 'waste', region: second }
+    }
   }
   return { ...leaf, region, orientation }
 }

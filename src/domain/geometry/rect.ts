@@ -16,6 +16,22 @@ export interface Rect {
 
 export type Size2D = Pick<Dimensions3D, 'lengthMm' | 'widthMm'>
 
+/** `length`: the cut line is perpendicular to the length axis, at `offsetMm` along it. `width`: likewise for width. */
+export type CutAxis = 'length' | 'width'
+
+export interface GuillotineCut {
+  readonly axis: CutAxis
+  /** Distance from the rect's start edge to the start of the kerf. */
+  readonly offsetMm: number
+}
+
+export interface SplitResult {
+  readonly first: Rect
+  /** `null` when the kerf consumes everything beyond the cut. */
+  readonly second: Rect | null
+}
+
+
 /**
  * Area left after trimming `edgeMarginMm` from all four edges.
  * Returns `null` when the margins leave no strictly positive area.
@@ -37,21 +53,6 @@ export function fitsWithin(size: Size2D, area: Size2D): boolean {
     toPositiveUm(size.lengthMm) <= toPositiveUm(area.lengthMm) &&
     toPositiveUm(size.widthMm) <= toPositiveUm(area.widthMm)
   )
-}
-
-/** `length`: the cut line is perpendicular to the length axis, at `offsetMm` along it. `width`: likewise for width. */
-export type CutAxis = 'length' | 'width'
-
-export interface GuillotineCut {
-  readonly axis: CutAxis
-  /** Distance from the rect's start edge to the start of the kerf. */
-  readonly offsetMm: number
-}
-
-export interface SplitResult {
-  readonly first: Rect
-  /** `null` when the kerf consumes everything beyond the cut. */
-  readonly second: Rect | null
 }
 
 /**

@@ -24,14 +24,22 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
       { path: '/stock', name: 'stock', component: StockView },
       { path: '/projects', name: 'projects', component: ProjectsView },
       { path: '/import', name: 'project-import', component: ProjectImport },
-      { path: '/projects/:projectId', component: ProjectWorkspace, props: true, children: [
-        { path: '', redirect: to => ({ name: 'project-materials', params: to.params }) },
-        { path: 'parts', name: 'project-parts', component: ProjectPartsView },
-        { path: 'materials', name: 'project-materials', component: MaterialsView },
-        { path: 'optimization', name: 'project-optimization', component: OptimizationView, props: { cuttingPlansStep: false } },
-        { path: 'stock', name: 'project-stock', component: () => import('../../features/projects/ProjectStockView.vue') },
-        { path: 'cutting-plans', alias: 'export', name: 'project-cutting-plans', component: OptimizationView, props: { cuttingPlansStep: true } },
-      ] },
+      {
+        path: '/projects/:projectId', component: ProjectWorkspace, props: true, children: [
+          { path: '', redirect: to => ({ name: 'project-materials', params: to.params }) },
+          { path: 'parts', name: 'project-parts', component: ProjectPartsView },
+          { path: 'materials', name: 'project-materials', component: MaterialsView },
+          { path: 'optimization', name: 'project-optimization', component: OptimizationView, props: { cuttingPlansStep: false } },
+          { path: 'stock', name: 'project-stock', component: () => import('../../features/projects/ProjectStockView.vue') },
+          {
+            path: 'cutting-plans',
+            alias: 'export',
+            name: 'project-cutting-plans',
+            component: OptimizationView,
+            props: { cuttingPlansStep: true }
+          },
+        ]
+      },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
     ],
   })

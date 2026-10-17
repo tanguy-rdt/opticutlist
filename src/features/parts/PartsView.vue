@@ -72,7 +72,12 @@ async function edit(part: Part | null): Promise<void> {
   await nextTick()
   partForm.value?.focusName()
 }
-function closeForm(): void { if (!busy.value) { formOpen.value = false; operationError.value = '' } }
+function closeForm(): void {
+  if (!busy.value) {
+    formOpen.value = false;
+    operationError.value = ''
+  }
+}
 async function save(part: Part): Promise<void> {
   if (busy.value || loading.value || loadError.value || materialError.value) return
   busy.value = true
@@ -115,13 +120,22 @@ async function remove(part: Part): Promise<void> {
   } else operationError.value = persistenceErrorMessage(result.error, 'Part')
   busy.value = false
 }
-function materialFor(part: Part): Material | undefined { return materials.value.find(material => material.id === part.materialId) }
-function materialName(part: Part): string { return materialFor(part)?.name ?? (materialError.value ? 'Material unavailable' : 'Missing material') }
-function grain(part: Part): string { return part.grainDirection === 'none' ? 'None' : part.grainDirection === 'length' ? 'Along length' : 'Along width' }
+function materialFor(part: Part): Material | undefined {
+  return materials.value.find(material => material.id === part.materialId)
+}
+function materialName(part: Part): string {
+  return materialFor(part)?.name ?? (materialError.value ? 'Material unavailable' : 'Missing material')
+}
+function grain(part: Part): string {
+  return part.grainDirection === 'none' ? 'None' : part.grainDirection === 'length' ? 'Along length' : 'Along width'
+}
 // Refresh cached returns once safe, keeping open/failed drafts intact.
 const active = ref(true)
 const refreshRequested = ref(false)
-onDeactivated(() => { active.value = false; refreshRequested.value = true })
+onDeactivated(() => {
+  active.value = false;
+  refreshRequested.value = true
+})
 onActivated(() => { active.value = true })
 watch(() => active.value && refreshRequested.value && !loading.value && !busy.value && !formOpen.value, ready => {
   if (!ready) return

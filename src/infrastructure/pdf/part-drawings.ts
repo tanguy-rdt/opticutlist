@@ -44,7 +44,13 @@ export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFon
       const inside = box.height >= labels.length * 10 + 30 && labels.every(label => label.font.widthOfTextAtSize(label.text, 8) <= box.width - 16)
       const labelTop = inside ? box.y + box.height / 2 + (labels.length - 1) * 5 - 3 : box.y + box.height + 14 + (labels.length - 1) * 10
       labels.forEach((label, lineIndex) => {
-        page.drawText(label.text, { x: box.x + (box.width - label.font.widthOfTextAtSize(label.text, 8)) / 2, y: labelTop - lineIndex * 10, font: label.font, size: 8, color: ink })
+        page.drawText(label.text, {
+          x: box.x + (box.width - label.font.widthOfTextAtSize(label.text, 8)) / 2,
+          y: labelTop - lineIndex * 10,
+          font: label.font,
+          size: 8,
+          color: ink
+        })
       })
     }
     frame(page, drawPartTitleBlock(page, font, bold, footer, projectName))

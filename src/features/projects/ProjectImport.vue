@@ -19,7 +19,10 @@ async function select(event: Event): Promise<void> {
   if (!(target instanceof HTMLInputElement)) return
   const file = target.files?.[0]
   const current = ++generation
-  preview.value = null; imported.value = null; error.value = ''; busy.value = false
+  preview.value = null;
+  imported.value = null;
+  error.value = '';
+  busy.value = false
   if (!file || !service) return
   busy.value = true
   try {
@@ -29,19 +32,28 @@ async function select(event: Event): Promise<void> {
     if (current !== generation) return
     if (result.ok) preview.value = result.value
     else error.value = persistenceErrorMessage(result.error, 'Project') + (result.error.kind === 'invalidRecord' ? ` ${result.error.issues.map(issue => issue.message).join('; ')}` : '')
-  } catch (cause) { if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not read this project file.' }
+  } catch (cause) {
+    if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not read this project file.'
+  }
   finally { if (current === generation) busy.value = false }
 }
 async function importProject(): Promise<void> {
-  if (!service || !preview.value || busy.value || !window.confirm(`Import “${preview.value.file.project.name}” as a new project? Existing records will not be overwritten. Inventory and cutting confirmations are not imported.`)) return
+  if (!service || !preview.value || busy.value
+    || !window.confirm(`Import “${preview.value.file.project.name}” as a new project? Existing records will not be overwritten. Inventory and cutting confirmations are not imported.`)) return
   const current = generation
-  busy.value = true; error.value = ''
+  busy.value = true;
+  error.value = ''
   try {
     const result = await service.import(toRaw(preview.value.file), true)
     if (current !== generation) return
-    if (result.ok) { imported.value = result.value; preview.value = null }
+    if (result.ok) {
+      imported.value = result.value;
+      preview.value = null
+    }
     else error.value = persistenceErrorMessage(result.error, 'Project') + (result.error.kind === 'invalidRecord' ? ` ${result.error.issues.map(issue => issue.message).join('; ')}` : '')
-  } catch (cause) { if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not import this project.' }
+  } catch (cause) {
+    if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not import this project.'
+  }
   finally { if (current === generation) busy.value = false }
 }
 </script>

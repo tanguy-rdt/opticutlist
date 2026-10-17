@@ -23,7 +23,10 @@ export function downloadCuttingPlanPdf(bytes: Uint8Array<ArrayBuffer>): void {
     // window, with document-exit cleanup as well; the browser controls final saving.
     window.addEventListener('pagehide', release, { once: true })
     timer = setTimeout(release, 60_000)
-  } catch (cause) { release(); throw cause }
+  } catch (cause) {
+    release();
+    throw cause
+  }
   finally { link.remove() }
 }
 

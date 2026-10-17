@@ -7,21 +7,38 @@ import type { SavedPlanSummary } from '../../domain/model/saved-cutting-plan'
 import CuttingConfirmation from '../inventory/CuttingConfirmation.vue'
 import PdfExportControls from './PdfExportControls.vue'
 
-const props = defineProps<{ input: SavePlanInput; summary: SavedPlanSummary | null; cutting: ReturnType<CuttingConfirmationService['forProject']> | undefined; inventoryProblem: string; embedded?: boolean }>()
+const props = defineProps<{
+  input: SavePlanInput;
+  summary: SavedPlanSummary | null;
+  cutting: ReturnType<CuttingConfirmationService['forProject']> | undefined;
+  inventoryProblem: string;
+  embedded?: boolean
+}>()
 const emit = defineEmits<{ close: []; confirmed: []; working: [value: boolean] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 const working = ref(false)
 const document = computed(() => prepareProjectPdfDocument({ ...toRaw(props.input), title: 'Project cutting result', orientation: 'landscape' }))
-const reasons = { noCompatiblePanel: 'No compatible selected panel', constraintsPreventPlacement: 'Dimensions, grain, rotation, kerf or margins prevent placement', panelLimitReached: 'Insufficient panel quantity or remaining usable space' }
+const reasons = {
+  noCompatiblePanel: 'No compatible selected panel',
+  constraintsPreventPlacement: 'Dimensions, grain, rotation, kerf or margins prevent placement',
+  panelLimitReached: 'Insufficient panel quantity or remaining usable space'
+}
 let previousFocus: HTMLElement | null = null
 function close(): void { if (!working.value) emit('close') }
 onMounted(() => {
   if (props.embedded) return
   previousFocus = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null
   if (typeof dialog.value?.showModal === 'function') dialog.value.showModal()
-  else if (dialog.value) { dialog.value.open = true; dialog.value.querySelector('button')?.focus() }
+  else if (dialog.value) {
+    dialog.value.open = true;
+    dialog.value.querySelector('button')?.focus()
+  }
 })
-onBeforeUnmount(() => { if (props.embedded) return; if (typeof dialog.value?.close === 'function') dialog.value.close(); previousFocus?.focus() })
+onBeforeUnmount(() => {
+  if (props.embedded) return;
+  if (typeof dialog.value?.close === 'function') dialog.value.close();
+  previousFocus?.focus()
+})
 </script>
 <template>
   <component

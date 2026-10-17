@@ -7,6 +7,11 @@ import { z } from 'zod'
 import { WIKI_NAVIGATION } from './navigation.ts'
 import { hasControlCharacters, validateImage, validateMarkdown, validateName } from './publication-policy.ts'
 
+export interface WikiOptions { source: string; destination: string; repository: string; branch: string }
+
+interface Patch { start: number; end: number; value: string }
+
+
 export const MANIFEST = '.opticutlist-docs-manifest.json'
 const ASSETS = '_assets/opticutlist-docs/'
 const PAGE_EXTENSION = /\.(md|markdown|mdown|mkd|rst|rest|textile|rdoc|org|creole|mediawiki|wiki|asciidoc|adoc|pod)$/i
@@ -16,8 +21,6 @@ const manifestSchema = z.strictObject({
   repository: z.string(),
   files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
 })
-export interface WikiOptions { source: string; destination: string; repository: string; branch: string }
-interface Patch { start: number; end: number; value: string }
 const hash = (content: Uint8Array): string => createHash('sha256').update(content).digest('hex')
 const urlPath = (path: string): string => path.split('/').map(encodeURIComponent).join('/')
 const portable = (path: string): string => path.split(sep).join('/')
@@ -43,7 +46,9 @@ function files(root: string, prefix = '', documentation = false): string[] {
   return readdirSync(resolve(root, prefix), { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1).flatMap(entry => {
     const name = prefix ? `${prefix}/${entry.name}` : entry.name
     if (documentation) {
-      try { validateName(name) } catch (error) { throw new Error(`Unsafe documentation file docs/${name}: ${error instanceof Error ? error.message : 'Invalid filename'}`, { cause: error }) }
+      try { validateName(name) } catch (error) {
+        throw new Error(`Unsafe documentation file docs/${name}: ${error instanceof Error ? error.message : 'Invalid filename'}`, { cause: error })
+      }
     }
     if (entry.name === '.git') return []
     if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not supported: ${name}`)
@@ -72,11 +77,17 @@ function destinationRange(text: string, definition: boolean): { start: number; e
   let cursor = text.indexOf('[') + 1
   let depth = 1
   for (; cursor < text.length && depth; cursor++) {
-    if (text[cursor] === '\\') { cursor++; continue }
+    if (text[cursor] === '\\') {
+      cursor++;
+      continue
+    }
     if (text[cursor] === '`') {
       const ticks = text.slice(cursor).match(/^`+/)?.[0] ?? '`'
       const end = text.indexOf(ticks, cursor + ticks.length)
-      if (end !== -1) { cursor = end + ticks.length - 1; continue }
+      if (end !== -1) {
+        cursor = end + ticks.length - 1;
+        continue
+      }
     }
     if (text[cursor] === '[') depth++
     if (text[cursor] === ']') depth--
@@ -92,7 +103,10 @@ function destinationRange(text: string, definition: boolean): { start: number; e
   let parentheses = 0
   for (; cursor < text.length; cursor++) {
     const char = text[cursor]
-    if (char === '\\') { cursor++; continue }
+    if (char === '\\') {
+      cursor++;
+      continue
+    }
     if (angle ? char === '>' : /\s/.test(char) || char === ')' && parentheses === 0) break
     if (char === '(') parentheses++
     if (char === ')') parentheses--
@@ -124,7 +138,9 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
     return `https://raw.githubusercontent.com/wiki/${options.repository}/${urlPath(name)}`
   }
   function convert(url: string, current: string, image: boolean): string {
-    const fail = (reason: string): never => { throw new Error(`Unsafe reference in ${portable(relative(source, current))}: ${reason}`) }
+    const fail = (reason: string): never => {
+      throw new Error(`Unsafe reference in ${portable(relative(source, current))}: ${reason}`)
+    }
     if (!url || url.startsWith('#') || url.startsWith('?')) {
       if (image) return fail('Images must reference a local documentation file.')
       return url
@@ -161,7 +177,9 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
     if (image && !inside(docs, target)) return fail('Referenced assets must stay inside docs/.')
     if (image || inside(docs, target) && stat.isFile() && !pages.has(relDocs)) {
       if (!stat.isFile()) return fail('Images must reference regular files.')
-      try { return asset(target) + tail } catch (error) { return fail(error instanceof Error ? error.message : 'Invalid asset.') }
+      try { return asset(target) + tail } catch (error) {
+        return fail(error instanceof Error ? error.message : 'Invalid asset.')
+      }
     }
     return `${repoUrl}/${stat.isDirectory() ? 'tree' : 'blob'}/${encodeURIComponent(options.branch)}/${urlPath(portable(relative(source, target)))}`.replace(/\/$/, '') + tail
   }
@@ -170,7 +188,9 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
   for (const [name, page] of pages) {
     const current = resolve(docs, name)
     const data = readFileSync(current)
-    try { validateMarkdown(data) } catch { throw new Error(`Invalid or sensitive Markdown content in docs/${name}.`) }
+    try { validateMarkdown(data) } catch {
+      throw new Error(`Invalid or sensitive Markdown content in docs/${name}.`)
+    }
     const markdown = data.toString('utf8')
     const patches: Patch[] = []
     const root = fromMarkdown(markdown)
@@ -186,7 +206,10 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
         const range = offset(node)
         const segment = markdown.slice(range.start, range.end)
         // Absolute autolinks have no destination parentheses and already work unchanged.
-        if (segment.startsWith('<')) { convert(node.url, current, false); return }
+        if (segment.startsWith('<')) {
+          convert(node.url, current, false);
+          return
+        }
         const value = convert(node.url, current, node.type === 'image' || node.type === 'definition' && imageReferences.has(node.identifier))
         if (value !== node.url) {
           const local = destinationRange(segment, node.type === 'definition')
@@ -221,7 +244,10 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
   for (const [name, page] of pages) {
     if (listed.has(name)) continue
     const group = name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : 'More reference'
-    if (group !== previousGroup) { navigation.push(`### ${label(group)}`, ''); previousGroup = group }
+    if (group !== previousGroup) {
+      navigation.push(`### ${label(group)}`, '');
+      previousGroup = group
+    }
     navigation.push(`- [${label(titles.get(name) ?? name)}](${pageUrl(page)})`)
   }
   output.set('_Sidebar.md', Buffer.from(banner + navigation.join('\n') + '\n'))
@@ -236,9 +262,10 @@ export function syncWiki(options: WikiOptions): { changed: string[]; removed: st
   if (inside(source, destination) || inside(destination, source)) throw new Error('Wiki destination must be separate from the source checkout.')
   const output = buildWiki(options)
   let ancestor = destination
-  for (;;) {
+  for (; ;) {
     // macOS supplies these root aliases; all application-controlled symlinks remain forbidden.
-    if (lstatSync(ancestor, { throwIfNoEntry: false })?.isSymbolicLink() && !(['/var', '/tmp'].includes(ancestor) && realpathSync(ancestor) === `/private${ancestor}`)) throw new Error('Symbolic links are not supported in the destination path.')
+    if (lstatSync(ancestor, { throwIfNoEntry: false })?.isSymbolicLink()
+      && !(['/var', '/tmp'].includes(ancestor) && realpathSync(ancestor) === `/private${ancestor}`)) throw new Error('Symbolic links are not supported in the destination path.')
     if (dirname(ancestor) === ancestor) break
     ancestor = dirname(ancestor)
   }

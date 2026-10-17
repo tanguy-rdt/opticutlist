@@ -5,7 +5,17 @@ export type PanelPreviewSize = 'small' | 'default'
 type Point = { x: number; y: number }
 type Line = { start: Point; end: Point }
 const sizes = { small: { width: 280, height: 200 }, default: { width: 320, height: 230 } } as const
-const spacing = { padding: 10, fontSize: 15, dimensionOffset: 16, labelGap: 8, extensionGap: 3, overrun: 3, arrowLength: 4, arrowHalfWidth: 2, outsideTail: 10 } as const
+const spacing = {
+  padding: 10,
+  fontSize: 15,
+  dimensionOffset: 16,
+  labelGap: 8,
+  extensionGap: 3,
+  overrun: 3,
+  arrowLength: 4,
+  arrowHalfWidth: 2,
+  outsideTail: 10
+} as const
 function arrow(tip: Point, axis: 'length' | 'width', direction: number): string {
   const base = axis === 'length' ? { x: tip.x + direction * spacing.arrowLength, y: tip.y } : { x: tip.x, y: tip.y + direction * spacing.arrowLength }
   const points = axis === 'length'
@@ -14,8 +24,12 @@ function arrow(tip: Point, axis: 'length' | 'width', direction: number): string 
   return `M ${points.map(point => `${String(point.x)} ${String(point.y)}`).join(' L ')} Z`
 }
 function drawing(width: number, height: number, lengthLabel: string, widthLabel: string) {
-  const left = -width / 2; const right = width / 2; const top = -height / 2; const bottom = height / 2
-  const dimensionX = left - spacing.dimensionOffset; const dimensionY = bottom + spacing.dimensionOffset
+  const left = -width / 2;
+  const right = width / 2;
+  const top = -height / 2;
+  const bottom = height / 2
+  const dimensionX = left - spacing.dimensionOffset;
+  const dimensionY = bottom + spacing.dimensionOffset
   // Conservative text envelopes keep labels clear without depending on a browser font measurement.
   const labelWidth = lengthLabel.length * spacing.fontSize * 0.65
   const labelHeight = widthLabel.length * spacing.fontSize * 0.65
@@ -26,8 +40,14 @@ function drawing(width: number, height: number, lengthLabel: string, widthLabel:
   }
   const horizontalOutside = width < spacing.arrowLength * 2 + spacing.labelGap
   const verticalOutside = height < spacing.arrowLength * 2 + spacing.labelGap
-  const horizontal: Line = { start: { x: left - (horizontalOutside ? spacing.outsideTail : 0), y: dimensionY }, end: { x: right + (horizontalOutside ? spacing.outsideTail : 0), y: dimensionY } }
-  const vertical: Line = { start: { x: dimensionX, y: top - (verticalOutside ? spacing.outsideTail : 0) }, end: { x: dimensionX, y: bottom + (verticalOutside ? spacing.outsideTail : 0) } }
+  const horizontal: Line = {
+    start: { x: left - (horizontalOutside ? spacing.outsideTail : 0), y: dimensionY },
+    end: { x: right + (horizontalOutside ? spacing.outsideTail : 0), y: dimensionY }
+  }
+  const vertical: Line = {
+    start: { x: dimensionX, y: top - (verticalOutside ? spacing.outsideTail : 0) },
+    end: { x: dimensionX, y: bottom + (verticalOutside ? spacing.outsideTail : 0) }
+  }
   const extensions: Line[] = [
     { start: { x: left, y: bottom + spacing.extensionGap }, end: { x: left, y: dimensionY + spacing.overrun } },
     { start: { x: right, y: bottom + spacing.extensionGap }, end: { x: right, y: dimensionY + spacing.overrun } },
@@ -40,18 +60,32 @@ function drawing(width: number, height: number, lengthLabel: string, widthLabel:
     top: Math.min(top, -labelHeight / 2, vertical.start.y),
     bottom: Math.max(horizontalLabel.y + spacing.fontSize / 2, labelHeight / 2, vertical.end.y, dimensionY + spacing.overrun),
   }
-  return { panel: { x: left, y: top, width, height }, horizontal, vertical, horizontalLabel, verticalLabel, horizontalOutside, verticalOutside, extensions, bounds }
+  return {
+    panel: { x: left, y: top, width, height },
+    horizontal,
+    vertical,
+    horizontalLabel,
+    verticalLabel,
+    horizontalOutside,
+    verticalOutside,
+    extensions,
+    bounds
+  }
 }
 
 /** Millimetres are converted once to supported integer micrometres; annotations use SVG pixels. */
 export function fitPanelDimensionPreview(lengthMm: number, widthMm: number, size: PanelPreviewSize = 'default') {
-  const length = toPositiveUm(lengthMm); const width = toPositiveUm(widthMm)
+  const length = toPositiveUm(lengthMm);
+  const width = toPositiveUm(widthMm)
   const box = sizes[size]
-  const lengthLabel = `${String(lengthMm)} mm`; const widthLabel = `${String(widthMm)} mm`
-  const availableWidth = box.width - spacing.padding * 2; const availableHeight = box.height - spacing.padding * 2
+  const lengthLabel = `${String(lengthMm)} mm`;
+  const widthLabel = `${String(widthMm)} mm`
+  const availableWidth = box.width - spacing.padding * 2;
+  const availableHeight = box.height - spacing.padding * 2
   const empty = drawing(0, 0, lengthLabel, widthLabel)
   if (empty.bounds.right - empty.bounds.left > availableWidth || empty.bounds.bottom - empty.bounds.top > availableHeight) throw new RangeError('Dimensions cannot be annotated legibly in this preview size')
-  let low = 0; let high = Math.min(availableWidth / length, availableHeight / width)
+  let low = 0;
+  let high = Math.min(availableWidth / length, availableHeight / width)
   // Fit the complete annotation envelope, not merely the rectangle. Fixed iterations are deterministic.
   for (let iteration = 0; iteration < 40; iteration++) {
     const scale = (low + high) / 2

@@ -12,8 +12,20 @@ import { materialPresets, type MaterialPreset } from '../materials/material-libr
 import MaterialSelector from '../materials/MaterialSelector.vue'
 import { useMaterialRepository } from '../materials/material-repository'
 
-const props = defineProps<{ product: SupplierProduct | null; suppliers: readonly Supplier[]; materials: readonly Material[]; initialSupplierId: string; disabled: boolean; fixedSupplier?: boolean }>()
-const emit = defineEmits<{ save: [product: SupplierProduct, presetId?: string]; cancel: []; materialCreated: [material: Material]; materialBusy: [busy: boolean] }>()
+const props = defineProps<{
+  product: SupplierProduct | null;
+  suppliers: readonly Supplier[];
+  materials: readonly Material[];
+  initialSupplierId: string;
+  disabled: boolean;
+  fixedSupplier?: boolean
+}>()
+const emit = defineEmits<{
+  save: [product: SupplierProduct, presetId?: string];
+  cancel: [];
+  materialCreated: [material: Material];
+  materialBusy: [busy: boolean]
+}>()
 const materialRepository = useMaterialRepository()
 const creatingMaterial = ref(false)
 const materialBusy = ref(false)
@@ -48,7 +60,12 @@ async function createMaterial(): Promise<void> {
   if (props.disabled || materialBusy.value) return
   materialStorageError.value = ''
   materialNotice.value = ''
-  const parsed = materialSchema.safeParse({ id: crypto.randomUUID(), name: materialName.value, category: materialCategory.value, ...(selectedPreset.value ? { libraryPresetId: selectedPreset.value.id } : {}) })
+  const parsed = materialSchema.safeParse({
+    id: crypto.randomUUID(),
+    name: materialName.value,
+    category: materialCategory.value,
+    ...(selectedPreset.value ? { libraryPresetId: selectedPreset.value.id } : {})
+  })
   materialNameError.value = parsed.success ? '' : parsed.error.issues.find((issue) => issue.path[0] === 'name')?.message ?? ''
   materialCategoryError.value = parsed.success ? '' : parsed.error.issues.find((issue) => issue.path[0] === 'category')?.message ?? ''
   if (!parsed.success) {
@@ -90,7 +107,12 @@ const materialOptions = computed(() => [
   ...materialPresets.map(preset => ({ value: presetValue(preset.id), name: preset.name, group: preset.category, presetId: preset.id })),
   ...props.materials.map(material => ({ value: material.id, name: material.name, group: 'Existing catalog materials', presetId: material.libraryPresetId })),
 ])
-const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; thicknessMm: number | string; price: number | string }>({ lengthMm: props.product?.lengthMm ?? '', widthMm: props.product?.widthMm ?? '', thicknessMm: props.product?.thicknessMm ?? '', price: props.product?.price ?? '' })
+const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; thicknessMm: number | string; price: number | string }>({
+  lengthMm: props.product?.lengthMm ?? '',
+  widthMm: props.product?.widthMm ?? '',
+  thicknessMm: props.product?.thicknessMm ?? '',
+  price: props.product?.price ?? ''
+})
 const currency = ref(props.product?.currency ?? 'EUR')
 const productUrl = ref(props.product?.productUrl ?? '')
 const grainDirection = ref(props.product?.grainDirection ?? 'none')
@@ -99,7 +121,9 @@ const dimensionFields = [
   { key: 'lengthMm', label: 'Length (mm)' }, { key: 'widthMm', label: 'Width (mm)' },
   { key: 'thicknessMm', label: 'Thickness (mm)' },
 ] as const
-function numberInput(value: number | string): number | undefined { return typeof value === 'string' && value.trim() === '' ? undefined : Number(value) }
+function numberInput(value: number | string): number | undefined {
+  return typeof value === 'string' && value.trim() === '' ? undefined : Number(value)
+}
 function focusName(): void { form.value?.querySelector<HTMLInputElement>('input')?.focus() }
 defineExpose({ focusName })
 async function submit(): Promise<void> {

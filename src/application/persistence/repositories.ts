@@ -13,7 +13,10 @@ import type { Supplier } from '../../domain/model/supplier'
 import type { SupplierProduct } from '../../domain/model/supplier-product'
 
 export type PersistenceError =
-  | { readonly kind: 'invalidRecord'; readonly issues: readonly { readonly path: readonly PropertyKey[]; readonly message: string }[] }
+  | {
+    readonly kind: 'invalidRecord';
+    readonly issues: readonly { readonly path: readonly PropertyKey[]; readonly message: string }[]
+  }
   | { readonly kind: 'duplicateId'; readonly id: string }
   | { readonly kind: 'notFound'; readonly id: string }
   | { readonly kind: 'storageFailure'; readonly message: string }

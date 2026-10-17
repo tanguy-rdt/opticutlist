@@ -56,10 +56,14 @@ async function inspect(repositories: Repositories, id: CuttingProjectId) {
   for (const entry of ledger?.entries ?? []) if (entry.stock && !entry.removed && !offcuts.has(entry.stock.id)) issues.push('An offcut lacks a complete recorded creation history.')
   const inventory = new Map(stock.value.map(item => [item.id, item]))
   const usedElsewhere = (stockId: StockItem['id']) => projects.value.some(project => project.id !== id && project.stockItemIds?.includes(stockId))
-    || ledgers.value.some(other => other.id !== id && (other.consumed.some(item => item.stock.id === stockId) || other.movements.some(movement => movement.consumed.some(item => item.stock.id === stockId))))
+    || ledgers.value.some(other => other.id !== id
+      && (other.consumed.some(item => item.stock.id === stockId) || other.movements.some(movement => movement.consumed.some(item => item.stock.id === stockId))))
     || receipts.value.some(receipt => receipt.projectId !== id && receipt.consumed.some(item => item.stock.id === stockId))
   for (const [stockId, source] of sources) {
-    if (!Number.isSafeInteger(source.quantity) || source.quantity < 0 || source.quantity > source.stock.quantity) { issues.push('Recorded source quantities are inconsistent.'); continue }
+    if (!Number.isSafeInteger(source.quantity) || source.quantity < 0 || source.quantity > source.stock.quantity) {
+      issues.push('Recorded source quantities are inconsistent.');
+      continue
+    }
     if (!source.quantity) continue
     const current = inventory.get(stockId)
     const remaining = source.stock.quantity - source.quantity
@@ -72,7 +76,19 @@ async function inspect(repositories: Repositories, id: CuttingProjectId) {
     if (usedElsewhere(stockId)) issues.push(`Generated offcut ${stockId} is referenced or consumed by another project.`)
   }
   for (const item of stock.value) if (item.provenance.source === 'cutting' && item.provenance.projectId === id && !offcuts.has(item.id)) issues.push(`Generated stock ${item.id} has missing or ambiguous movement history.`)
-  return { ok: true as const, value: { project: project.value, ledger, sources, offcuts, issues: [...new Set(issues)], projects: projects.value, inventory, planId: ledger?.movements.at(-1)?.planId ?? receipts.value.filter(receipt => receipt.projectId === id).at(-1)?.id } }
+  return {
+    ok: true as const,
+    value: {
+      project: project.value,
+      ledger,
+      sources,
+      offcuts,
+      issues: [...new Set(issues)],
+      projects: projects.value,
+      inventory,
+      planId: ledger?.movements.at(-1)?.planId ?? receipts.value.filter(receipt => receipt.projectId === id).at(-1)?.id
+    }
+  }
 }
 
 export async function previewProjectDeletion(repositories: Repositories, id: CuttingProjectId): Promise<PersistenceResult<ProjectDeletionPreview>> {
@@ -88,7 +104,10 @@ export async function deleteProjectData(repositories: Repositories, id: CuttingP
   if (projects.some(other => other.id !== id && other.partIds.some(partId => project.partIds.includes(partId)))) return conflict('Part ownership conflicts with another project; no data was deleted.')
   const audit: ProjectStock = ledger ?? { id, entries: [], consumed: [], conflict: null, movements: [] }
   if (handling === 'restore') {
-    for (const item of offcuts.values()) { const removed = await repositories.stockItems.delete(item.id); if (!removed.ok) return removed }
+    for (const item of offcuts.values()) {
+      const removed = await repositories.stockItems.delete(item.id);
+      if (!removed.ok) return removed
+    }
     for (const source of sources.values()) {
       if (!source.quantity) continue
       const result = inventory.has(source.stock.id) ? await repositories.stockItems.update(source.stock.id, source.stock) : await repositories.stockItems.create(source.stock)
@@ -97,7 +116,15 @@ export async function deleteProjectData(repositories: Repositories, id: CuttingP
     const restored = [...sources.values()].filter(item => item.quantity > 0)
     if (offcuts.size || restored.length) {
       if (!planId) return conflict('Restoration requires a recorded cutting result identity.')
-      audit.movements.push({ id: stockItemIdSchema.parse(crypto.randomUUID()), planId, createdAt: new Date().toISOString(), added: [], removed: [...offcuts.values()], consumed: [], restored })
+      audit.movements.push({
+        id: stockItemIdSchema.parse(crypto.randomUUID()),
+        planId,
+        createdAt: new Date().toISOString(),
+        added: [],
+        removed: [...offcuts.values()],
+        consumed: [],
+        restored
+      })
     }
     audit.consumed = []
   }
@@ -106,7 +133,10 @@ export async function deleteProjectData(repositories: Repositories, id: CuttingP
   audit.deletedProject = { name: project.name, deletedAt: new Date().toISOString(), stockHandling: handling }
   const archived = ledger ? await repositories.projectStock.update(id, audit) : await repositories.projectStock.create(audit)
   if (!archived.ok) return archived
-  for (const partId of project.partIds) { const result = await repositories.parts.delete(partId); if (!result.ok) return result }
+  for (const partId of project.partIds) {
+    const result = await repositories.parts.delete(partId);
+    if (!result.ok) return result
+  }
   const plans = await repositories.savedPlanSummaries.listForProject(id)
   if (!plans.ok) return plans
   for (const plan of plans.value) {
@@ -117,6 +147,9 @@ export async function deleteProjectData(repositories: Repositories, id: CuttingP
   }
   const current = await repositories.currentCuttingResults.find(id)
   if (!current.ok) return current
-  if (current.value) { const result = await repositories.currentCuttingResults.delete(id); if (!result.ok) return result }
+  if (current.value) {
+    const result = await repositories.currentCuttingResults.delete(id);
+    if (!result.ok) return result
+  }
   return repositories.projects.delete(id)
 }

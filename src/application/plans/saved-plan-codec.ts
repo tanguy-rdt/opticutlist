@@ -18,7 +18,11 @@ function expandTree(tree: CompactTree, region: Rect, settings: SavedPlanContents
   return { ...tree, region, first: expandTree(tree.first, split.first, settings), second: expandTree(tree.second, split.second, settings) }
 }
 export function savedPlanContext(contents: Pick<SavedPlanContents, 'sources' | 'parts' | 'settings'>): ProjectPlanContext {
-  return { parts: contents.parts, settings: contents.settings, panels: contents.sources.map(source => ({ product: { ...source.product, availability: 'available' }, quantity: source.quantity })) }
+  return {
+    parts: contents.parts,
+    settings: contents.settings,
+    panels: contents.sources.map(source => ({ product: { ...source.product, availability: 'available' }, quantity: source.quantity }))
+  }
 }
 /** Reconstruct only derived geometry and summaries, then independently validate every tree and copy. */
 export function restoreSavedPlan(contents: SavedPlanContents): ProjectCuttingPlan {
@@ -32,7 +36,13 @@ export function restoreSavedPlan(contents: SavedPlanContents): ProjectCuttingPla
     const emptyMetrics = { panelAreaMm2: 0, usedAreaMm2: 0, wasteAreaMm2: 0, utilizationPercent: 0 }
     const projection = createCuttingPlanScene({ tree, placements: [], unplaced: [], metrics: emptyMetrics }, { panel: source.product, parts: contents.parts, settings: contents.settings })
     if (projection.status !== 'valid') throw new Error(projection.status === 'invalid' ? projection.message : 'The saved tree is unavailable.')
-    const placements = projection.scene.parts.map(placed => ({ partId: placed.part.id, copyIndex: placed.copyIndex, orientation: placed.orientation, region: placed.region, dimensions: placed.dimensions }))
+    const placements = projection.scene.parts.map(placed => ({
+      partId: placed.part.id,
+      copyIndex: placed.copyIndex,
+      orientation: placed.orientation,
+      region: placed.region,
+      dimensions: placed.dimensions
+    }))
     const plan: PanelCuttingPlan = { tree, placements, unplaced: [], metrics: computeAreaMetrics(source.product, placements) }
     return { supplierProductId: panel.supplierProductId, panelCopyIndex: panel.panelCopyIndex, strategy: panel.strategy, plan }
   })
@@ -67,7 +77,12 @@ export function restoreSavedPlan(contents: SavedPlanContents): ProjectCuttingPla
       const fit = checkPartFit(part, source.product, contents.settings)
       const diagnostic = contents.panels[panelIndex]?.unplacedReasons?.find(reason => reason.partId === part.id)
       if (diagnostic?.kind === 'cannotFitPanel' && fit.fits) throw new Error('A saved unplaced diagnostic contradicts its historical dimensions.')
-      for (const range of contents.unplaced.filter(range => range.partId === part.id)) missing.push({ partId: part.id, firstCopyIndex: range.firstCopyIndex, count: range.count, reason: !fit.fits ? { kind: 'cannotFitPanel', issues: fit.issues } : { kind: diagnostic?.kind === 'remainderNarrowerThanKerf' ? 'remainderNarrowerThanKerf' : 'noSpaceLeft' } })
+      for (const range of contents.unplaced.filter(range => range.partId === part.id)) missing.push({
+        partId: part.id,
+        firstCopyIndex: range.firstCopyIndex,
+        count: range.count,
+        reason: !fit.fits ? { kind: 'cannotFitPanel', issues: fit.issues } : { kind: diagnostic?.kind === 'remainderNarrowerThanKerf' ? 'remainderNarrowerThanKerf' : 'noSpaceLeft' }
+      })
     }
     panel.plan = { ...panel.plan, unplaced: missing }
   }

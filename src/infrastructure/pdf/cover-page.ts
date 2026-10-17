@@ -39,10 +39,16 @@ export async function drawCoverPage(pdf: PDFDocument, page: PDFPage, description
   const drawCentered = (text: string, selectedFont: PDFFont, size: number, color = rgb(0.15, 0.19, 0.17)) => {
     page.drawText(text, { x: (page.getWidth() - selectedFont.widthOfTextAtSize(text, size)) / 2, y: y - size, font: selectedFont, size, color })
   }
-  for (const text of layout.titles) { drawCentered(text, bold, titleSize); y -= titleSize * 1.22 }
+  for (const text of layout.titles) {
+    drawCentered(text, bold, titleSize);
+    y -= titleSize * 1.22
+  }
   if (layout.paragraphs.length) {
     y -= descriptionGap
-    for (const text of layout.paragraphs) { drawCentered(text, descriptionFont, bodySize, rgb(0.4, 0.4, 0.4)); y -= bodySize * 1.4 }
+    for (const text of layout.paragraphs) {
+      drawCentered(text, descriptionFont, bodySize, rgb(0.4, 0.4, 0.4));
+      y -= bodySize * 1.4
+    }
   }
   if (image && imageSize) {
     y -= imageGap
