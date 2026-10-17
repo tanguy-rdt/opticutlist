@@ -2,7 +2,7 @@ import { savedPlanContentsSchema, savedPlanSummarySchema, type SavedPlanContents
 import type { CuttingProjectId, SavedCuttingPlanId } from '../../domain/model/ids'
 import type { ProjectCuttingPlan } from '../../domain/optimizer/project-plan'
 import { validateProjectPlan } from '../../domain/optimizer/validate-project-plan'
-import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repositories } from '../persistence/repositories'
 import { compactTree, restoreSavedPlan, savedPlanContext } from './saved-plan-codec'
 
 export interface OpenedSavedPlan { readonly summary: SavedPlanSummary; readonly contents: SavedPlanContents; readonly plan: ProjectCuttingPlan }
@@ -86,7 +86,7 @@ export async function readSavedPlan(repositories: Repositories, projectId: Cutti
 }
 
 /** Scoped, insert-only snapshots. Metadata and all trees commit or roll back together. */
-export function createSavedPlanService(persistence: LocalPersistence) {
+export function createSavedPlanService(persistence: Persistence) {
   function forProject(projectId: CuttingProjectId) {
     async function scope<T>(work: (repositories: Repositories) => Promise<PersistenceResult<T>>): Promise<PersistenceResult<T>> {
       return persistence.transaction(async repositories => {

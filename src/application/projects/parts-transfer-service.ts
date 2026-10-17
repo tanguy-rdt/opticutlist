@@ -1,7 +1,7 @@
 import type { CuttingProjectId, MaterialId } from '../../domain/model/ids'
 import { partIdSchema } from '../../domain/model/ids'
 import type { Material } from '../../domain/model/material'
-import type { LocalPersistence, PersistenceResult } from '../persistence/repositories'
+import type { Persistence, PersistenceResult } from '../persistence/repositories'
 import { createProjectService } from './project-service'
 import { projectPartMaterialIds } from './part-materials'
 import { invalidTransfer, type ProjectJsonPort } from './project-transfer-format'
@@ -13,7 +13,7 @@ export interface PartsImportPreview {
   readonly materialIds: readonly (MaterialId | null)[]
 }
 
-export function createPartsTransferService(persistence: LocalPersistence, json: Pick<ProjectJsonPort, 'parse'>) {
+export function createPartsTransferService(persistence: Persistence, json: Pick<ProjectJsonPort, 'parse'>) {
   const projects = createProjectService(persistence)
 
   function parse(text: string): PersistenceResult<PartsTransfer> {

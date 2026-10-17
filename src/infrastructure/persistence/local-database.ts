@@ -8,7 +8,7 @@ import { cuttingProjectIdSchema } from '../../domain/model/ids'
 import Dexie, { type DexieOptions, type Table } from 'dexie'
 import type { z } from 'zod'
 
-import type { LocalPersistence, PersistenceError, PersistenceResult, Repositories, Repository } from '../../application/persistence/repositories'
+import type { Persistence, PersistenceError, PersistenceResult, Repositories, Repository } from '../../application/persistence/repositories'
 import { cuttingProjectSchema } from '../../domain/model/cutting-project'
 import { materialSchema } from '../../domain/model/material'
 import { partSchema } from '../../domain/model/part'
@@ -116,7 +116,7 @@ function createRepository<Entity extends { id: string }>(
 }
 
 /** Independent instances, no singleton or business-data cache. Options inject IndexedDB in tests. */
-export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOptions): LocalPersistence {
+export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOptions): Persistence {
   const database = new Dexie(name, options)
   // Keep this declaration immutable. Append versions with transactional upgrade callbacks when
   // records need transformation; a failed migration must abort, never clear or recreate the DB.

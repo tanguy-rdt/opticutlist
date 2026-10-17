@@ -60,13 +60,19 @@ export interface Repositories {
   readonly stockItems: Repository<StockItem>
 }
 
-export interface LocalPersistence extends Repositories {
+/** Backend-neutral repositories and atomic unit of work, implemented within one storage runtime. */
+export interface Persistence extends Repositories {
   open(): Promise<PersistenceResult<void>>
   close(): void
   /**
    * Use only the supplied repositories and await every operation. Any failed operation rolls back
-   * the entire transaction, even if the callback ignores its result. Do not await network or timers.
-   * Scoped repositories must not escape the callback. Values are committed only when this resolves.
+   * the entire transaction, even if the callback ignores its result. Conflicting operations must
+   * not interleave dependency checks and writes. Scoped repositories expire with the callback;
+   * success is returned only after commit. Callbacks are local functions, not network payloads.
+   * Await only scoped repository operations, never unrelated network requests or timers.
    */
   transaction<T>(work: (repositories: Repositories) => Promise<PersistenceResult<T>>): Promise<PersistenceResult<T>>
 }
+
+/** Compatibility alias for existing consumers of the original browser-oriented name. */
+export type LocalPersistence = Persistence

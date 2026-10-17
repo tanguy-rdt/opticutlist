@@ -1,4 +1,4 @@
-import type { LocalPersistence, PersistenceResult } from '../persistence/repositories'
+import type { Persistence, PersistenceResult } from '../persistence/repositories'
 import type { ProjectJsonPort } from '../projects/project-transfer-format'
 import { readCatalogTransferRecords } from './read-transfer-records'
 import { mapped, remapCatalog } from './remap-catalog'
@@ -6,7 +6,7 @@ import { invalidCatalog, validateCatalogTransfer, type CatalogTransfer } from '.
 
 export interface CatalogImportPreview { file: CatalogTransfer; conflicts: number; reused: number }
 
-export function createCatalogTransferService(persistence: LocalPersistence, json: ProjectJsonPort) {
+export function createCatalogTransferService(persistence: Persistence, json: ProjectJsonPort) {
   async function preview(file: CatalogTransfer): Promise<PersistenceResult<CatalogImportPreview>> {
     return persistence.transaction(async repositories => {
       const existing = await readCatalogTransferRecords(repositories);

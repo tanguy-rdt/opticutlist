@@ -56,7 +56,7 @@ flowchart TD
 - **Features:** Vue components and typed injection helpers under [features](../src/features/). Konva and PDF.js belong to presentation, not to domain algorithms. A file named `project-service.ts` in a feature is an injection adapter; the application file with the same name owns business coordination.
 - **Workers:** [handle-optimization-request.ts](../src/workers/optimization/handle-optimization-request.ts) validates messages and delegates to domain code. It has no inventory side effects.
 
-[main.ts](../src/main.ts) creates persistence once, wraps it with guarded catalog/project/stock services, supplies typed injection keys, creates router/Pinia and lazily imports the PDF renderer. Database closing is registered on app unmount. Tests can provide isolated factories instead of inheriting singletons.
+[main.ts](../src/main.ts) selects persistence once through [createConfiguredPersistence](../src/app/persistence.ts), wraps it with guarded catalog/project/stock services, supplies typed injection keys, creates router/Pinia and lazily imports the PDF renderer. Database closing is registered on app unmount. Tests can provide isolated factories instead of inheriting singletons. The existing [Persistence contract](../src/application/persistence/repositories.ts) is backend-neutral; `LocalPersistence` remains a compatibility alias. Unset or `browser` build-time `VITE_STORAGE_MODE` selects Dexie; `server` and unsupported values fail without fallback. Only browser storage is implemented. See [deployment modes and future server requirements](storage.md#storage-deployment-modes); selecting a mode never migrates or synchronizes data.
 
 ## Module dependency map and public interfaces
 
@@ -204,7 +204,7 @@ sequenceDiagram
   actor User
   participant View as MaterialsView
   participant Service as ProjectService
-  participant Tx as LocalPersistence.transaction
+  participant Tx as Persistence.transaction
   participant Repo as Scoped repositories
   participant DB as IndexedDB
   User->>View: Toggle individual or bulk selection

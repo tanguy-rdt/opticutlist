@@ -4,7 +4,7 @@
 
 Use this page as the overview. The detailed [storage reference](storage.md) catalogs every physical table, key, index, transaction and upgrade path. The [JSON reference](json-formats.md) provides envelope/field contracts, processing diagrams, compatibility cases and a clearly separated future migration proposal.
 
-Business records are stored exclusively in IndexedDB. [Repositories](../src/application/persistence/repositories.ts) are application ports; [createLocalPersistence](../src/infrastructure/persistence/local-database.ts) implements them with Dexie. Vue features receive guarded services through injection, not database connections.
+In the implemented browser mode, business records are stored exclusively in IndexedDB. Startup selects the backend through [explicit deployment configuration](storage.md#storage-deployment-modes); server storage is not implemented and cannot silently fall back to the browser. [Repositories](../src/application/persistence/repositories.ts) are application ports; [createLocalPersistence](../src/infrastructure/persistence/local-database.ts) implements them with Dexie. Vue features receive guarded services through injection, not database connections.
 
 **On this page:** [Database and evolution](#database-and-evolution) · [Validated repository behavior](#validated-repository-behavior) · [Supported portable formats](#supported-portable-formats) · [Settings compatibility](#settings-compatibility) · [Backup boundaries](#backup-boundaries)
 
@@ -31,7 +31,7 @@ Adding optional record fields may not require a new store/index version. Existin
 
 `Repository<Entity>` provides create/get/update/delete/list, returning `PersistenceResult<T>` with `invalidRecord`, `duplicateId`, `notFound`, `storageFailure` or `referenceConflict`. Create is insert-only (`add`); update replaces a validated existing record with unchanged ID and cannot upsert. All reads validate stored records with domain schemas. List fails as a whole on corruption instead of hiding records.
 
-`LocalPersistence.transaction` covers multiple stores and supplies scoped repositories. It tracks the first failed operation and rolls back even if a callback ignores the failure. Scoped repositories cannot escape the callback lifetime. Await all operations; do not await network, timers or unrelated browser work inside a transaction. Guarded catalog/project/stock services add cross-record invariants beyond schema validation.
+`Persistence.transaction` covers multiple stores and supplies scoped repositories. It tracks the first failed operation and rolls back even if a callback ignores the failure. Scoped repositories cannot escape the callback lifetime. Await all operations; do not await network, timers or unrelated browser work inside a transaction. Guarded catalog/project/stock services add cross-record invariants beyond schema validation.
 
 [Saved-plan codec](../src/application/plans/saved-plan-codec.ts) reconstructs full geometry from compact cut trees, Parts, source snapshots and historical settings, then independently validates it. Cyclic/reused compact nodes are rejected before recursive parsing. Canvas/PDF data, images of drawings and undo/redo are not plan payloads.
 

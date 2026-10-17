@@ -25,7 +25,7 @@ import { catalogStockRepositoryKey, supplierRepositoryKey, supplierProductReposi
 import { createProjectService } from './application/projects/project-service'
 import { projectServiceKey } from './features/projects/project-service'
 import { materialRepositoryKey } from './features/materials/material-repository'
-import { createLocalPersistence } from './infrastructure/persistence/local-database'
+import { createConfiguredPersistence } from './app/persistence'
 import { createCuttingPlanPdfService } from './application/export/cutting-plan-pdf-service'
 import { cuttingPlanPdfServiceKey } from './features/optimization/pdf-export-service'
 
@@ -35,7 +35,7 @@ import { createAppRouter } from './app/router'
 import './app/styles.css'
 
 const app = createApp(App)
-const persistence = createLocalPersistence()
+const persistence = createConfiguredPersistence(import.meta.env.VITE_STORAGE_MODE)
 const catalog = createCatalogRepositories(persistence)
 app.provide(stockTransferServiceKey, createStockTransferService(persistence, projectJson))
 app.provide(catalogStockRepositoryKey, persistence.stockItems)

@@ -7,7 +7,7 @@ import type { PanelSnapshot } from '../../domain/model/saved-cutting-plan'
 import type { StockItem } from '../../domain/model/stock-item'
 import { stockItemSchema } from '../../domain/model/stock-item'
 import { confirmCuttingInputSchema, cuttingConfirmationSchema, type CuttingConfirmation } from '../../domain/model/cutting-confirmation'
-import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repositories } from '../persistence/repositories'
 import { readSavedPlan, type OpenedSavedPlan } from '../plans/saved-plan-service'
 import { createCuttingPlanScene } from '../optimization/cutting-plan-scene'
 
@@ -42,7 +42,7 @@ export function cuttingOffcutCandidates(saved: OpenedSavedPlan): readonly Offcut
 }
 
 /** Explicit physical execution only. All stock changes and the idempotency record share one commit. */
-export function createCuttingConfirmationService(persistence: LocalPersistence) {
+export function createCuttingConfirmationService(persistence: Persistence) {
   return {
     forProject(projectId: CuttingProjectId) {
       return {

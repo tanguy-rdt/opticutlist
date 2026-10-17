@@ -4,7 +4,7 @@ import { stockItemIdSchema } from '../../domain/model/ids'
 import { stockItemSchema, type StockItem } from '../../domain/model/stock-item'
 import { projectStockSchema, type ProjectOffcut, type ProjectStock } from '../../domain/model/project-stock'
 import { toNonNegativeUm } from '../../domain/geometry/units'
-import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repositories } from '../persistence/repositories'
 import { readSavedPlan, type OpenedSavedPlan } from '../plans/saved-plan-service'
 import { cuttingOffcutCandidates, stockMatchesPanel, type OffcutCandidate } from './cutting-confirmation-service'
 
@@ -78,7 +78,7 @@ function asCandidate(entry: ProjectOffcut): OffcutCandidate {
 }
 
 /** Project decisions and append-only movements are separate from the immutable cutting receipts. */
-export function createProjectStockService(persistence: LocalPersistence) {
+export function createProjectStockService(persistence: Persistence) {
   function forProject(projectId: CuttingProjectId) {
     async function read(repositories: Repositories) {
       const project = await repositories.projects.get(projectId)

@@ -1,4 +1,4 @@
-import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repositories } from '../persistence/repositories'
 import type { ProjectJsonPort } from '../projects/project-transfer-format'
 import type { StockItem } from '../../domain/model/stock-item'
 import { invalidStockTransfer, validateStockTransfer, type StockTransfer } from './stock-transfer-format'
@@ -151,7 +151,7 @@ async function inspect(repositories: Repositories, file: StockTransfer): Promise
   return { ok: true, value: { file, added: file.stockItems.length - reused, reused } }
 }
 
-export function createStockTransferService(persistence: LocalPersistence, json: ProjectJsonPort) {
+export function createStockTransferService(persistence: Persistence, json: ProjectJsonPort) {
   return {
     export(): Promise<PersistenceResult<string>> {
       return persistence.transaction(async repositories => {

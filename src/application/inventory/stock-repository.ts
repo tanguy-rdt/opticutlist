@@ -7,7 +7,7 @@ import { stockItemIdSchema, type StockItemId } from '../../domain/model/ids'
 import type { CuttingProjectId } from '../../domain/model/ids'
 import { stockItemSchema, type StockItem } from '../../domain/model/stock-item'
 import type { CuttingConfirmation } from '../../domain/model/cutting-confirmation'
-import type { LocalPersistence, PersistenceResult, Repository, Repositories } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repository, Repositories } from '../persistence/repositories'
 import { resolvePresetMaterial } from '../catalog/resolve-preset-material'
 
 export interface StockRepository extends Repository<StockItem> {
@@ -53,7 +53,7 @@ async function checkNewStockIds(repositories: Repositories, ids: readonly StockI
 }
 
 /** Manual corrections use existing stores/transactions; cutting receipts are immutable snapshots. */
-export function createStockRepository(persistence: LocalPersistence): StockRepository {
+export function createStockRepository(persistence: Persistence): StockRepository {
   async function save(record: unknown, id?: StockItem['id'], previous?: StockItem, presetId?: string): Promise<PersistenceResult<StockItem>> {
     const parsed = stockItemSchema.safeParse(record)
     if (!parsed.success) {

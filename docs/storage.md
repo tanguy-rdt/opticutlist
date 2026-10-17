@@ -2,18 +2,92 @@
 
 [Documentation home](README.md) / Data & persistence
 
-This is the physical-storage companion to [persistence and JSON](persistence-and-json.md). Exact contracts are [Repositories / LocalPersistence](../src/application/persistence/repositories.ts), [local-database.ts](../src/infrastructure/persistence/local-database.ts) and the linked schemas below. Relationships are application-enforced; IndexedDB has no foreign-key or automatic cascade rules here.
+This is the physical-storage companion to [persistence and JSON](persistence-and-json.md). Exact contracts are [Repositories / Persistence](../src/application/persistence/repositories.ts), [local-database.ts](../src/infrastructure/persistence/local-database.ts) and the linked schemas below. Relationships are application-enforced; IndexedDB has no foreign-key or automatic cascade rules here.
 
-**On this page:** [Adapter construction and transaction architecture](#adapter-construction-and-transaction-architecture) · [Complete table catalog](#complete-table-catalog) · [CRUD read/write mechanics](#crud-readwrite-mechanics) · [Atomic write sets](#atomic-write-sets) · [Versions: three separate axes](#versions-three-separate-axes) · [Deletion and recovery boundaries](#deletion-and-recovery-boundaries)
+**On this page:** [Storage deployment modes](#storage-deployment-modes) · [Adapter construction and transaction architecture](#adapter-construction-and-transaction-architecture) · [Complete table catalog](#complete-table-catalog) · [CRUD read/write mechanics](#crud-readwrite-mechanics) · [Atomic write sets](#atomic-write-sets) · [Versions: three separate axes](#versions-three-separate-axes) · [Deletion and recovery boundaries](#deletion-and-recovery-boundaries)
+
+## Storage deployment modes
+
+### Implemented now: browser storage
+
+Application services depend on [Persistence, Repositories and PersistenceResult](../src/application/persistence/repositories.ts), not Dexie. `Persistence` is the existing repository set plus `open`, `close` and `transaction`; the old `LocalPersistence` name is retained as a type alias so existing consumers continue to compile. Projects, catalog, physical stock, historical plans, inventory ledgers and ordering all use this one boundary. There is no additional repository framework.
+
+[createConfiguredPersistence](../src/app/persistence.ts) is the sole deployment selection point, called by [main.ts](../src/main.ts) before services are injected. Its configuration is **build-time**, using Vite's existing environment mechanism:
+
+| `VITE_STORAGE_MODE` | Current behavior |
+| --- | --- |
+| Unset | Browser IndexedDB, preserving existing deployments |
+| `browser` | Same browser implementation |
+| `server` | Startup error: backend not implemented; no storage is opened |
+| Any other value, including empty | Startup error: unsupported configuration; no fallback |
+
+For an explicit browser deployment, build with `VITE_STORAGE_MODE=browser npm run build`. GitHub Pages needs no new configuration and no backend. Self-hosting this build still stores data **in each browser**, not on the host. Hostname, URL path and `localhost` have no role in storage selection. There is no settings toggle. Vite environment values are public build configuration; never put server credentials in them.
+
+The browser adapter still uses database `opticutlist`, schema version 8, the same keys, validation, ordering and transactions. Opening the app does not copy or migrate a dataset. Browser records belong to an origin and browser profile; a different origin/profile sees its own database. Theme preference remains device-local `localStorage`; navigation and editor state remain transient. Project cutting/PDF settings, including the bounded cover payload, are fields of the persisted project and follow its repository.
+
+### Future server storage: execution boundary
+
+The server path below is planned, not an available deployment mode:
+
+```mermaid
+flowchart TD
+  UI[Vue features and injected application services] --> Browser[Current browser composition]
+  Browser --> Guards[Existing guarded application use cases]
+  Guards --> Ports[Persistence and repository contracts]
+  Ports --> Dexie[Browser Dexie adapter]
+  Dexie --> Local[(Origin-local IndexedDB)]
+  UI -. Future service adapters .-> API[Server API with access control]
+  API -.-> ServerGuards[Same application use cases in server runtime]
+  ServerGuards -.-> ServerPorts[Same persistence contracts]
+  ServerPorts -.-> Durable[Future durable server adapter]
+  Durable -.-> Disk[(Host storage outside public assets)]
+```
+
+A real server-side API/service is required. Browser JavaScript cannot write the hosting machine's filesystem. A server implementation should reuse the guarded application/domain operations with a server persistence adapter and expose their operations through the existing UI service interfaces. It must not trust browser validation or expose unguarded repositories to clients. No endpoints, transport protocol or server database have been selected here.
+
+`transaction(callback)` is an **in-process unit of work**, not a serializable remote procedure. Do not implement a browser adapter that forwards individual CRUD calls and calls that atomic. Running the authoritative operation near the server database keeps ownership checks, stock deductions, result replacement and movement writes inside one transaction. Future browser service adapters and server composition are still required; renaming the contract alone does not implement remote execution.
+
+### Transaction and concurrency requirements
+
+Any future adapter must preserve the observable existing contract:
+
+- Validate IDs and complete records on reads/writes; reject corrupt lists rather than filtering records. Preserve typed failures, insert-only create, existing-only update and deterministic generic list ordering.
+- Use one coherent transaction for dependent reads and writes. Prevent competing stock allocations from interleaving checks and deductions. Commit all affected records or none, including when a callback ignores a failed scoped operation. Expire scoped repositories on callback completion; report success only after durable commit.
+- Keep exact StockItem identities, audit origins, current-project planning availability, safe reversal rules and immutable receipts. Candidate optimization must never mutate inventory. Repeated reconciliation must remain idempotent.
+- Handle stale full-record updates explicitly. Existing transactions and stock snapshot checks are not a general revision protocol for all entities. Decide server conflict detection before allowing concurrent clients; never replace it with last-writer-wins inventory updates.
+- Define retry/cancellation behavior for an ambiguous network outcome. A disconnected browser cannot assume that a server transaction rolled back; retrying must not duplicate inventory effects. Server transactions must not depend on an active browser connection or an arbitrary timer.
+
+The repository callback contract remains unchanged; no network transaction emulation, retry protocol or concurrency fields are introduced in this preparation.
+
+### Ownership, migration and backups
+
+Browser and server datasets are independent. Shared access across browsers will require the future server to store and serve an explicitly authorized dataset. Switching a build configuration must never upload, merge, synchronize or delete browser data automatically.
+
+Existing [JSON exchanges](persistence-and-json.md#backup-boundaries) can support an explicit, partial transfer: Catalog first establishes dependencies; project files carry Parts, selections, settings and saved layouts; eligible independent Stock records can then be imported with the existing consent and identity rules. This is **not** a complete browser-to-server migration recipe. Project imports may remap IDs, while Stock preserves physical identities and requires original provenance. Physical movement history, receipts, consumed stock and missing generated offcuts cannot be reconstructed from these files. Exporting every supported format is still not a complete backup.
+
+Before offering full migration, design and validate a separate complete snapshot/restore boundary covering all thirteen stores, identity relationships and inventory audits; handle the selected access/ownership policy and restore atomically. Future host backups must include durable data, schema state and audit history, with tested restoration and failure recovery. IndexedDB versions, future server schema versions and JSON envelope versions are separate axes; no automatic mapping or new migration is implemented here.
+
+### Decisions required before backend implementation
+
+| Decision | Required outcome |
+| --- | --- |
+| Access control | Decide trusted local-only access versus authenticated use, exposure boundaries and authorization on every authoritative operation. No authentication exists today. |
+| Data ownership | Choose a deliberately shared instance or isolated user/workspace datasets; do not infer sharing from self-hosting or silently assign existing records to users. |
+| Durable storage | Select a host database and persistence location outside served assets, with durable commits, resource limits, additive migrations and non-destructive upgrade failure handling. |
+| Concurrent clients | Define stale-write conflicts, operation retry/idempotency and freshness of read snapshots; preserve stock safety across all connected browsers. |
+| Recovery | Define administrator-controlled backups/restores, compatibility checks and safe handling of ambiguous/lost responses, without rewriting immutable inventory history. |
+| Deployment security | Set transport/session protections appropriate to exposure, restrict storage/backup access and validate uploaded JSON/image payloads on the server. Never ship server credentials in frontend configuration. |
+
+These are prerequisites, not implemented services or a proposal for a multi-tenant framework. A simple single-instance server remains possible once its ownership/access policy is chosen.
 
 ## Adapter construction and transaction architecture
 
-`createLocalPersistence(name = DATABASE_NAME, options?: DexieOptions)` constructs an independent Dexie connection; it is not a singleton. Options allow isolated IndexedDB factories in tests. `main.ts` creates the production instance and closes it when the app unmounts. Repositories can cause Dexie to open lazily; `open()` is an explicit typed-result API, not a mandatory call before every method.
+`createLocalPersistence(name = DATABASE_NAME, options?: DexieOptions)` constructs an independent Dexie connection; it is not a singleton. Options allow isolated IndexedDB factories in tests. [Startup selection](../src/app/persistence.ts) creates the production browser instance for `main.ts`; `main.ts` closes it when the app unmounts. Repositories can cause Dexie to open lazily; `open()` is an explicit typed-result API, not a mandatory call before every method.
 
 ```mermaid
 flowchart TD
   View[Vue feature with typed injection key] --> Guard[Guarded application service]
-  Guard --> Port[LocalPersistence and Repositories ports]
+  Guard --> Port[Persistence and Repositories ports]
   Port --> Adapter[createLocalPersistence Dexie adapter]
   Adapter --> Single[Single-table r or rw transaction]
   Adapter --> Multi[All-store rw transaction callback]

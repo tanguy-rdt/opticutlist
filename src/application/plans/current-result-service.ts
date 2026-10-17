@@ -1,7 +1,7 @@
 import { reconcileProjectStock } from '../inventory/project-stock-service'
 import { savedCuttingPlanIdSchema } from '../../domain/model/ids'
 import type { CuttingProjectId } from '../../domain/model/ids'
-import type { LocalPersistence, PersistenceResult, Repositories } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repositories } from '../persistence/repositories'
 import { prepareSavedPlan, readSavedPlan, type OpenedSavedPlan, type SavePlanInput } from './saved-plan-service'
 
 export interface CurrentResultState {
@@ -14,7 +14,7 @@ function conflict(message: string): Extract<PersistenceResult<never>, { ok: fals
 }
 
 /** Automatic, atomic replacement. Legacy records and physical cutting audit origins are retained. */
-export function createCurrentResultService(persistence: LocalPersistence) {
+export function createCurrentResultService(persistence: Persistence) {
   function forProject(projectId: CuttingProjectId) {
     function scope<T>(work: (repositories: Repositories) => Promise<PersistenceResult<T>>) {
       return persistence.transaction(async repositories => {

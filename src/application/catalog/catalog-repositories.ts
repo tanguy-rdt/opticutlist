@@ -2,7 +2,7 @@ import { orderCatalogProducts, catalogOrderSchema, type CatalogOrder } from './c
 import { type Material } from '../../domain/model/material'
 import type { Supplier } from '../../domain/model/supplier'
 import { supplierProductSchema, type SupplierProduct } from '../../domain/model/supplier-product'
-import type { LocalPersistence, PersistenceResult, Repositories, Repository } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repositories, Repository } from '../persistence/repositories'
 
 import { resolvePresetMaterial } from './resolve-preset-material'
 
@@ -17,7 +17,7 @@ function conflict(message: string): PersistenceResult<never> {
 }
 
 /** Application guards reuse repository ports and the existing atomic transaction boundary. */
-export function createCatalogRepositories(persistence: LocalPersistence): Pick<Repositories, 'materials' | 'suppliers'> & { supplierProducts: CatalogProductRepository } {
+export function createCatalogRepositories(persistence: Persistence): Pick<Repositories, 'materials' | 'suppliers'> & { supplierProducts: CatalogProductRepository } {
   function saveProduct(record: unknown, id?: SupplierProduct['id'], presetId?: string): Promise<PersistenceResult<SupplierProduct>> {
     const parsed = supplierProductSchema.safeParse(record)
     if (!parsed.success) {

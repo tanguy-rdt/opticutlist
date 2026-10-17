@@ -7,7 +7,7 @@ import { isStockEligibleForProject } from '../inventory/stock-eligibility'
 import { cuttingProjectSchema, type CuttingProject } from '../../domain/model/cutting-project'
 import { partSchema, type Part } from '../../domain/model/part'
 import type { CuttingProjectId, PartId } from '../../domain/model/ids'
-import type { LocalPersistence, PersistenceResult, Repositories, Repository } from '../persistence/repositories'
+import type { Persistence, PersistenceResult, Repositories, Repository } from '../persistence/repositories'
 
 export interface ProjectPartsRepository extends Repository<Part> {
   createMany(records: readonly unknown[]): Promise<PersistenceResult<readonly Part[]>>
@@ -26,7 +26,7 @@ const conflict = (message: string): Extract<PersistenceResult<never>, { ok: fals
 const missing = (id: string): Extract<PersistenceResult<never>, { ok: false }> => ({ ok: false, error: { kind: 'notFound', id } })
 
 /** Atomic ownership guards around the existing record repositories. No entity cache. */
-export function createProjectService(persistence: LocalPersistence): ProjectService {
+export function createProjectService(persistence: Persistence): ProjectService {
   async function validateSelections(repositories: Repositories, project: CuttingProject, previous?: CuttingProject): Promise<PersistenceResult<void>> {
     for (const id of project.materialIds) {
       const result = await repositories.materials.get(id)

@@ -8,3 +8,8 @@ declare module '*.vue' {
   const component: DefineComponent
   export default component
 }
+
+interface ImportMetaEnv {
+  /** Explicit deployment configuration; currently only browser storage is implemented. */
+  readonly VITE_STORAGE_MODE?: string
+}

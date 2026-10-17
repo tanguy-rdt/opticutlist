@@ -1,14 +1,14 @@
 import { readTransferRecords } from '../catalog/read-transfer-records'
 import type { CuttingProject } from '../../domain/model/cutting-project'
 import type { CuttingProjectId } from '../../domain/model/ids'
-import type { LocalPersistence, PersistenceResult } from '../persistence/repositories'
+import type { Persistence, PersistenceResult } from '../persistence/repositories'
 import { readSavedPlan } from '../plans/saved-plan-service'
 import { remapProjectTransfer } from './remap-project-transfer'
 import { invalidTransfer, validateProjectTransfer, type ProjectJsonPort, type ProjectTransfer } from './project-transfer-format'
 
 export interface ImportPreview { readonly file: ProjectTransfer; readonly projectIdCollision: boolean; readonly catalogConflicts: number; readonly reusedCatalogRecords: number }
 
-export function createProjectTransferService(persistence: LocalPersistence, json: ProjectJsonPort) {
+export function createProjectTransferService(persistence: Persistence, json: ProjectJsonPort) {
   function parse(text: string): PersistenceResult<ProjectTransfer> {
     try {
       return validateProjectTransfer(json.parse(text))
