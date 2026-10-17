@@ -330,7 +330,7 @@ A reverse proxy must preserve the configured Host and forward the actual browser
 
 ### Standalone Docker deployment
 
-The [Dockerfile](../Dockerfile) packages the existing self-hosted application as one image, one Node process, port **3000/TCP**, and one persistent **`/data`** volume. No Compose, Stack, additional HTTP server or image registry is required. Optimization remains in the browser. The ordinary GitHub Pages build is unchanged.
+The [Dockerfile](../docker/Dockerfile) packages the existing self-hosted application as one image, one Node process, port **3000/TCP**, and one persistent **`/data`** volume. No Compose, Stack, additional HTTP server or image registry is required. Optimization remains in the browser. The ordinary GitHub Pages build is unchanged.
 
 **Requirements:** an existing Docker Engine/Desktop installation with Linux containers and network access for the official `node:24-bookworm-slim` base and locked npm packages. Build on the Docker host targeted by Portainer (or explicitly transfer the locally built image to that host). Nothing is published to GHCR.
 
@@ -339,7 +339,7 @@ The [Dockerfile](../Dockerfile) packages the existing self-hosted application as
 From the repository root:
 
 ```sh
-docker build -t opticutlist:local .
+docker build -f docker/Dockerfile -t opticutlist:local .
 docker volume create opticutlist-data
 docker run -d \
   --name opticutlist \
@@ -444,7 +444,7 @@ Verify health, projects and physical inventory before choosing the restored inst
 Take and verify a backup first. Build the replacement from the intended source revision, stop/remove only the old **container**, then repeat the start command with the **same named volume**:
 
 ```sh
-docker build --pull -t opticutlist:local .
+docker build --pull -f docker/Dockerfile -t opticutlist:local .
 docker stop --time 30 opticutlist
 docker rm opticutlist
 ```

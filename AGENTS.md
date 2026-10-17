@@ -37,7 +37,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Infrastructure: adapters for persistence, import/export and PDF.
 - UI: Vue pages, components, layouts, composables, UI state and presentation helpers in `src/ui/`; no optimization algorithms or direct persistence implementation access.
 - Pinia manages UI state; the configured persistence backend is the business-data source of truth. Browser IndexedDB remains the default; explicit self-hosted builds use the shared server SQLite database.
-- The standalone Docker distribution reuses the existing self-hosted build, runs as non-root, persists SQLite only under `/data` and requires an explicit browser-facing `OCL_ORIGIN`. Keep the Dockerfile's runtime package copies aligned with SSR external dependencies. Readiness must verify SQLite access, not only HTTP liveness; preserve origin checks in probes. See `docs/storage.md#standalone-docker-deployment`.
+- The standalone Docker distribution reuses the existing self-hosted build, runs as non-root, persists SQLite only under `/data` and requires an explicit browser-facing `OCL_ORIGIN`. Keep `docker/Dockerfile` runtime package copies aligned with SSR external dependencies. Readiness must verify SQLite access, not only HTTP liveness; preserve origin checks in probes. See `docs/storage.md#standalone-docker-deployment`.
 - Run optimization in a Web Worker.
 - Enforce dependency direction and avoid circular imports.
 - Create modules and directories when needed; avoid empty scaffolding.

@@ -15,7 +15,7 @@ const execute = promisify(execFile)
 
 // Exercise the actual image probe, including its internal-port/external-Host handling.
 async function dockerProbe(port: number, origin: string) {
-  const dockerfile = await readFile('Dockerfile', 'utf8')
+  const dockerfile = await readFile('docker/Dockerfile', 'utf8')
   const command = dockerfile.match(/HEALTHCHECK[^\n]*\\\n\s+CMD (\[[^\n]+\])/)
   if (!command?.[1]) throw new Error('Missing Docker healthcheck')
   const args = z.tuple([z.literal('node'), z.literal('--input-type=module'), z.literal('-e'), z.string()]).parse(JSON.parse(command[1]))

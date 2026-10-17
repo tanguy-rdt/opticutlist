@@ -1,6 +1,7 @@
 # Only send production build inputs to Docker.
 **
-!Dockerfile
+!docker/
+!docker/Dockerfile
 !.dockerignore
 !package.json
 !package-lock.json
