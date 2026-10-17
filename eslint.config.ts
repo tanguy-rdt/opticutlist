@@ -33,7 +33,7 @@ export default defineConfig(
   },
   {
     name: 'app/config-files',
-    files: ['*.config.ts'],
+    files: ['*.config.ts', 'scripts/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

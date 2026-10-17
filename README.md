@@ -6,6 +6,10 @@ OptiCutList is an open-source browser application for planning and optimizing re
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the technical design and [`AGENTS.md`](AGENTS.md) for contribution rules.
 
+## Developer documentation
+
+Read the [developer documentation index](docs/README.md) or the [GitHub Wiki](https://github.com/tanguy-rdt/opticutlist/wiki). The Wiki is generated from `docs/` after the [publication setup](docs/wiki-publishing.md) is completed; edit documentation in this repository.
+
 ## Requirements
 
 - Node.js 24 (see `.nvmrc`; Node.js 22+ is supported)

@@ -20,6 +20,7 @@ Detailed references:
 - [Storage](storage.md): every table/key/index, repository mechanics, transaction sequences and upgrades.
 - [JSON formats](json-formats.md): exact portable envelopes, compatibility matrix and a separately labeled migration proposal.
 - [Workflow traces](workflows.md): UI-to-service-to-storage sequences and error paths.
+- [Wiki publishing](wiki-publishing.md): GitHub setup, authentication, managed files and offline publication tests.
 
 Existing focused format references remain canonical examples:
 
