@@ -88,3 +88,116 @@ Dimensions cannot recreate that chain. Provenance exists to prevent duplicate co
 Persisted: entity records, project settings/selections, compact plans, audit records, ordering metadata and Keep decisions. Derived: eligible sources, reconstructed regions, offcut candidates, utilization, material groups and purchasing rows. Transient: form drafts, active row, hover, panel collapses, temporary `Offcut N` labels and editor undo/redo.
 
 Do not persist a derived label or preview as an inventory identity. Adding a field requires reviewing schemas, guarded repositories, snapshots, transfers and tests together; additive optional fields do not automatically require a Dexie store version.
+
+## Schema field reference
+
+Fields below are verified against the linked domain modules. Optional means absent is accepted, not that null is accepted. `z.strictObject` rejects unknown keys; optional fields generally accept `undefined` in TypeScript, while portable JSON represents absence by omitting the property.
+
+| Schema/value | Fields or constraints | Consequence for callers |
+| --- | --- | --- |
+| `stableIdSchema` in [ids.ts](../src/domain/model/ids.ts) | Nonempty, at most 128 characters, no whitespace, per-entity brands | Parse IDs at boundaries; a database UUID is not required, but an arbitrary label is not a substitute |
+| `nameSchema` in [common.ts](../src/domain/model/common.ts) | Trimmed, 1–200 characters | Empty/whitespace labels fail; stored names can differ from raw typed whitespace |
+| `quantitySchema` | Positive safe integer through Zod integer validation | Zero cannot represent a live exhausted StockItem; depletion removes the live record |
+| `panelQuantitySchema` in [cutting-project.ts](../src/domain/model/cutting-project.ts) | Nonnegative safe integer | Internal capacity may be zero; this does not reintroduce user planning controls |
+| `Dimensions3D` | Strict finite positive length/width/thickness in mm | Omitted thickness or negative/NaN values fail before persistence |
+| `CuttingSettings` | Nonnegative finite `kerfMm`, `edgeMarginMm`; optional boolean `preferStockPanels` | Defaults applied by workflow, not by these required numeric fields |
+| `PdfSettings` | Optional A4/A3, portrait/landscape, trimmed title up to 300 and description up to 2,000 characters, bounded cover payload | No orientation field means workflow fallback, not forced persisted Portrait |
+| `StockProvenance` | Strict manual / purchase / cutting union | Branch metadata cannot be casually dropped during edits or transfers |
+| `PanelSnapshot` | Historical ID/name/material/dimensions/grain, optional exact stockItemId | Excludes current price/currency/URL/availability; stock key must equal `stock:<id>` |
+| `CompactTree` | Recursive cut/part/waste union; positive offsets, nonnegative copy indices | Structural acceptance is followed by geometry reconstruction and validation |
+
+The geometry extent helpers require at least one micrometre after rounding and safe integer conversion. Entity schema validity and executable-geometry validity are distinct stages. Thickness compatibility is deliberately exact numeric equality, not a rounded geometry tolerance.
+
+### Historical records and embedded value types
+
+| Type | Required content and consistency |
+| --- | --- |
+| `SavedPlanSummary` | Plan ID, projectId, trimmed name, ISO createdAt |
+| `SavedPlanContents` | Same identity/owner, formatVersion 1, settings, snapshot Parts, sources, allocated compact panels, global unplaced ranges and metrics |
+| `CurrentCuttingResult` | Project-keyed id, planId, preserveLegacy flag |
+| `ProjectOffcut` | Stable decision ID, planId, panel/copy/waste indices, panel snapshot, materialName, positive bounded region, Keep flag, removed default false, nullable original Stock snapshot |
+| `ProjectStock` | Project ID, entries, movements; defaults for conflict null and consumed empty; optional deletedProject metadata |
+| Ledger movement | ID, planId, ISO createdAt, added/removed Stock snapshots, consumed/restored quantity-and-snapshot arrays |
+| `CuttingConfirmation` | Plan-keyed receipt, projectId, confirmedAt, consumed source snapshots with panelIndices and created offcut snapshots |
+| `StockOrder` / `CatalogOrder` | Material/supplier-keyed rank arrays with distinct IDs; application-layer presentation contracts |
+
+`ProjectOffcut` validates that its region is within its panel and any stored original Stock snapshot matches offcut kind, quantity one, geometry/material/thickness/grain and cutting provenance. `ProjectStock` rejects duplicate entry/physical/movement identities and cross-project generated snapshots. These checks preserve the meaning of audit data even when current live Stock is absent.
+
+### Derived structures are not extra tables
+
+```mermaid
+classDiagram
+  class Rect {
+    xMm
+    yMm
+    lengthMm
+    widthMm
+  }
+  class CuttingTreeNode {
+    kind
+    region
+  }
+  class CutNode {
+    cut_axis
+    cut_offsetMm
+    first
+    second
+  }
+  class PartLeaf {
+    partId
+    copyIndex
+    orientation
+  }
+  class WasteLeaf
+  class PlacedPart {
+    partId
+    copyIndex
+    orientation
+    dimensions
+  }
+  class AllocatedPanel {
+    supplierProductId
+    panelCopyIndex
+    strategy
+    plan
+  }
+  CuttingTreeNode --> Rect : region
+  CuttingTreeNode <|-- CutNode
+  CuttingTreeNode <|-- PartLeaf
+  CuttingTreeNode <|-- WasteLeaf
+  CutNode --> CuttingTreeNode : first_and_second
+  AllocatedPanel --> CuttingTreeNode : validated_tree
+  PartLeaf ..> PlacedPart : scene_projection
+```
+
+The inheritance notation illustrates discriminated-union variants, not runtime JavaScript classes. `Rect`, `PlacedPart`, `PanelCuttingPlan`, `ProjectCuttingPlan`, scenes and editing sessions are computed TypeScript structures. Only the explicit compact payload and snapshots persist. Konva shapes, SVG paths and PDF annotations do not become physical entities.
+
+## Invariant enforcement and failure consequences
+
+| Rule | Primary enforcement | Why it exists / what would fail without it |
+| --- | --- | --- |
+| Same material identity and exact thickness | `getCompatibilityIssues`, fit and tree validation | A geometric fit cannot authorize cutting from a different specification or thickness |
+| Positive finite physical dimensions | Entity schemas plus supported-range geometry helpers | Invalid sizes can produce zero regions, impossible drawings or nondeterministic arithmetic |
+| Complete copy accounting | `validateProjectPlan` plus scoped ownership | Missing or repeated copies would silently underproduce/overproduce demand |
+| Exact panel-copy capacity | Source quantity and distinct allocation key checks | Reusing a Stock panel/copy would invent inventory |
+| Grain after rotation | `getAllowedOrientations`, tree validator/editor | A dimensionally fitting placement can produce the wrong finished grain |
+| Physical kerf and positive remainder | `splitRect`, strategy fit and tree validator | Decorative adjacency is not an executable saw cut; kerf cannot be ignored |
+| Root equals usable panel region | Tree expectation checks | Margin strips would be treated as usable finished material |
+| Project owns each Part once | Scoped `withProject`, ownership update/adoption | Another project's changes/deletion could corrupt shared demand |
+| Selection does not grant stock ownership | Active ledger availability, not saved selected IDs | Stale or imported selections could take another project's consumed panel |
+| Own-generated offcut ineligible | `isStockEligibleForProject` and planning validation | Circular source/output dependence breaks repeat reconciliation |
+| Safe reversal only from unchanged snapshots | Reconciliation and deletion preflight | Restoring a used panel while a descendant offcut survives duplicates material |
+| Strict transfer relationships | Format validators and post-remap reconstruction | ID collision or missing dependency could bind a plan to unrelated data |
+| No hidden corrupt-row filtering | Repository read validation | UI counts/exports would appear valid while silently losing business records |
+
+A schema alone cannot enforce every relationship: a valid SupplierProduct shape does not prove the supplier exists. Likewise a valid Stock provenance shape does not prove inventory history backs it. Guarded services and transaction-time checks are part of the invariant, not optional frontend validation.
+
+## Ownership lifecycle examples
+
+**Purchased panel:** catalog product reference → explicit Add to stock confirmation → distinct owned fullPanel IDs → project selection → validated allocation → active ledger consumption → optional retained cutting offcuts. The Catalog product remains a reusable reference throughout.
+
+**Generated offcut:** validated waste candidate → persisted Keep decision → quantity-one StockItem with exact origin → possibly consumed by another project → original ledger/receipt retained. A missing live offcut is not automatically an unchecked decision or permission to recreate it.
+
+**Deleted project:** explicit deletion choice → transaction-time safety review → remove owned demand/layout records → preserve receipts and named ledger audit. Keep and Restore have different physical results but both preserve provenance/history required by remaining inventory.
+
+The [storage ER diagram](storage.md#physical-relationship-diagram) shows all tables and keys; [workflow traces](workflows.md) show how these lifecycles execute.

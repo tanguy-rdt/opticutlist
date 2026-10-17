@@ -86,3 +86,42 @@ Use fake timers for toast progress/dismissal and restore them after tests. Asser
 For documentation-only changes, verify every relative Markdown target, source symbol and cross-document claim. Review all major directories rather than relying on old feature summaries. Keep a discrepancy register and list unverified external/runtime behavior. Source paths in these guides are relative to `docs/`; do not paste developer-machine absolute file URLs.
 
 Recommendations above are future/manual practices, not claims that additional tools or suites already exist.
+
+## Fixtures and execution environments
+
+The default is jsdom, but persistence/application suites can explicitly opt into Node using `// @vitest-environment node`; [project-service.spec.ts](../src/application/projects/__tests__/project-service.spec.ts) is an example. Do not infer a browser dependency merely because Vitest configuration defaults to jsdom.
+
+[domain/model fixture inputs](../src/domain/model/__tests__/fixtures.ts) provide raw complete examples; tests parse them through the production schemas to obtain branded types. [viewer fixtures](../src/domain/cutting-tree/__tests__/viewer-fixtures.ts), [editing fixtures](../src/domain/cutting-tree/__tests__/editing-fixtures.ts) and [PDF fixtures](../src/application/export/__tests__/pdf-fixtures.ts) establish different accepted-plan contexts. Use the fixture appropriate to the invariant being tested rather than forcing every suite through a UI-generated plan.
+
+A common persistence arrangement creates a fresh `IDBFactory` per test, connects multiple `createLocalPersistence(name, { indexedDB, IDBKeyRange })` instances to that factory for reload/concurrency tests and closes every connection in afterEach. A fresh connection is not a fresh database when the factory/name are shared intentionally. Failed migration tests must inspect persisted contents/version through a new compatible connection.
+
+Component tests use fresh Pinia/router factories and injected services. For ports, type the fake to the production interface rather than casting an incomplete object. Hoisted spies and `vi.mock` isolate module adapters; PDF.js preview tests simulate loading/render tasks, cancellation and page cleanup rather than invoking a real PDF worker. Konva fakes inspect shapes/events and resource lifecycle rather than browser layout pixels.
+
+### Assertion patterns that catch business regressions
+
+| Scenario | Assert beyond a success result |
+| --- | --- |
+| Part create/import | Both Part records and owner partIds; another project's list unchanged |
+| Optional setting | Omitted, true and false survive the relevant persistence/transfer path distinctly |
+| Stock rerun | Exact IDs, quantities, active consumed snapshots and unchanged movement count |
+| Late transaction failure | All original tables/records unchanged, not only error kind |
+| Plan restoration | Literal reconstructed regions, copy ranges, oriented dimensions and independent validator result |
+| ID-remapping import | All foreign/tree/current-result references use the same map; old destination records unchanged |
+| PDF row/table layout | Measured geometry, page bounds, numbering, vector calls and no omitted child rows |
+| Async route change | Delayed old read/worker/write cannot enter the new project or expose stale export bytes |
+
+A mutation of the code under test that changes the intended invariant should fail the test. Assertions that mirror a label string or rebuild expected coordinates through the same helper may pass despite incorrect behavior.
+
+## Current CI and completion process
+
+[ci.yml](../.github/workflows/ci.yml) runs on push, pull_request and workflow_dispatch. The validation job uses Node from `.nvmrc`, npm caching, `npm ci`, lint, typecheck, tests and build with a 15-minute timeout. Default-branch pushes upload `dist` as a Pages artifact. The deploy job remains commented out; documentation or a green artifact does not verify a live deployment.
+
+No configured coverage threshold, browser screenshot suite, architectural dependency-boundary plugin or Mermaid lint command is currently part of package scripts. Those are potential future tooling decisions, not checks that can be claimed as already running in CI. The full local test command includes application/persistence integration suites despite its `test:unit` name.
+
+If an existing test fails during a documentation-only task, retain evidence and rerun the relevant suite to distinguish a reproducible regression from timing interference. Do not edit production/test behavior to make an unrelated documentation commit pass. Record initial failures and final verified results honestly.
+
+## Maintaining the technical reference
+
+[maintenance.md](maintenance.md) gives concrete change recipes for domain fields, Dexie migrations, optimization rules, stock reconciliation, JSON versions and new feature boundaries. [storage.md](storage.md) and [json-formats.md](json-formats.md) are the corresponding contract checklists.
+
+For Mermaid validation, use a real Mermaid parser when available; balanced fences alone do not prove valid syntax. A browser is unnecessary for parser-only validation. Keep temporary documentation tooling outside project dependencies unless adopting it as maintained repository tooling is explicitly part of the task. Link checks should include relative target existence, heading fragments, repository-root paths and newly added source-symbol references.

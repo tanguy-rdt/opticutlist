@@ -62,7 +62,7 @@ Recommended failure regression: force the final ledger write to fail after sourc
 - **Keep current stock** retains current physical inventory and historical events.
 - **Restore initial stock** is all-or-nothing. Modified/consumed/externally referenced offcuts, disagreeing source history or unsafe source restoration block deletion in that mode.
 
-Successful deletion removes owned Parts, plan payloads/summaries and the current result reference. It retains immutable receipts and a named `deletedProject` audit in ProjectStock, clearing active offcut entries. The archived project identity is reserved, and deleted projects must not be reconciled again. Other projects and shared catalog records are not cascaded.
+Successful deletion removes owned Parts, plan payloads/summaries and the current result reference. It retains immutable receipts and a named `deletedProject` audit in ProjectStock, clearing active offcut entries. Guarded project creation reserves the archived identity, and deleted projects must not be reconciled again. The separate import-path reservation gap is recorded in the [JSON audit risks](json-formats.md#source-level-compatibility-risks-to-verify). Other projects and shared catalog records are not cascaded.
 
 A deletion preview is not authorization to skip transaction-time checks: inventory can change after preview.
 
@@ -73,3 +73,45 @@ A deletion preview is not authorization to skip transaction-time checks: invento
 [stock-order.ts](../src/application/inventory/stock-order.ts) stores material-keyed display order separately. Reordering cannot change quantity, source, eligibility or reconciliation. Identical-dimension StockItems remain distinct throughout ordering, project selection, optimizer allocation and transfer.
 
 When investigating a bug, inspect live StockItem, current result source snapshot, ProjectStock active consumption, offcut decisions and immutable receipts together. Missing live inventory may mean legitimate current-project allocation; conversely, a selected ID may be genuinely stale. Never fix either situation by globally restoring inventory or suppressing warnings.
+
+## Service API and preview interpretation
+
+`createProjectStockService(persistence).forProject(projectId)` exposes:
+
+| Method | Effect |
+| --- | --- |
+| `preview()` | Transactional derived read of current plan, candidate rows, persisted decisions, conflict and movements; does not itself apply physical deltas |
+| `sync()` | Read, reconcile current accepted result and persist updated state atomically |
+| `setKeep(key, keep)` | Resolve a current candidate key, update/create its decision, reconcile and persist in one transaction |
+
+The preview row type includes `candidate`, optional `entry`, `keep`, `status` and `modified`. Status is one of Not added / Available / Consumed / Outdated, derived from recorded decisions, live physical stock and receipts. It is not a second persisted availability enum. Current UI hides Outdated rows from active drawing inspection while the service retains historical information needed for safety.
+
+A candidate key includes current plan ID/panelIndex/wasteIndex. Cross-result matching uses the stronger source/copy/material/thickness/grain/panel-and-region fingerprint. Ambiguous multiple historical matches are not guessed; exact plan/index matches take priority only when unique. Decision IDs and generated physical Stock IDs may differ: code uses `entry.stock.id` when referring to actual inventory.
+
+### Guard coverage is deliberately not uniform
+
+`StockRepository.update` validates material, immutable provenance and an optional supplied previous snapshot. Manual delete rereads the record and checks the supplied snapshot if present, then deletes the live record. It does **not** run the project-deletion restoration preflight or automatically remove all saved project selections. Such selections can become explicitly unavailable, and later reconciliation can detect unsafe changes. Do not describe generic Stock CRUD as a universal reservation/reference lock.
+
+`StockRepository.history(id)` reads matching immutable CuttingConfirmation receipts, not the newer embedded ProjectStock movement list. Automatic reconciliation events remain persisted in ProjectStock even though project Stock no longer displays movement history. This is a current presentation/query limitation, not missing inventory accounting records.
+
+### Call-path difference worth reviewing
+
+Project-aware planning/Materials availability uses `readProjectStockAvailability`. In contrast, `ProjectService.parts(...).saveInProject` and Parts-import material derivation inspect live Stock records when an eligible material is inferred solely through selected Stock rather than a direct material choice. After that source is fully consumed, those paths may not recover the same material through active consumption. This is a source-level edge-case risk identified by the audit, not a newly implemented rule or a reproduced regression claim. A future fix needs an application-level regression and must not make consumed inventory globally available.
+
+### Ledger lifecycle diagram
+
+```mermaid
+flowchart TD
+  Selected[Saved Stock source selection] --> Available[Live or current-project active planning availability]
+  Available --> Plan[Validated accepted result]
+  Plan --> Consumed[Active exact-source consumption snapshot]
+  Consumed --> Same[Repeated result: no new deduction or movement]
+  Consumed --> Change[Changed desired sources or waste]
+  Change --> Check{All reversals and offcut removals safe?}
+  Check -->|yes| Delta[Atomic stock deltas and append-only movement]
+  Check -->|no| Conflict[Preserve physical records and persist conflict]
+  Plan --> Waste[Validated waste candidates]
+  Waste --> Keep[Explicit Keep decision]
+  Keep --> Offcut[Owned cutting-provenance StockItem]
+  Offcut --> Other[Eligible for other projects only]
+```

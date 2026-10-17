@@ -1,5 +1,7 @@
 # Persistence and JSON contracts
 
+Use this page as the overview. The detailed [storage reference](storage.md) catalogs every physical table, key, index, transaction and upgrade path. The [JSON reference](json-formats.md) provides envelope/field contracts, processing diagrams, compatibility cases and a clearly separated future migration proposal.
+
 Business records are stored exclusively in IndexedDB. [Repositories](../src/application/persistence/repositories.ts) are application ports; [createLocalPersistence](../src/infrastructure/persistence/local-database.ts) implements them with Dexie. Vue features receive guarded services through injection, not database connections.
 
 ## Database and evolution

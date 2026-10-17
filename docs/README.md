@@ -12,7 +12,14 @@ These guides describe the implementation audited on 17 October 2026. Start with 
 6. [Stock management](stock-management.md): availability, consumption, offcuts, history and deletion.
 7. [Persistence and JSON](persistence-and-json.md): stores, transactions and portable formats.
 8. [PDF generation](pdf-generation.md): validated document pipeline, rendering and browser output.
-9. [Testing](testing.md): regression suites, test doubles and required checks.
+9. [Testing](testing.md): regression suites, fixtures, test doubles and required checks.
+10. [Safe maintenance](maintenance.md): field, storage, optimizer, inventory and JSON extension recipes.
+
+Detailed references:
+
+- [Storage](storage.md): every table/key/index, repository mechanics, transaction sequences and upgrades.
+- [JSON formats](json-formats.md): exact portable envelopes, compatibility matrix and a separately labeled migration proposal.
+- [Workflow traces](workflows.md): UI-to-service-to-storage sequences and error paths.
 
 Existing focused format references remain canonical examples:
 
@@ -34,6 +41,8 @@ Existing focused format references remain canonical examples:
 ## Audit coverage and limits
 
 The audit covered all major `src/` directories: app, application (catalog, export, inventory, optimization, persistence, plans, projects), domain (models, compatibility, geometry, cutting trees, optimizer), every feature directory, infrastructure, shared UI and workers. Configuration, CI, public material manifest and representative unit/integration/regression suites were also inspected. Detailed source links in each guide identify the relevant boundary.
+
+Mermaid diagrams are embedded in the relevant guides: system context/layers/modules/components and project save sequences in architecture; storage ER/read/write/reconciliation/upgrade diagrams in storage; domain values in domain model; user workflows in workflow traces; algorithm flows in optimization; rendering/output in PDF generation.
 
 The [discrepancy register](architecture.md#guidance-and-implementation-discrepancies) records older statements that no longer match code. No application behavior or authoritative guidance was changed during this audit.
 

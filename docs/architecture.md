@@ -89,15 +89,205 @@ These are observations, not permission to weaken authoritative rules:
 | --- | --- |
 | Root README says only shell/tooling exists | Feature directories implement project workflow, inventory, optimizer, transfers and PDF. README status is stale. |
 | README/architecture describe active Pages deployment | CI deploy job is commented out; validation and artifact upload remain active. See [ci.yml](../.github/workflows/ci.yml). |
-| Guidance describes user-configured project panel quantities/default one | [CuttingProject](../src/domain/model/cutting-project.ts) retains `panelQuantities` for compatibility; new runs use demand-bounded catalog supply and actual stock counts. No current manual quantity controls. |
-| AGENTS describes Parts exchange downloads | Standalone export is removed. [parts-transfer-service.ts](../src/application/projects/parts-transfer-service.ts) supports import; [parts-json.md](parts-json.md) already records this. |
-| Older catalog guidance says no inventory writes belong in Catalog | Explicit Add to stock now invokes guarded `StockRepository.addFromProduct`; catalog records remain unchanged. See [stock-repository.ts](../src/application/inventory/stock-repository.ts). |
+| Historical root architecture passages describe manual project panel quantities/default one | [CuttingProject](../src/domain/model/cutting-project.ts) retains `panelQuantities` for compatibility; new runs use demand-bounded catalog supply and actual stock counts. No current manual quantity controls. |
+| Earlier documentation describes Parts exchange downloads | Current AGENTS and [parts-json.md](parts-json.md) correctly say import-only; no exporter remains in [parts-transfer-service.ts](../src/application/projects/parts-transfer-service.ts). |
+| Older broad catalog descriptions exclude inventory creation | Current AGENTS explicitly permits confirmed Add to stock through guarded `StockRepository.addFromProduct`; catalog records remain unchanged. See [stock-repository.ts](../src/application/inventory/stock-repository.ts). |
 | Older entity summary mentions availability metadata as ordinary product UI | `availability` remains required in SupplierProduct for legacy validation/eligibility, but forms hide it and new records use `unknown`. Price is optional. |
 | Guidance names Playwright | No Playwright dependency, configuration or browser test command is currently provided. Vitest/jsdom tests do not establish real-browser layout behavior. |
-| Earlier project-tab guidance gates Cutting Plans navigation | Current header allows all five links; document generation is gated inside the view. |
+| Older root architecture passages gate Cutting Plans navigation | Current AGENTS and header permit all five links; document generation is gated inside the view. |
 
 ## Limitations and maintenance risks
 
 The project optimizer is a bounded heuristic, not an exhaustive solver. Built-in PDF fonts cannot encode arbitrary Unicode. Browser-local data and partial transfers are not a full inventory-audit backup. Large workspace components coordinate substantial async state. [CuttingFinalization.vue](../src/features/optimization/CuttingFinalization.vue), [PdfExportControls.vue](../src/features/optimization/PdfExportControls.vue) and explicit confirmation UI/services remain in source/tests; the current routed document flow uses CuttingPlansWorkspace instead. Do not mistake these older components for the active export interface or delete historical services/receipts on appearance alone.
 
-**Recommendations:** reconcile the stale guidance in a separately authorized documentation pass; keep new business decisions in application/domain services, and cover revisions/cancellation when touching large components. An automated architectural import-boundary checker is not configured by the current ESLint rules; dependency discipline relies on review and tests.
+**Recommendations:** reconcile the remaining stale root summaries with the already updated AGENTS rules; keep new business decisions in application/domain services, and cover revisions/cancellation when touching large components. An automated architectural import-boundary checker is not configured by the current ESLint rules; dependency discipline relies on review and tests.
+
+## Runtime system context
+
+The production artifact is static HTML/CSS/ES modules. Vite's build bundles worker entry points and local PDF.js assets; a static host serves files, not application APIs. Browser origin/profile owns the database. Reload reconstructs state from IndexedDB; no server can recover an evicted origin's records.
+
+```mermaid
+flowchart LR
+  User[Workshop user] --> App[OptiCutList browser application]
+  Host[Static host or Vite dev server] -->|HTML and local assets| App
+  App -->|Business records| DB[(Origin-local IndexedDB)]
+  App -->|Theme preference only| LS[(LocalStorage)]
+  App -->|Structured clone requests| Opt[Optimization Web Worker]
+  Opt -->|Validated plan data| App
+  App -->|PDF bytes| Preview[Local PDF.js worker and canvas preview]
+  App <-->|Explicit local file transfers| Files[User files]
+  App -->|Blob URL| Viewer[Browser PDF viewer or download]
+  App -->|Optional direct favicon request| Supplier[Supplier website origin]
+```
+
+“No backend” does not mean no network requests: static assets and optional supplier favicons are network resources. Material previews and PDF.js workers are bundled/local paths; no scraping, logo aggregator or remote optimizer participates. Browser-native print/save decisions are outside the application transaction model.
+
+### Execution domains and copy boundaries
+
+| Domain | Work | Boundary/cleanup |
+| --- | --- | --- |
+| Main browser thread | Vue, guarded application services, Dexie calls, pdf-lib generation, Konva presentation | Components invalidate obsolete async reads; PDF rendering is not the optimization worker's job |
+| Optimization worker | Protocol guard and domain `optimizePanel` / `optimizeProject` | Structured-clone input; terminate to cancel; no Dexie or stock mutation |
+| PDF.js worker | Interpret already generated PDF bytes | Local Vite worker URL; loading/render destruction owned by preview adapter |
+| Native PDF viewer tab | Browser PDF display/printing | Synchronously opened user gesture; viewer owns Blob URL lifecycle |
+
+`structuredClone` snapshots in optimization, editing and export isolate caller mutations. They do not create a lock on current database entities: save/import/reconciliation still need transaction-time rechecks.
+
+## Module dependency map and public interfaces
+
+Arrows below mean an import/call dependency, not an inventory write. The dependency between plans and inventory is intentionally directional: current-result orchestration invokes reconciliation, while inventory reads historical plans through the lower-level saved-plan service.
+
+```mermaid
+flowchart TD
+  Main[main.ts] --> Features[features and app]
+  Main --> Persistence[infrastructure/persistence]
+  Main --> Pdf[infrastructure/pdf]
+  Features --> Projects[application/projects]
+  Features --> Catalog[application/catalog]
+  Features --> Inventory[application/inventory]
+  Features --> Plans[application/plans/current-result-service]
+  Features --> OptService[application/optimization]
+  Features --> Export[application/export]
+  Plans --> Inventory
+  Inventory --> History[application/plans/saved-plan-service]
+  Projects --> Catalog
+  Export --> OptService
+  Projects --> Ports[application/persistence ports]
+  Catalog --> Ports
+  Inventory --> Ports
+  Plans --> Ports
+  Persistence --> Ports
+  Pdf --> Export
+  OptService --> Domain[domain schemas and geometry]
+  History --> Domain
+  Ports --> Domain
+```
+
+This graph abstracts individual imports; e.g. project transfers also use saved-plan reconstruction and catalog remapping. It is not an exhaustive package graph or a suggestion to add barrel modules.
+
+| Module | Public contracts / entry symbols | Important responsibility |
+| --- | --- | --- |
+| [application/projects/project-service.ts](../src/application/projects/project-service.ts) | `ProjectService`, `ProjectPartsRepository`, `createProjectService` | Project CRUD/selection validation, scoped Part ownership, adoption, deletion orchestration |
+| [application/catalog/catalog-repositories.ts](../src/application/catalog/catalog-repositories.ts) | `CatalogProductRepository`, `createCatalogRepositories` | Supplier/material/product reference guards and product ordering |
+| [application/inventory/stock-repository.ts](../src/application/inventory/stock-repository.ts) | `StockRepository`, `createStockRepository` | Manual inventory, exact product additions, contextual availability, ordering, receipt history |
+| [application/inventory/project-stock-service.ts](../src/application/inventory/project-stock-service.ts) | `createProjectStockService`, `reconcileProjectStock`, `ProjectStockPreview` | Derived offcut rows, Keep decisions and physical source reconciliation |
+| [application/plans/current-result-service.ts](../src/application/plans/current-result-service.ts) | `createCurrentResultService`, `CurrentResultState` | Current pointer, safe replacement and legacy adoption |
+| [application/plans/saved-plan-service.ts](../src/application/plans/saved-plan-service.ts) | `SavePlanInput`, `OpenedSavedPlan`, `prepareSavedPlan`, `readSavedPlan` | Validated snapshot preparation/reconstruction, retained legacy API |
+| [application/optimization/optimization-service.ts](../src/application/optimization/optimization-service.ts) | `OptimizationService`, `OptimizationWorkerPort` | Typed worker lifecycle and main-thread revalidation |
+| [application/export/cutting-plan-pdf-service.ts](../src/application/export/cutting-plan-pdf-service.ts) | `CuttingPlanPdfPort`, `prepareProjectPdfDocument`, `createCuttingPlanPdfService` | Detached validated documents and renderer boundary |
+| Transfer modules | `createProjectTransferService`, `createPartsTransferService`, `createCatalogTransferService`, `createStockTransferService` | Preview, confirmation, revalidation and atomic transfer-specific policy |
+
+### Dependency injection wiring
+
+The composition root supplies **guarded** catalog materials/suppliers/products and StockRepository, not the generic database CRUD ports directly to writable screens. `catalogStockRepositoryKey` is the notable raw read snapshot used by Catalog to describe real stock; explicit purchase creation goes through StockRepository.
+
+Feature injection adapters export a typed `InjectionKey` plus `use...` helper. Required project/Part services throw on missing setup where their helper requires it; optional services expose unavailable states in the consuming UI. Do not replace a missing injected service with a database singleton.
+
+[ProjectWorkspace.vue](../src/features/projects/ProjectWorkspace.vue) validates route identity, then supplies `projectIdKey`, project-scoped `partRepositoryKey` and `cuttingWorkspaceStateKey` to children. These scopes prevent a global Part page from accidentally editing another project's entities.
+
+```mermaid
+flowchart TD
+  Main[main.ts factories and app.provide] --> App[App.vue]
+  Main --> Injected[Guarded services via typed keys]
+  App --> Nav[Router and reactive project navigation]
+  App --> Toasts[Single AppToastHost and Pinia toast store]
+  App --> Settings[SettingsDialog and transfer revision]
+  App --> Workspace[ProjectWorkspace]
+  Workspace --> Scope[Project ID and scoped Part repository]
+  Scope --> Parts[ProjectPartsView and PartsView]
+  Workspace --> Materials[MaterialsView]
+  Workspace --> Optimization[OptimizationView]
+  Optimization --> Canvas[PanelPlanView and CuttingPlanViewer]
+  Optimization --> Documents[CuttingPlansWorkspace]
+  Workspace --> Offcuts[ProjectStockView and StockPanelPreview]
+  Materials --> Injected
+  Parts --> Injected
+  Optimization --> Injected
+  Offcuts --> Injected
+```
+
+## Loading and editing a project: actual sequence
+
+Workspace `load()` validates identity and reads the project; it also calls `currentResults.forProject(id).load()`. That second operation may adopt one legacy plan or reconcile physical stock. Therefore “open project” is not universally a read-only database operation. On later workspace activation, the header rereads project metadata so renames are reflected.
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant Router
+  participant Workspace as ProjectWorkspace
+  participant Projects as ProjectService
+  participant Current as CurrentResultService
+  participant DB as Scoped repositories
+  participant Overview as ProjectsView edit dialog
+  User->>Router: Open project URL
+  Router->>Workspace: projectId prop and current child route
+  Workspace->>Projects: projects.get(validated ID)
+  Projects->>DB: Read and validate project
+  Workspace->>Current: forProject(id).load()
+  Current->>DB: Transaction: restore/adopt current and reconcile
+  Current-->>Workspace: Result or typed failure
+  Workspace->>Workspace: Provide scope and show child view
+  User->>Overview: Edit project, change name/description
+  Overview->>Projects: Reread latest project
+  Overview->>Projects: projects.update(id, full preserved record)
+  Projects->>DB: Transaction: validate ownership/selections and replace
+  DB-->>Overview: Commit or failure, retain draft on failure
+  User->>Router: Return to project
+  Workspace->>Projects: Activated metadata read
+```
+
+## Persistent changes and reactive drafts
+
+Pinia is available but the only current `defineStore` is [useToastStore](../src/shared/ui/toast-store.ts). Most UI state is component-owned `ref`, `shallowRef`, `computed` or injected `reactive` state. There is no global entity cache or automatic Dexie liveQuery subscription.
+
+Materials autosave illustrates the distinction: selected ID arrays are drafts; saved arrays are the last confirmed snapshot; `dirty` is derived. `save()` serializes through one `pendingSave` Promise, while `persistSelections()` loops until the newest draft is stored. It rereads the project before each full-record update to preserve new Part ownership. A later draft is not overwritten by an earlier completion. Lifecycle/window-focus and Settings import revisions trigger explicit refreshes, not polling.
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant View as MaterialsView
+  participant Service as ProjectService
+  participant Tx as LocalPersistence.transaction
+  participant Repo as Scoped repositories
+  participant DB as IndexedDB
+  User->>View: Toggle individual or bulk selection
+  View->>View: Update draft arrays, computed group states react
+  View->>Service: get latest project, update with snapshot
+  Service->>Tx: Begin guarded save
+  Tx->>Repo: Read project, references and contextual stock
+  Repo->>DB: Validated reads within transaction
+  alt references and ownership valid
+    Service->>Repo: projects.update complete record
+    Repo->>DB: Replace existing record
+    DB-->>Tx: Commit
+    Tx-->>View: PersistenceResult success
+    View->>View: Update saved snapshot, loop if newer draft exists
+  else invalid reference or storage failure
+    Tx->>DB: Abort all changes
+    Tx-->>View: Typed error
+    View->>View: Keep draft, show Retry and guard navigation
+  end
+```
+
+Read and update in the View above are separate calls; the service repeats authoritative checks in its own transaction. This is not optimistic version-locking for arbitrary whole-project concurrent edits. Some forms have dedicated snapshot comparison (notably stock when the caller supplies the prior record), but not every entity implements a revision number. Multiple browser tabs can therefore require careful stale-draft handling even though each transaction is atomic.
+
+## Error channels and design trade-offs
+
+| Channel | Implemented behavior | Caller obligation |
+| --- | --- | --- |
+| Persistence | Discriminated `PersistenceResult`; adapter exceptions become `storageFailure` | Narrow `ok` before using value; never suppress corrupt records |
+| Domain fit/search | Expected infeasibility is typed; some low-level invalid contexts throw | Validate external input and preserve diagnostic distinctions |
+| Worker | `completed`, `cancelled`, `failed`; domain selection can itself be failure | Check outer outcome and inner `selection.ok`; disposed service use throws synchronously |
+| Inventory reconciliation | Unsafe business reversals can commit ledger `conflict` while preserving inventory | Read conflict separately from storage success |
+| PDF | `invalidPlan` / `generationFailure`; native-output errors handled by UI | Retain retry path; no success claim about disk save or printing |
+| UI | Form errors linked to controls, operation errors inline or persistent error toast | Success only after underlying write succeeds |
+
+Broad transactions simplify consistent cross-record checks but serialize more work than table-minimal transactions would. Strict reads protect against silent corruption but one bad record can block a list or transfer. Historical snapshots allow document reconstruction independent of live catalog edits but intentionally omit prices and external inventory ownership. Explicit defaults preserve legacy files without write-on-open migrations, at the cost of requiring normalized comparisons at use sites.
+
+See [storage reference](storage.md) for physical tables/transactions, [workflow reference](workflows.md) for per-feature write sets, and [maintenance](maintenance.md) for safe extension recipes.
+
+### Concrete adapter exceptions and review scope
+
+Feature-level browser adapters intentionally depend on presentation libraries: PDF.js in `pdf-preview.ts`, Konva in the viewer and lazy cover-image decoding through infrastructure from `pdf-export-service.ts`. The latter is a concrete existing UI-to-infrastructure helper reuse, not a general permission to instantiate persistence in a feature. Application services remain the business write boundary. A future port extraction could make the decoder dependency stricter, but it is not implemented here.
+
+Authoritative guidance and code should be read together. In particular, project-aware planning availability does not imply every legacy consumer uses the same query; the [stock call-path note](stock-management.md#call-path-difference-worth-reviewing) records one area for targeted regression review. Likewise transaction atomicity does not imply all live entity updates use optimistic concurrency or all history displays query every ledger type.

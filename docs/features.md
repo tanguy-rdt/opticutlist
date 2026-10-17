@@ -71,3 +71,7 @@ Only checkboxes alter Keep/physical stock. Selecting/hovering never adds or remo
 [SettingsDialog.vue](../src/app/settings/SettingsDialog.vue) is a native modal on the current page, with Appearance, Catalog and Stock sections. Light, Dark and System apply immediately and persist via localStorage. Closing preserves the active route/project.
 
 Catalog and Stock import/export live here, with preview/confirmation and error workflows. Successful imports notify active views through [data-import-revision.ts](../src/app/settings/data-import-revision.ts) and [use-data-import-refresh.ts](../src/app/settings/use-data-import-refresh.ts). Project transfer is in Projects; Parts transfer is import-only in Parts. [Persistence and JSON](persistence-and-json.md) distinguishes these files from full backups.
+
+## Developer workflow traces
+
+For each feature's UI entry, service calls, domain operations, actual write set, validation and failure paths, see [End-to-end workflows](workflows.md). This feature map remains the concise screen index rather than duplicating those sequences.

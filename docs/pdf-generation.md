@@ -94,3 +94,86 @@ Download removes its temporary anchor and revokes the URL after a bounded grace 
 ## Known limits and verification
 
 Built-in Helvetica/WinAnsi does not encode arbitrary Unicode; unsupported text yields an explicit error instead of silently substituted characters. Portrait/landscape structural tests do not replace print QA. Native viewer support, popup policy, device margins and actual print scaling require manual browser/printer verification. Source prices are current references, not recorded acquisition costs. See [PDF regression suites](testing.md#pdf-and-browser-boundaries).
+
+## Renderer module reference
+
+| Module / symbols | Input/output responsibility |
+| --- | --- |
+| [cutting-plan-pdf-service.ts](../src/application/export/cutting-plan-pdf-service.ts): `prepareProjectPdfDocument`, `panelDocument` | Clone/validate accepted plans, create per-panel scenes/metrics and portable renderer DTOs |
+| [project-pdf-pricing.ts](../src/application/export/project-pdf-pricing.ts): `resolveProjectPdfPricing` | Read-only current-reference lookup with per-generation Promise caches and cycle detection |
+| [cutting-plan-pdf.ts](../src/infrastructure/pdf/cutting-plan-pdf.ts): `generateProjectCuttingPdf`, `appendFabricationSections`, `finishPdf` | Document order, shared fonts, page assembly and deferred numbering |
+| [cover-page.ts](../src/infrastructure/pdf/cover-page.ts): `drawCoverPage` | Measure present cover content, wrap description/title and contain image |
+| [pdf-layout.ts](../src/infrastructure/pdf/pdf-layout.ts): `pdfPageSize`, `pdfRect`, `fitPdfPanel` | Paper geometry, uniform coordinate transforms and true kerf extents |
+| [technical-drawing.ts](../src/infrastructure/pdf/technical-drawing.ts): `technicalTransform`, `drawDimensions`, `drawWaste`, `drawGrain` | Conventional scales and vector annotation primitives |
+| [part-drawing-grid.ts](../src/infrastructure/pdf/part-drawing-grid.ts): `partDrawingCells`, `partDrawingGeometry` | Two-column drawing capacity and independent per-cell fit |
+| [panel-title-block.ts](../src/infrastructure/pdf/panel-title-block.ts): `layoutPanelTitleBlock`, `panelPartReference` | Measured nomenclature rows and copy-consistent drawing labels |
+| [technical-title-block.ts](../src/infrastructure/pdf/technical-title-block.ts) | One four-cell strip renderer and deferred sheet-number coordinates |
+| [pdf-table.ts](../src/infrastructure/pdf/pdf-table.ts): `createPdfTables` | Shared page cursor, column measurement, whole-row breaks and repeated headers |
+| [pdf-text.ts](../src/infrastructure/pdf/pdf-text.ts) | Font-measured wrapping/bounded text; no manual character-count clipping |
+
+### Coordinate transformation, explicitly
+
+Domain/canvas geometry uses a panel-corner origin with x along length and y along width. PDF uses bottom-left page coordinates. For source region `(xMm, yMm, lengthMm, widthMm)`, `pdfRect` converts each value to points, uses one scale `s`, and maps:
+
+```text
+pdfX      = transform.x + points(xMm) * s
+pdfY      = transform.y + (transform.panelHeight - points(yMm) - points(widthMm)) * s
+pdfWidth  = points(lengthMm) * s
+pdfHeight = points(widthMm) * s
+```
+
+`transform.panelHeight` is the full source panel height in points. At scale 1:5, 100 mm becomes about 56.69 PDF points; its dimension label still says 100 mm. A 3 mm kerf becomes about 1.70 points, not a fixed screen-pixel width. Zero-extent kerf is preserved rather than expanded into fictional removed material.
+
+`technicalTransform` searches denominators `1, 2, 5` times powers of ten, never enlarging above 1:1, and selects the first fitting scale. `fitPdfPanel` is the general uniform fit validator/helper, not a second physical size definition. Screen preview zoom changes raster viewing size only, not document scale.
+
+### Measured pagination decisions
+
+Fabrication tables reserve `technicalTitleBlockLayout(...).top + 12` as their bottom boundary. Column minima account for header widths and nonwrapping/numeric values; remaining width is allocated by measured text demand and declared column weight. Every row's wrapped line count determines height. A parent with `keepWithNext` reserves the next row before a break. If one required row group cannot fit even on a new sheet, generation fails with a larger-paper/shorter-text error.
+
+Individual drawings determine row capacity using available page area and measured label needs, capped at three rows/two columns. They create one cell per nominal Part definition, not one per quantity copy. Their production quantities remain represented in schedules/demand; this prevents thousands of identical individual drawing cells. The shared footer scale is N/A because cells fit independently.
+
+Cutting nomenclature measures dimensions first to reserve right alignment, bounds the one-line panel/material label and wraps Part labels. It uses natural row heights and allows visible rows up to a compact target (`min(150 points, pageHeight * 0.22)`), keeping the panel and first child together. Remaining full rows continue in table pages. Technical-strip height is added before fitting the drawing; no individual row is stretched to fill a fixed side block.
+
+Sheet numbering uses final PDF page indices/total count, not estimated drawing counts. A continuation or expanded schedule therefore participates in actual final numbering.
+
+## Output sequence and cleanup ownership
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant UI as CuttingPlansWorkspace
+  participant Tab as Native print viewer
+  participant Service as CuttingPlanPdfService
+  participant Renderer as pdf-lib adapter
+  participant Preview as PDF.js adapter
+  User->>UI: Print or Download PDF
+  alt Print
+    UI->>Tab: Open blank tab synchronously
+  end
+  UI->>UI: Set shared action guard and regenerate revision
+  UI->>Service: exportProject(current detached input and settings)
+  Service->>Service: Validate copies, geometry and optional pricing
+  Service->>Renderer: generateProject(document DTO)
+  Renderer-->>Service: Complete PDF bytes
+  Service-->>UI: Typed bytes result
+  UI->>Preview: Load detached bytes and replace current preview
+  alt Still current and Print
+    UI->>Tab: Show PDF Blob URL owned by viewer realm
+    Tab->>Tab: Revoke URL on pagehide
+  else Still current and Download
+    UI->>UI: Click temporary anchor and remove element
+    UI->>UI: Revoke URL on document exit or bounded grace timer
+  else Failure or obsolete request
+    UI->>Tab: Close pending print tab when present
+    UI->>UI: Error or silent obsolete-result discard
+  end
+  UI->>UI: Reset loading/action state
+```
+
+Generation itself is asynchronous but not cooperatively cancellable inside pdf-lib here; revision checks prevent obsolete bytes from being used after work finishes. PDF.js loading and rendering have their own AbortSignals/cancel/destroy lifetimes. A completed print viewer deliberately outlives SPA component unmount; a pending viewer must not. Download's 60-second fallback is paired with document-exit cleanup, not treated as a reliable browser completion event.
+
+### Pricing consistency boundary
+
+Price enrichment reads exact current product/live Stock references with caches but does not wrap the entire set of lookups in one new database snapshot transaction. Existing explicit validated pricing supplied in the DTO wins. Therefore a document is a validated geometry snapshot with optional current-reference prices, not an immutable accounting valuation. Missing live consumed Stock records can prevent resolving an otherwise historical purchase association; current code does not fall back through ProjectStock consumed snapshots.
+
+This limitation must not be “fixed” by matching dimensions/material, treating unknown as zero or changing saved geometry. A future price-history feature would need its own explicit business contract.
