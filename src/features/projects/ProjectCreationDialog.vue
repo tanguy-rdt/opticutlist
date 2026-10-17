@@ -9,8 +9,10 @@ import { persistenceErrorMessage } from '../../shared/ui/persistence-error-messa
 import { useProjectService } from './project-service'
 
 const emit = defineEmits<{ close: [] }>()
+
 const service = useProjectService()
 const router = useRouter()
+
 const name = ref('')
 const description = ref('')
 const descriptionError = ref('')
@@ -20,13 +22,31 @@ const error = ref('')
 const busy = ref(false)
 const nameInput = ref<HTMLInputElement | null>(null)
 let active = true
-onMounted(() => { nameInput.value?.focus() })
-onBeforeUnmount(() => { active = false })
-function close(): void { if (!busy.value) emit('close') }
+
+onMounted(() => {
+  nameInput.value?.focus()
+})
+onBeforeUnmount(() => {
+  active = false
+})
+
+function close(): void {
+  if (!busy.value) emit('close')
+}
+
 async function create(): Promise<void> {
   if (busy.value) return
-  nameError.value = ''; descriptionError.value = ''; error.value = ''
-  const parsed = cuttingProjectSchema.safeParse({ id: crypto.randomUUID(), name: name.value, ...(description.value.trim() ? { description: description.value } : {}), partIds: [], materialIds: [], supplierProductIds: [] })
+  nameError.value = ''
+  descriptionError.value = ''
+  error.value = ''
+  const parsed = cuttingProjectSchema.safeParse({
+    id: crypto.randomUUID(),
+    name: name.value,
+    ...(description.value.trim() ? { description: description.value } : {}),
+    partIds: [],
+    materialIds: [],
+    supplierProductIds: [],
+  })
   if (!parsed.success) {
     nameError.value = parsed.error.issues.find(issue => issue.path[0] === 'name')?.message ?? ''
     descriptionError.value = parsed.error.issues.find(issue => issue.path[0] === 'description')?.message ?? ''
@@ -37,8 +57,12 @@ async function create(): Promise<void> {
   busy.value = true
   const result = await service.projects.create(parsed.data)
   if (!active) return
-  if (result.ok) await router.push({ name: 'project-materials', params: { projectId: result.value.id } })
-  else { busy.value = false; error.value = persistenceErrorMessage(result.error, 'Project') }
+  if (result.ok) {
+    await router.push({ name: 'project-materials', params: { projectId: result.value.id } })
+  } else {
+    busy.value = false
+    error.value = persistenceErrorMessage(result.error, 'Project')
+  }
 }
 </script>
 <template>

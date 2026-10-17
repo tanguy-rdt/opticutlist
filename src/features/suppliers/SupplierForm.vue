@@ -10,16 +10,28 @@ const supplierInputSchema = supplierSchema.extend({ websiteUrl: supplierWebsiteI
 
 const props = defineProps<{ supplier: Supplier | null; disabled: boolean }>()
 const emit = defineEmits<{ save: [supplier: Supplier]; cancel: [] }>()
+
 const name = ref(props.supplier?.name ?? '')
 const websiteUrl = ref(props.supplier?.websiteUrl ?? '')
 const errors = shallowRef<ReadonlyMap<string, string>>(new Map())
 const form = ref<HTMLFormElement | null>(null)
-function focusName(): void { form.value?.querySelector<HTMLInputElement>('input')?.focus() }
+
+function focusName(): void {
+  form.value?.querySelector<HTMLInputElement>('input')?.focus()
+}
+
 defineExpose({ focusName })
+
 async function submit(): Promise<void> {
   if (props.disabled) return
-  const result = supplierInputSchema.safeParse({ id: props.supplier?.id ?? crypto.randomUUID(), name: name.value, websiteUrl: websiteUrl.value })
-  errors.value = new Map(result.success ? [] : result.error.issues.map((issue) => [String(issue.path[0]), issue.message]))
+  const result = supplierInputSchema.safeParse({
+    id: props.supplier?.id ?? crypto.randomUUID(),
+    name: name.value,
+    websiteUrl: websiteUrl.value,
+  })
+  errors.value = new Map(
+    result.success ? [] : result.error.issues.map(issue => [String(issue.path[0]), issue.message]),
+  )
   if (result.success) emit('save', result.data)
   else {
     await nextTick()

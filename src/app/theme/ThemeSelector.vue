@@ -2,10 +2,13 @@
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 
 type ThemePreference = 'light' | 'dark' | 'system'
+
 const storageKey = 'opticutlist.theme'
+
 function isTheme(value: unknown): value is ThemePreference {
   return value === 'light' || value === 'dark' || value === 'system'
 }
+
 function readPreference(): ThemePreference {
   try {
     const saved = localStorage.getItem(storageKey)
@@ -14,11 +17,16 @@ function readPreference(): ThemePreference {
     return 'system'
   }
 }
+
 const preference = ref(readPreference())
 const media = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null
 const systemDark = ref(media?.matches ?? false)
 const storageWarning = ref('')
-const resolved = computed(() => preference.value === 'system' ? (systemDark.value ? 'dark' : 'light') : preference.value)
+const resolved = computed(() => {
+  if (preference.value !== 'system') return preference.value
+  return systemDark.value ? 'dark' : 'light'
+})
+
 watchEffect(() => {
   document.documentElement.dataset.theme = resolved.value
   document.documentElement.style.colorScheme = resolved.value
@@ -34,8 +42,12 @@ watch(preference, (value) => {
 function systemChanged(event: MediaQueryListEvent): void {
   systemDark.value = event.matches
 }
-onMounted(() => { media?.addEventListener('change', systemChanged) })
-onUnmounted(() => { media?.removeEventListener('change', systemChanged) })
+onMounted(() => {
+  media?.addEventListener('change', systemChanged)
+})
+onUnmounted(() => {
+  media?.removeEventListener('change', systemChanged)
+})
 </script>
 
 <template>

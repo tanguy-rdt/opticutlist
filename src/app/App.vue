@@ -7,28 +7,26 @@ import SettingsDialog from './settings/SettingsDialog.vue'
 import { dataImportRevisionKey } from './settings/data-import-revision'
 import AppIcon from '../shared/ui/AppIcon.vue'
 import AppToastHost from '../shared/ui/AppToastHost.vue'
+
 const logoUrl = `${import.meta.env.BASE_URL}logo.svg`
 const settingsOpen = ref(false)
 const dataImportRevision = ref(0)
 provide(dataImportRevisionKey, dataImportRevision)
+
 const route = useRoute()
 const router = useRouter()
 const projects = useProjectService()
 const projectNavigation = createProjectNavigation()
 provide(projectNavigationKey, projectNavigation)
-const projectDestination = computed(() => projectNavigation.destination === 'workspace' && projectNavigation.activeId ? projectNavigation.tabs.get(projectNavigation.activeId) ?? `/projects/${projectNavigation.activeId}/materials` : '/projects')
-async function resume(event: MouseEvent, to: string): Promise<void> {
-  if (to !== '/projects' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
-  event.preventDefault()
-  const id = projectNavigation.destination === 'workspace' ? projectNavigation.activeId : null
-  if (id) {
-    const project = await projects.projects.get(id)
-    if (projectNavigation.activeId !== id || projectNavigation.destination !== 'workspace') return
-    if (project.ok) { await router.push(projectDestination.value); return }
-    if (project.error.kind === 'notFound') { projectNavigation.activeId = null; projectNavigation.destination = 'overview'; projectNavigation.tabs.delete(id) }
+
+const projectDestination = computed(() => {
+  if (projectNavigation.destination !== 'workspace' || !projectNavigation.activeId) {
+    return '/projects'
   }
-  await router.push('/projects')
-}
+  return projectNavigation.tabs.get(projectNavigation.activeId)
+    ?? `/projects/${projectNavigation.activeId}/materials`
+})
+
 const expanded = ref(false)
 const toggle = ref<HTMLButtonElement | null>(null)
 const navigation = [
@@ -37,12 +35,50 @@ const navigation = [
   { label: 'Catalog', to: '/catalog', icon: 'M4 4h16v16H4ZM4 10h16M10 4v16' },
   { label: 'Stock', to: '/stock', icon: 'm3 7 9-4 9 4-9 4ZM3 7v10l9 4 9-4V7M12 11v10' },
 ]
-function active(to: string): boolean {
-  return to === '/' ? route.path === '/' : to === '/catalog' ? route.name === 'suppliers' : to === '/projects' ? route.path.startsWith('/projects') || route.path === '/import' : route.path === to
+watch(() => route.fullPath, () => {
+  expanded.value = false
+  if (route.name === 'projects') projectNavigation.destination = 'overview'
+})
+
+function active(destination: string): boolean {
+  if (destination === '/') return route.path === '/'
+  if (destination === '/catalog') return route.name === 'suppliers'
+  if (destination === '/projects') {
+    return route.path.startsWith('/projects') || route.path === '/import'
+  }
+  return route.path === destination
 }
-watch(() => route.fullPath, () => { expanded.value = false; if (route.name === 'projects') projectNavigation.destination = 'overview' })
-function closeNavigation(): void { if (expanded.value) { expanded.value = false; toggle.value?.focus() } }
-function focusContent(): void { document.getElementById('main-content')?.focus() }
+
+async function resume(event: MouseEvent, destination: string): Promise<void> {
+  if (destination !== '/projects' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
+  event.preventDefault()
+
+  const projectId = projectNavigation.destination === 'workspace' ? projectNavigation.activeId : null
+  if (projectId) {
+    const project = await projects.projects.get(projectId)
+    if (projectNavigation.activeId !== projectId || projectNavigation.destination !== 'workspace') return
+    if (project.ok) {
+      await router.push(projectDestination.value)
+      return
+    }
+    if (project.error.kind === 'notFound') {
+      projectNavigation.activeId = null
+      projectNavigation.destination = 'overview'
+      projectNavigation.tabs.delete(projectId)
+    }
+  }
+  await router.push('/projects')
+}
+
+function closeNavigation(): void {
+  if (!expanded.value) return
+  expanded.value = false
+  toggle.value?.focus()
+}
+
+function focusContent(): void {
+  document.getElementById('main-content')?.focus()
+}
 </script>
 <template>
   <div class="min-h-screen lg:grid lg:grid-cols-[180px_minmax(0,1fr)]">

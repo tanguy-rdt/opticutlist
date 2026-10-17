@@ -3,27 +3,49 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ToastNotification } from './toast-store'
 import AppButton from './AppButton.vue'
 import AppIcon from './AppIcon.vue'
+
 const props = defineProps<{ notification: ToastNotification }>()
 const emit = defineEmits<{ dismiss: [] }>()
+
 const hovered = ref(false)
 const focused = ref(false)
 const paused = computed(() => hovered.value || focused.value)
 let remaining = props.notification.duration
-let started = 0
+let startedAt = 0
 let timer: ReturnType<typeof setTimeout> | undefined
+
 function stop(): void {
-  if (timer !== undefined) { clearTimeout(timer); timer = undefined; remaining = Math.max(0, remaining - (Date.now() - started)) }
+  if (timer === undefined) return
+  clearTimeout(timer)
+  timer = undefined
+  remaining = Math.max(0, remaining - (Date.now() - startedAt))
 }
+
 function resume(): void {
   if (props.notification.duration <= 0 || paused.value || timer !== undefined) return
-  started = Date.now()
-  timer = setTimeout(() => { timer = undefined; emit('dismiss') }, remaining)
+  startedAt = Date.now()
+  timer = setTimeout(() => {
+    timer = undefined
+    emit('dismiss')
+  }, remaining)
 }
-function hover(value: boolean): void { hovered.value = value; if (value) stop(); else resume() }
+
+function hover(isHovered: boolean): void {
+  hovered.value = isHovered
+  if (isHovered) stop()
+  else resume()
+}
+
 function focus(event: FocusEvent): void {
-  focused.value = event.type === 'focusin' || (event.relatedTarget instanceof Node && event.currentTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))
-  if (focused.value) stop(); else resume()
+  focused.value = event.type === 'focusin' || (
+    event.relatedTarget instanceof Node
+    && event.currentTarget instanceof Node
+    && event.currentTarget.contains(event.relatedTarget)
+  )
+  if (focused.value) stop()
+  else resume()
 }
+
 onMounted(resume)
 onBeforeUnmount(stop)
 </script>
