@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { openPdfPrintView } from '../pdf-print-view'
+import { openPdfPrintView } from '@/ui/pdf/pdf-print-view'
 
 let host: HTMLIFrameElement | undefined
 afterEach(() => { host?.remove(); host = undefined; vi.restoreAllMocks() })

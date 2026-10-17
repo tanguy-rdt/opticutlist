@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import AppCheckbox from '../AppCheckbox.vue'
+import AppCheckbox from '@/ui/components/common/AppCheckbox.vue'
 
 describe('AppCheckbox', () => {
   it('exposes a native mixed state without duplicating the checked model', async () => {

@@ -1,8 +1,9 @@
 import { PDFDocument } from 'pdf-lib'
+import type { CoverImageInput } from '../../application/export/cutting-plan-pdf-service'
 import { coverImageSchema, MAX_COVER_IMAGE_BYTES, type CoverImage } from '../../domain/model/pdf-settings'
 
 /** Decode the actual file before it can enter project settings. No object URLs are persisted. */
-export async function prepareCoverImage(file: Blob): Promise<CoverImage> {
+export async function prepareCoverImage(file: CoverImageInput): Promise<CoverImage> {
   if (!['image/png', 'image/jpeg'].includes(file.type)) {
     throw new Error('Choose a PNG or JPEG image.')
   }

@@ -1,8 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { h } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import AppButton from '../AppButton.vue'
-import AppIcon from '../AppIcon.vue'
+import AppButton from '@/ui/components/common/AppButton.vue'
+import AppIcon from '@/ui/components/common/AppIcon.vue'
 
 describe('shared application button', () => {
   it.each([['primary', 'button-primary'], ['secondary', 'button'], ['ghost', 'button-ghost'], ['destructive', 'button-danger']] as const)('renders the %s variant with native button semantics', (variant, className) => {

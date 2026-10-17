@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import SupplierLogo from '../SupplierLogo.vue'
-import { supplierFaviconUrl } from '../supplier-favicon'
+import SupplierLogo from '@/ui/components/suppliers/SupplierLogo.vue'
+import { supplierFaviconUrl } from '@/ui/utils/supplier-favicon'
 
 describe('supplier favicon', () => {
   it.each([

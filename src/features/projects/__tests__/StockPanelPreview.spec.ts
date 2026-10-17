@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import type { createPlanCanvas, PlanCanvas } from '../../optimization/viewer/plan-canvas'
+import type { createPlanCanvas, PlanCanvas } from '@/ui/canvas/plan-canvas'
 import { pdfRequest } from '../../../application/export/__tests__/pdf-fixtures'
-import StockPanelPreview from '../StockPanelPreview.vue'
+import StockPanelPreview from '@/ui/components/projects/StockPanelPreview.vue'
 
 const mock = vi.hoisted(() => ({ create: vi.fn<typeof createPlanCanvas>(), api: { setViewport: vi.fn<PlanCanvas['setViewport']>(), setSelection: vi.fn(), setKeptWaste: vi.fn(), setWasteInspection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() } }))
-vi.mock('../../optimization/viewer/plan-canvas', () => ({ createPlanCanvas: mock.create }))
+vi.mock('@/ui/canvas/plan-canvas', () => ({ createPlanCanvas: mock.create }))
 const wrappers: VueWrapper[] = []
 let resized = () => {}
 const disconnect = vi.fn()

@@ -1,8 +1,8 @@
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import MaterialSelector from '../MaterialSelector.vue'
-import { materialPresets } from '../material-library'
+import MaterialSelector from '@/ui/components/materials/MaterialSelector.vue'
+import { materialPresets } from '@/ui/utils/material-library'
 
 const options = [
   ...materialPresets.map(preset => ({ value: `preset:${preset.id}`, name: preset.name, group: preset.category, presetId: preset.id })),

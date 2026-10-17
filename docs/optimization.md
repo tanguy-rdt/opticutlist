@@ -8,11 +8,11 @@ Read the authoritative [algorithm rules](../AGENTS.md), especially the stable `l
 
 ## Inputs and worker boundary
 
-[OptimizationView.vue](../src/features/optimization/OptimizationView.vue), notably `readInputs` and `start`, rereads the project, owned Parts, selected SupplierProducts and project-aware Stock availability. It resolves historical labels for snapshots and rejects missing/broken source references rather than substituting similar panels.
+[OptimizationView.vue](../src/ui/pages/OptimizationView.vue), notably `readInputs` and `start`, rereads the project, owned Parts, selected SupplierProducts and project-aware Stock availability. It resolves historical labels for snapshots and rejects missing/broken source references rather than substituting similar panels.
 
 [OptimizeProjectInput](../src/domain/optimizer/project-plan.ts) carries Parts, source records with finite internal quantities, and cutting settings. Catalog products remain catalog sources; [stockPanel](../src/domain/optimizer/panel-source.ts) creates a geometry-only `stock:<id>` allocation key carrying exact `stockItemId`.
 
-[createOptimizationService](../src/application/optimization/optimization-service.ts) owns a worker port and request IDs. It returns typed outcomes rather than rejecting, supersedes/cancels obsolete work, validates responses and independently validates received plans. [optimization-protocol.ts](../src/application/optimization/optimization-protocol.ts) defines plain structured-cloneable messages and guards. [handleOptimizationRequest](../src/workers/optimization/handle-optimization-request.ts) delegates to domain algorithms; it never selects inventory, saves records or implements alternate placement logic.
+[createOptimizationService](../src/application/optimization/optimization-service.ts) owns a worker port and request IDs. It returns typed outcomes rather than rejecting, supersedes/cancels obsolete work, validates responses and independently validates received plans. [optimization-protocol.ts](../src/application/optimization/optimization-protocol.ts) defines plain structured-cloneable messages and guards. [handleOptimizationRequest](../src/infrastructure/optimization/handle-optimization-request.ts) delegates to domain algorithms; it never selects inventory, saves records or implements alternate placement logic.
 
 ## Automatic supply preparation
 
@@ -173,11 +173,11 @@ Used area sums finished placed rectangles. Panel area uses full physical panel d
 
 [editCuttingTree](../src/domain/cutting-tree/edit-cutting-tree.ts) performs immutable constrained rotate/swap operations. Rotation may recut only an anchored reserved region; swaps require exact permitted fits within existing regions. Both original and candidate trees are validated. Rejection leaves the old tree unchanged.
 
-[plan-editing-session.ts](../src/application/optimization/plan-editing-session.ts) maintains isolated baseline/current/undo/redo state. [plan-canvas.ts](../src/features/optimization/viewer/plan-canvas.ts) handles presentation; dragging pans, not free part relocation. The accepted edited plan participates in current-result persistence and PDF snapshots, never by mutating the baseline.
+[plan-editing-session.ts](../src/application/optimization/plan-editing-session.ts) maintains isolated baseline/current/undo/redo state. [plan-canvas.ts](../src/ui/canvas/plan-canvas.ts) handles presentation; dragging pans, not free part relocation. The accepted edited plan participates in current-result persistence and PDF snapshots, never by mutating the baseline.
 
-[cutting-plan-scene.ts](../src/application/optimization/cutting-plan-scene.ts) derives parts, waste and physical kerf rectangles from a validated tree. [plan-canvas.ts](../src/features/optimization/viewer/plan-canvas.ts) scales those rectangles with panel geometry; zero-width/height kerfs get a 0.75-pixel screen-space stroke for visibility. The current `--cutting-kerf` token in [styles.css](../src/app/styles.css) is brown in light/dark themes, not red. There is no separate red centerline renderer in the current implementation. Piece boundaries use their own palette entry and are not interpreted as additional cuts.
+[cutting-plan-scene.ts](../src/application/optimization/cutting-plan-scene.ts) derives parts, waste and physical kerf rectangles from a validated tree. [plan-canvas.ts](../src/ui/canvas/plan-canvas.ts) scales those rectangles with panel geometry; zero-width/height kerfs get a 0.75-pixel screen-space stroke for visibility. The current `--cutting-kerf` token in [styles.css](../src/ui/styles.css) is brown in light/dark themes, not red. There is no separate red centerline renderer in the current implementation. Piece boundaries use their own palette entry and are not interpreted as additional cuts.
 
-[dimensions.ts](../src/features/optimization/viewer/dimensions.ts) always draws overall dimensions and optionally selected-copy oriented dimensions/X/Y positions from the panel origin. Annotation strokes/text are screen-sized and noninteractive. It does not invent a selected-cut concept or cutting sequence. Fit reserves annotation lanes; ordinary editing does not reset manual zoom.
+[dimensions.ts](../src/ui/canvas/dimensions.ts) always draws overall dimensions and optionally selected-copy oriented dimensions/X/Y positions from the panel origin. Annotation strokes/text are screen-sized and noninteractive. It does not invent a selected-cut concept or cutting sequence. Fit reserves annotation lanes; ordinary editing does not reset manual zoom.
 
 [Current-result service](../src/application/plans/current-result-service.ts) validates/encodes and atomically replaces the current snapshot while reconciling inventory. Legacy/audited plans are retained. Cancellation and project changes invalidate stale queued writes; failed persistence must not expose an older plan as the current export. See [stock management](stock-management.md) and [testing](testing.md).
 
@@ -198,7 +198,7 @@ flowchart TD
 
 Rotation candidate regions are constrained ancestors sharing the selected leaf's anchor and containing no other finished Part that would be displaced. `trimmedLeaf` recuts with shared geometry; a swap instead preserves existing regions and tries compatible exact-fit orientations. [PlanEditingSession](../src/application/optimization/plan-editing-session.ts) keeps a cloned baseline, history array and cursor; a new successful edit removes the future redo branch, while reset returns to baseline through the editing API.
 
-UI zoom is pixels per mm plus translation in [viewport.ts](../src/features/optimization/viewer/viewport.ts). Detailed dimension lanes use fixed screen-space insets and inverse transforms; they are annotations, not changed geometry. Stock inspection reuses rendering with offcut focus, but does not add free resizing/edit semantics.
+UI zoom is pixels per mm plus translation in [viewport.ts](../src/ui/canvas/viewport.ts). Detailed dimension lanes use fixed screen-space insets and inverse transforms; they are annotations, not changed geometry. Stock inspection reuses rendering with offcut focus, but does not add free resizing/edit semantics.
 
 ## Verified limitations and extension hazards
 

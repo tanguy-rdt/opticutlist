@@ -1,20 +1,20 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { useToastStore } from '../../../shared/ui/toast-store'
-import { openPdfPrintView } from '../pdf-print-view'
+import { useToastStore } from '@/ui/stores/toast-store'
+import { openPdfPrintView } from '@/ui/pdf/pdf-print-view'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as PdfExportModule from '../pdf-export-service'
-import CuttingPlansWorkspace from '../CuttingPlansWorkspace.vue'
-import { loadPdfPreview, type PdfPreviewDocument } from '../pdf-preview'
-import { cuttingPlanPdfServiceKey, downloadCuttingPlanPdf, readCoverImage } from '../pdf-export-service'
+import type * as PdfExportModule from '@/ui/composables/use-pdf-export-service'
+import CuttingPlansWorkspace from '@/ui/components/optimization/CuttingPlansWorkspace.vue'
+import { loadPdfPreview, type PdfPreviewDocument } from '@/ui/pdf/pdf-preview'
+import { cuttingPlanPdfServiceKey, downloadCuttingPlanPdf, readCoverImage } from '@/ui/composables/use-pdf-export-service'
 import { createCuttingPlanPdfService, type ProjectCuttingPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
 import { pngCover, jpegCover } from '../../../infrastructure/pdf/__tests__/cover-image-fixtures'
 import { pdfRequest, projectPdfRequest } from '../../../application/export/__tests__/pdf-fixtures'
 import { rotationPlan } from '../../../domain/cutting-tree/__tests__/editing-fixtures'
 
-vi.mock('../pdf-print-view', () => ({ openPdfPrintView: vi.fn() }))
-vi.mock('../pdf-preview', () => ({ loadPdfPreview: vi.fn() }))
-vi.mock('../pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn(), readCoverImage: vi.fn() }))
+vi.mock('@/ui/pdf/pdf-print-view', () => ({ openPdfPrintView: vi.fn() }))
+vi.mock('@/ui/pdf/pdf-preview', () => ({ loadPdfPreview: vi.fn() }))
+vi.mock('@/ui/composables/use-pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn(), readCoverImage: vi.fn() }))
 const wrappers: VueWrapper[] = []
 function preview(): PdfPreviewDocument {
   return { pageCount: 3, render: vi.fn(() => Promise.resolve()), destroy: vi.fn(() => Promise.resolve()) }

@@ -1,11 +1,11 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Viewport } from '../viewer/viewport'
-import CuttingPlanViewer from '../CuttingPlanViewer.vue'
-import { createPlanCanvas, type PlanCanvas } from '../viewer/plan-canvas'
+import type { Viewport } from '@/ui/canvas/viewport'
+import CuttingPlanViewer from '@/ui/components/optimization/CuttingPlanViewer.vue'
+import { createPlanCanvas, type PlanCanvas } from '@/ui/canvas/plan-canvas'
 import { freezeDeep, viewerPanel, viewerPart, viewerPlan, viewerSettings } from '../../../domain/cutting-tree/__tests__/viewer-fixtures'
 
-vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: vi.fn() }))
+vi.mock('@/ui/canvas/plan-canvas', () => ({ createPlanCanvas: vi.fn() }))
 const wrappers: VueWrapper[] = []
 function fakeCanvas() {
   return { setDimensions: vi.fn(), setViewport: vi.fn<(view: Viewport) => void>(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() } satisfies PlanCanvas

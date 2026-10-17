@@ -50,7 +50,14 @@ export interface ProjectCuttingPdfDocument {
   readonly parts: readonly Part[]
   readonly panels: readonly CuttingPlanPdfDocument[]
 }
+/** Structural file input keeps browser Blob and decoder details out of application dependencies. */
+export interface CoverImageInput {
+  readonly type: string
+  readonly size: number
+  arrayBuffer(): Promise<ArrayBuffer>
+}
 export interface CuttingPlanPdfPort {
+  readonly readCoverImage?: (file: CoverImageInput) => Promise<CoverImage>
   generate(document: CuttingPlanPdfDocument): Promise<Uint8Array<ArrayBuffer>>
   generateProject?(document: ProjectCuttingPdfDocument): Promise<Uint8Array<ArrayBuffer>>
 }
@@ -145,7 +152,9 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
 
 /** Independently validate a detached snapshot; adapters never receive unvalidated geometry. */
 export function createCuttingPlanPdfService(port: CuttingPlanPdfPort, pricingRepositories?: PdfPricingRepositories) {
+  const readCoverImage = port.readCoverImage
   return {
+    ...(readCoverImage ? { readCoverImage: (file: CoverImageInput) => readCoverImage(file) } : {}),
     async exportProject(request: ProjectCuttingPdfRequest): Promise<CuttingPlanPdfResult> {
       const prepared = prepareProjectPdfDocument(request)
       if (!prepared.ok) {

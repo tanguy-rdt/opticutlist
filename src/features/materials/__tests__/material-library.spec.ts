@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import MaterialThumbnail from '../MaterialThumbnail.vue'
-import { materialPresets, materialPresetGroups, materialThumbnail } from '../material-library'
+import MaterialThumbnail from '@/ui/components/materials/MaterialThumbnail.vue'
+import { materialPresets, materialPresetGroups, materialThumbnail } from '@/ui/utils/material-library'
 
 describe('supplied local material library', () => {
   it('uses exactly the supplied twenty distinct presets in four groups with local thumbnails', () => {

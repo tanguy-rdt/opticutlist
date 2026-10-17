@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { copyLabel } from '../copy-label'
+import { copyLabel } from '@/ui/canvas/copy-label'
 
 describe('stable cutting copy labels', () => {
   it('shows ordinals only for repeated demand, independent of placement order', () => {

@@ -5,7 +5,7 @@ import { optimizePanel } from '../../../domain/optimizer/optimize-panel'
 import { partSchema } from '../../../domain/model/part'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validPartInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
-import { handleOptimizationRequest } from '../handle-optimization-request'
+import { handleOptimizationRequest } from '@/infrastructure/optimization/handle-optimization-request'
 
 const input = {
   panel: supplierProductSchema.parse(validSupplierProductInput),

@@ -4,7 +4,7 @@ import { partSchema } from '../../../domain/model/part'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validPartInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
 import { optimizePanel } from '../../../domain/optimizer/optimize-panel'
-import { handleOptimizationRequest } from '../../../workers/optimization/handle-optimization-request'
+import { handleOptimizationRequest } from '@/infrastructure/optimization/handle-optimization-request'
 import type { OptimizationResponse, OptimizationRequest } from '../optimization-protocol'
 import { createOptimizationService, type OptimizationWorkerPort } from '../optimization-service'
 

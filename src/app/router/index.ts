@@ -1,16 +1,16 @@
 import { createRouter, createWebHashHistory, type Router, type RouterHistory } from 'vue-router'
 
-import StockView from '../../features/inventory/StockView.vue'
-import ProjectPartsView from '../../features/projects/ProjectPartsView.vue'
-import ProjectWorkspace from '../../features/projects/ProjectWorkspace.vue'
-import SuppliersView from '../../features/suppliers/SuppliersView.vue'
-import MaterialsView from '../../features/materials/MaterialsView.vue'
-import ProjectsView from '../views/ProjectsView.vue'
-import HomeView from '../views/HomeView.vue'
-import NotFoundView from '../views/NotFoundView.vue'
-import ProjectImport from '../../features/projects/ProjectImport.vue'
+import StockView from '@/ui/pages/StockView.vue'
+import ProjectPartsView from '@/ui/pages/ProjectPartsView.vue'
+import ProjectWorkspace from '@/ui/layouts/ProjectWorkspace.vue'
+import SuppliersView from '@/ui/pages/SuppliersView.vue'
+import MaterialsView from '@/ui/pages/MaterialsView.vue'
+import ProjectsView from '@/ui/pages/ProjectsView.vue'
+import HomeView from '@/ui/pages/HomeView.vue'
+import NotFoundView from '@/ui/pages/NotFoundView.vue'
+import ProjectImport from '@/ui/pages/ProjectImport.vue'
 
-const OptimizationView = () => import('../../features/optimization/OptimizationView.vue')
+const OptimizationView = () => import('@/ui/pages/OptimizationView.vue')
 
 // Hash history keeps deep links working on static hosting (GitHub Pages).
 export function createAppRouter(history: RouterHistory = createWebHashHistory()): Router {
@@ -30,7 +30,7 @@ export function createAppRouter(history: RouterHistory = createWebHashHistory())
           { path: 'parts', name: 'project-parts', component: ProjectPartsView },
           { path: 'materials', name: 'project-materials', component: MaterialsView },
           { path: 'optimization', name: 'project-optimization', component: OptimizationView, props: { cuttingPlansStep: false } },
-          { path: 'stock', name: 'project-stock', component: () => import('../../features/projects/ProjectStockView.vue') },
+          { path: 'stock', name: 'project-stock', component: () => import('@/ui/pages/ProjectStockView.vue') },
           {
             path: 'cutting-plans',
             alias: 'export',

@@ -3,8 +3,8 @@ import { createPinia } from 'pinia'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import AppToastHost from '../AppToastHost.vue'
-import { useToastStore } from '../toast-store'
+import AppToastHost from '@/ui/components/common/AppToastHost.vue'
+import { useToastStore } from '@/ui/stores/toast-store'
 
 let wrapper: VueWrapper
 function setup() {
@@ -77,7 +77,7 @@ describe('application toast notifications', () => {
 
   it('uses a viewport overlay below native dialogs and removes motion for reduced-motion users', () => {
     setup()
-    const css = readFileSync('src/app/styles.css', 'utf8')
+    const css = readFileSync('src/ui/styles.css', 'utf8')
     expect(css).toMatch(/\.app-toast-host\s*\{\s*position: fixed;\s*z-index: 40;/)
     expect(css).toContain('pointer-events: none;')
     expect(css).toContain('width: 100%;\n  height: 3px;')

@@ -1,9 +1,9 @@
-import { stockTransferServiceKey } from '../../../features/inventory/stock-transfer-service'
+import { stockTransferServiceKey } from '@/ui/composables/use-stock-transfer-service'
 import type { StockTransferService } from '../../../application/inventory/stock-transfer-service'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import SettingsDialog from '../SettingsDialog.vue'
-import { catalogTransferServiceKey } from '../../../features/suppliers/catalog-transfer-service'
+import SettingsDialog from '@/ui/components/settings/SettingsDialog.vue'
+import { catalogTransferServiceKey } from '@/ui/composables/use-catalog-transfer-service'
 import type { CatalogTransferService } from '../../../application/catalog/catalog-transfer-service'
 import { catalogTransferSchema } from '../../../application/catalog/catalog-transfer-format'
 

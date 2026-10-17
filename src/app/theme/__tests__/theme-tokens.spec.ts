@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-const css = readFileSync(`${process.cwd()}/src/app/styles.css`, 'utf8')
+const css = readFileSync(`${process.cwd()}/src/ui/styles.css`, 'utf8')
 function tokens(pattern: RegExp): Map<string, string> {
   const block = css.match(pattern)?.[1] ?? ''
   return new Map([...block.matchAll(/--([\w-]+):\s*(#[a-f\d]{6});/gi)].map(match => [match[1] ?? '', match[2] ?? '']))

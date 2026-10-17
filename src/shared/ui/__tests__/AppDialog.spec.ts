@@ -1,7 +1,7 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
-import AppDialog from '../AppDialog.vue'
+import AppDialog from '@/ui/components/common/AppDialog.vue'
 const wrappers: VueWrapper[] = []
 afterEach(() => { wrappers.forEach(wrapper => { wrapper.unmount() }); wrappers.length = 0; document.body.replaceChildren() })
 function setup(props: Partial<InstanceType<typeof AppDialog>['$props']> = {}) {

@@ -1,6 +1,6 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import CuttingConfirmation from '../CuttingConfirmation.vue'
+import CuttingConfirmation from '@/ui/components/inventory/CuttingConfirmation.vue'
 import type { CuttingPreview, CuttingConfirmationService } from '../../../application/inventory/cutting-confirmation-service'
 import type { PersistenceResult } from '../../../application/persistence/repositories'
 import { cuttingConfirmationSchema, type CuttingConfirmation as Receipt } from '../../../domain/model/cutting-confirmation'

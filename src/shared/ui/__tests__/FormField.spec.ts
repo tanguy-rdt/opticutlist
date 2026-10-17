@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { h } from 'vue'
 import { describe, expect, it } from 'vitest'
-import FormField from '../FormField.vue'
+import FormField from '@/ui/components/common/FormField.vue'
 describe('shared form field', () => {
   it('keeps labels, required state, hints and validation errors associated with the control', async () => {
     const wrapper = mount(FormField, { props: { id: 'length', label: 'Length', required: true, hint: 'Millimeters', requiredIndicator: 'asterisk' }, slots: { default: (props: { controlAttrs: Record<string, unknown> }) => h('input', { ...props.controlAttrs, class: 'field' }) } })

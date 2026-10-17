@@ -2,12 +2,12 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAppRouter } from '../../../app/router'
-import ProjectsView from '../../../app/views/ProjectsView.vue'
-import { projectTransferServiceKey } from '../project-transfer-service'
+import ProjectsView from '@/ui/pages/ProjectsView.vue'
+import { projectTransferServiceKey } from '@/ui/composables/use-project-transfer-service'
 import type { ProjectTransferService } from '../../../application/projects/project-transfer-service'
 import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import type { ProjectService } from '../../../application/projects/project-service'
-import { projectServiceKey } from '../project-service'
+import { projectServiceKey } from '@/ui/composables/use-project-service'
 
 const project = cuttingProjectSchema.parse({ id: 'new-project', name: 'Cabinet', partIds: [], materialIds: [], supplierProductIds: [] })
 const wrappers: VueWrapper[] = []

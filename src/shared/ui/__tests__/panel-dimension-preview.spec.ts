@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitPanelDimensionPreview, previewGrainIllustration } from '../panel-dimension-preview'
+import { fitPanelDimensionPreview, previewGrainIllustration } from '@/ui/canvas/panel-dimension-preview'
 
 describe('technical preview layout', () => {
   for (const size of ['small', 'default'] as const) {

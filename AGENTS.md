@@ -35,7 +35,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Domain: pure TypeScript; no Vue, Pinia, Konva, Dexie or pdf-lib dependencies.
 - Application: use cases and ports that coordinate domain behavior.
 - Infrastructure: adapters for persistence, import/export and PDF.
-- Features: Vue UI; no optimization algorithms or direct IndexedDB access.
+- UI: Vue pages, components, layouts, composables, UI state and presentation helpers in `src/ui/`; no optimization algorithms or direct persistence implementation access.
 - Pinia manages UI state; the configured persistence backend is the business-data source of truth. Browser IndexedDB remains the only implemented backend and the default.
 - Run optimization in a Web Worker.
 - Enforce dependency direction and avoid circular imports.
@@ -66,7 +66,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Randomized tests use a seeded generator so failures are reproducible.
 - New placement strategies are added to `PLACEMENT_STRATEGIES` in `plan-with-strategy.ts`. They reuse the shared splitting and validation, and must not change the selection ranking in `optimize-panel.ts` without updating `ARCHITECTURE.md`.
 - Keep `largestAreaFirst` byte-for-byte stable; its exact-tree tests are the optimizer's regression baseline.
-- The optimization worker is a thin adapter: never put optimization or validation logic in `src/workers/`. Delegate to the domain.
+- The optimization worker is a thin adapter: never put optimization or validation logic in `src/infrastructure/optimization/`. Delegate to the domain.
 - Worker messages must be plain, structured-cloneable data defined in `optimization-protocol.ts`. Check incoming messages with its type guards rather than casting `MessageEvent.data`.
 - UI code uses `createOptimizationService`, never a `Worker` directly. Inject a fake `OptimizationWorkerPort` in tests (jsdom has no workers).
 - The service resolves typed outcomes instead of rejecting, and re-validates every received plan. Keep both properties when extending it.
@@ -85,9 +85,9 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Validate records on both database reads and writes with existing strict domain schemas. Never omit corrupt records from lists or upsert through `create`/`update`.
 - Multi-record writes use the persistence transaction callback, only its scoped repositories, and await every operation. Any failed operation aborts all changes; do not await network requests or timers inside transactions.
 - Database schema versions are immutable once shipped. Append versions and transactional migrations; never delete/recreate a database to recover from an upgrade failure. Use isolated fake-indexeddb factories for persistence tests.
-- Vue features receive repositories through typed injection keys provided by the bootstrap; never create database connections in components.
-- Shared presentation controls live in `src/shared/ui/`: use AppButton for standard actions (primary/secondary/ghost/destructive, default/small; icon-only controls require an accessible label), and AppDialog for native modal/drawer lifecycle and the shared close button. Use AppCheckbox for labeled native boolean toggles with linked descriptions. Keep control heights, focus/disabled states, palette and menu styling in semantic CSS tokens/classes. Form actions use `.dialog-actions` with Cancel before the primary action; retain specialized tile/canvas interactions rather than blindly wrapping every control.
-- Use semantic theme tokens from `src/app/styles.css` for UI colors. Theme preferences may use localStorage; persistent business records use the configured persistence backend (currently exclusively IndexedDB). Switching deployments never implies data migration or synchronization.
+- Vue UI receives repositories through typed injection keys provided by the bootstrap; never create database connections in components.
+- Shared presentation controls live in `src/ui/components/common/`: use AppButton for standard actions (primary/secondary/ghost/destructive, default/small; icon-only controls require an accessible label), and AppDialog for native modal/drawer lifecycle and the shared close button. Use AppCheckbox for labeled native boolean toggles with linked descriptions. Keep control heights, focus/disabled states, palette and menu styling in semantic CSS tokens/classes. Form actions use `.dialog-actions` with Cancel before the primary action; retain specialized tile/canvas interactions rather than blindly wrapping every control.
+- Use semantic theme tokens from `src/ui/styles.css` for UI colors. Theme preferences may use localStorage; persistent business records use the configured persistence backend (currently exclusively IndexedDB). Switching deployments never implies data migration or synchronization.
 - Component tests inject repository ports; persistence integration tests use isolated fake-indexeddb factories. Confirm deletions and associate field validation errors with their inputs.
 - Entity forms validate complete records with their existing domain schemas. Keep empty numeric inputs empty until validation; never substitute zero or omit mandatory thickness. Use the shared `FormField` for labels, required indicators and linked errors.
 - Parts forms reuse the shared MaterialSelector and require an explicit selection from the active project’s saved material choices or eligible selected catalogue/stock panels’ materials. Never seed presets, create catalog records or change project selections from this form. Enforce material membership inside the scoped Part write transaction, not only in the picker; reject new/updated assignments to unselected materials. Preserve existing Parts when selections change and display compatibility warnings. Show missing material references and preserve failed drafts rather than silently replacing selections.

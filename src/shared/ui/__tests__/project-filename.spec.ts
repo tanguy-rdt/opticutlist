@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectFilename } from '../project-filename'
+import { projectFilename } from '@/ui/utils/project-filename'
 describe('project JSON filenames', () => {
   it.each([
     ['Kitchen Cabinet', 'kitchen_cabinet'], ['Meuble TV', 'meuble_tv'], ['Étagère Salon', 'etagere_salon'],

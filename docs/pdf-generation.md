@@ -10,7 +10,7 @@ PDFs are generated locally with pdf-lib and previewed from the actual bytes with
 
 [cutting-plan-pdf-service.ts](../src/application/export/cutting-plan-pdf-service.ts) defines detached document DTOs and the renderer port. It independently validates trees/global copy accounting before calling infrastructure and returns typed generation failures. [cutting-plan-scene.ts](../src/application/optimization/cutting-plan-scene.ts) derives geometry shared with interactive presentation.
 
-[OptimizationView.vue](../src/features/optimization/OptimizationView.vue) supplies the current accepted displayed layouts, including manual edits, only after result persistence is safe. [CuttingPlansWorkspace.vue](../src/features/optimization/CuttingPlansWorkspace.vue) coordinates current settings, generation, cancellation, preview and output.
+[OptimizationView.vue](../src/ui/pages/OptimizationView.vue) supplies the current accepted displayed layouts, including manual edits, only after result persistence is safe. [CuttingPlansWorkspace.vue](../src/ui/components/optimization/CuttingPlansWorkspace.vue) coordinates current settings, generation, cancellation, preview and output.
 
 ```mermaid
 flowchart TD
@@ -87,11 +87,11 @@ A4/A3 Portrait and Landscape use the same measured layout helpers. Font/column/r
 
 ## Preview, download and print resources
 
-[pdf-preview.ts](../src/features/optimization/pdf-preview.ts) lazily imports PDF.js and uses its Vite-bundled local worker. It passes detached bytes, cancels obsolete loads/renders, cleans pages and destroys obsolete documents/workers. Preview raster canvases are UI output only; the exported bytes stay vector.
+[pdf-preview.ts](../src/ui/pdf/pdf-preview.ts) lazily imports PDF.js and uses its Vite-bundled local worker. It passes detached bytes, cancels obsolete loads/renders, cleans pages and destroys obsolete documents/workers. Preview raster canvases are UI output only; the exported bytes stay vector.
 
 Download and Print share the generation pipeline/current configuration and use busy guards/spinners. Browser handoff success shows no toast claiming disk saving. Errors are retryable and use persistent error toasts where appropriate.
 
-[pdf-print-view.ts](../src/features/optimization/pdf-print-view.ts) opens a tab synchronously from the click to avoid asynchronous popup blocking, clears opener, then embeds the generated Blob URL in a native PDF viewer. Users print there; automatic print dialog behavior is not guaranteed. A blocked/closed tab produces an actionable error. The viewer owns URL cleanup on pagehide and survives SPA workspace navigation once ready; pending tabs close on cancellation/failure.
+[pdf-print-view.ts](../src/ui/pdf/pdf-print-view.ts) opens a tab synchronously from the click to avoid asynchronous popup blocking, clears opener, then embeds the generated Blob URL in a native PDF viewer. Users print there; automatic print dialog behavior is not guaranteed. A blocked/closed tab produces an actionable error. The viewer owns URL cleanup on pagehide and survives SPA workspace navigation once ready; pending tabs close on cancellation/failure.
 
 Download removes its temporary anchor and revokes the URL after a bounded grace period/document exit because browsers expose no reliable download-completion event. Do not revoke an output URL immediately after handing it to a browser consumer.
 

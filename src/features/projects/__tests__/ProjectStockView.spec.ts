@@ -8,14 +8,14 @@ import { createCurrentResultService } from '../../../application/plans/current-r
 import { cuttingProjectSchema } from '../../../domain/model/cutting-project'
 import { panelSnapshotSchema } from '../../../domain/model/saved-cutting-plan'
 import { stockItemSchema } from '../../../domain/model/stock-item'
-import StockPanelPreview from '../StockPanelPreview.vue'
+import StockPanelPreview from '@/ui/components/projects/StockPanelPreview.vue'
 import { projectPdfRequest, multiPanelPdfRequest } from '../../../application/export/__tests__/pdf-fixtures'
 import { validMaterialInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
-import { projectIdKey } from '../project-service'
-import { projectStockServiceKey } from '../project-stock-service'
-import ProjectStockView from '../ProjectStockView.vue'
+import { projectIdKey } from '@/ui/composables/use-project-service'
+import { projectStockServiceKey } from '@/ui/composables/use-project-stock-service'
+import ProjectStockView from '@/ui/pages/ProjectStockView.vue'
 
-vi.mock('../../optimization/viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setKeptWaste: vi.fn(), setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
+vi.mock('@/ui/canvas/plan-canvas', () => ({ createPlanCanvas: () => ({ setKeptWaste: vi.fn(), setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
 const connections: { close(): void }[] = []
 const wrappers: VueWrapper[] = []
 afterEach(() => { wrappers.forEach(wrapper => { wrapper.unmount() }); wrappers.length = 0; connections.forEach(connection => { connection.close() }); connections.length = 0; vi.restoreAllMocks() })

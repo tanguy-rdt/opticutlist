@@ -4,8 +4,8 @@ import { materialSchema } from '../../../domain/model/material'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validMaterialInput, validSupplierProductInput, validStockItemInput } from '../../../domain/model/__tests__/fixtures'
 import { stockItemSchema } from '../../../domain/model/stock-item'
-import { materialPresets } from '../../materials/material-library'
-import ProductDetails from '../ProductDetails.vue'
+import { materialPresets } from '@/ui/utils/material-library'
+import ProductDetails from '@/ui/components/suppliers/ProductDetails.vue'
 const material = materialSchema.parse(validMaterialInput)
 const product = supplierProductSchema.parse(validSupplierProductInput)
 const props = { product, materials: [material], suppliers: [], stock: [], stockAvailable: true, stockError: '' }

@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import AppSplitButton from '../AppSplitButton.vue'
+import AppSplitButton from '@/ui/components/common/AppSplitButton.vue'
 
 const props = { label: 'New project', menuLabel: 'More project actions', actions: [{ value: 'import', label: 'Import project' }] }
 const wrappers: ReturnType<typeof mount>[] = []

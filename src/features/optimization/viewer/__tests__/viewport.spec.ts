@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitViewport, grainMarker, hatchLines, grainPoints, panelGrainPoints, labelLayout, panViewport, rectToCanvas, zoomViewport } from '../viewport'
+import { fitViewport, grainMarker, hatchLines, grainPoints, panelGrainPoints, labelLayout, panViewport, rectToCanvas, zoomViewport } from '@/ui/canvas/viewport'
 describe('Millimeter-to-canvas transforms', () => {
   it('uses one scale and translation for every panel, part, margin and kerf region', () => {
     expect(rectToCanvas({ xMm: 5, yMm: 5, lengthMm: 30, widthMm: 50 }, { scale: 2, x: 10, y: 20 })).toEqual({ x: 20, y: 30, width: 60, height: 100 })

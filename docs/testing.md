@@ -29,6 +29,8 @@ npm run test:unit -- src/infrastructure/pdf/__tests__/technical-title-block.spec
 npm test -- src/features/materials/__tests__/MaterialsView.spec.ts
 ```
 
+UI production files now live under `src/ui/`, and worker adapters under `src/infrastructure/optimization/`. Existing tests retain their original locations; imports, mock module targets and two CSS source references follow the moved files. Assertions, fixtures, snapshots and configuration are unchanged. New tests follow the owning layer's colocated convention.
+
 ## Test boundaries
 
 | Area | Representative suites | What they establish |
@@ -40,7 +42,7 @@ npm test -- src/features/materials/__tests__/MaterialsView.spec.ts
 | Persistence | [local-database.spec.ts](../src/infrastructure/persistence/__tests__/local-database.spec.ts) | Strict reads/writes, reopen, migrations, transaction rollback |
 | Projects/transfers | [application/projects tests](../src/application/projects/__tests__/) | Ownership, adoption, deletion, atomic import and ID remapping |
 | Inventory | [application/inventory tests](../src/application/inventory/__tests__/) | Provenance, exact source limits, reconciliation/idempotency/conflicts |
-| UI | Feature `__tests__` directories and [shared UI tests](../src/shared/ui/__tests__/) | Scoped workflows, focus/menu/notification states and event isolation |
+| UI | Retained legacy `__tests__` directories and [shared UI tests](../src/shared/ui/__tests__/) | Scoped workflows, focus/menu/notification states and event isolation |
 | PDF | [PDF suites](../src/infrastructure/pdf/__tests__/), [export service tests](../src/application/export/__tests__/) | Validated snapshots, layout, pricing, pagination, bytes and errors |
 
 ## Domain invariant tests

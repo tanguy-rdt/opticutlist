@@ -10,11 +10,11 @@ Read this alongside [feature map](features.md), [architecture](architecture.md) 
 
 | Stage | Entry / operation | Reads and writes / validation |
 | --- | --- | --- |
-| Launch | Home tiles, Projects split button, [ProjectCreationDialog](../src/features/projects/ProjectCreationDialog.vue) | New draft name/description, empty ownership/selections |
+| Launch | Home tiles, Projects split button, [ProjectCreationDialog](../src/ui/components/projects/ProjectCreationDialog.vue) | New draft name/description, empty ownership/selections |
 | Submit | `createProjectService().projects.create` | Parse complete CuttingProject; refuse archived identity or direct Part reassignment; validate selections in transaction |
 | Commit | `repositories.projects.create` | Insert only; duplicate ID cannot replace existing project |
 | Open | ProjectWorkspace load and router | Schema-valid route ID, existing project, scoped Part repository, current-result restoration |
-| Edit | [ProjectsView.save](../src/app/views/ProjectsView.vue) | Reread latest project; replace name/description while preserving ID, Parts and selections |
+| Edit | [ProjectsView.save](../src/ui/pages/ProjectsView.vue) | Reread latest project; replace name/description while preserving ID, Parts and selections |
 
 Description is not a separate entity. Empty is valid. Cancel discards draft values; a project rename does not rewrite historical plan snapshots or PDF-only title override. Workspace activation rereads actual project name.
 
@@ -22,7 +22,7 @@ Project creation and import are distinct flows: import performs dependency remap
 
 ## Project deletion
 
-[ProjectsView](../src/app/views/ProjectsView.vue) calls `deletionPreview`, displays confirmation and selects Keep or Restore stock behavior. [deleteProjectData](../src/application/projects/project-deletion.ts) repeats all safety checks transactionally; preview alone is not a guarantee inventory remains reversible.
+[ProjectsView](../src/ui/pages/ProjectsView.vue) calls `deletionPreview`, displays confirmation and selects Keep or Restore stock behavior. [deleteProjectData](../src/application/projects/project-deletion.ts) repeats all safety checks transactionally; preview alone is not a guarantee inventory remains reversible.
 
 ```mermaid
 sequenceDiagram
@@ -53,7 +53,7 @@ Shared catalog and other projects' Parts are never cascaded. External references
 
 ## Materials and supplier reference selection
 
-Entry: [MaterialsView](../src/features/materials/MaterialsView.vue), using project service, guarded catalog reads and `StockRepository.selectionStock(projectId)`.
+Entry: [MaterialsView](../src/ui/pages/MaterialsView.vue), using project service, guarded catalog reads and `StockRepository.selectionStock(projectId)`.
 
 1. Load project, materials, products, suppliers and project-aware stock; preserve pending/failed selection drafts during lifecycle refresh.
 2. Derive current material, eligible Stock, supplier groups and summary from the same selected-ID arrays. Supplier names are presentation; stable supplier IDs group products.
@@ -67,7 +67,7 @@ Selecting catalog panels creates no physical stock. Selecting Stock is not reser
 
 ## Scoped Parts CRUD and import
 
-[ProjectPartsView](../src/features/projects/ProjectPartsView.vue) / ProjectWorkspace provide `service.parts(projectId)` to [PartsView](../src/features/parts/PartsView.vue). [PartForm](../src/features/parts/PartForm.vue) parses a complete Part and requires explicit eligible material selection. Empty numeric fields stay empty until validation. Grain changes hide/show rotation without discarding its draft preference.
+[ProjectPartsView](../src/ui/pages/ProjectPartsView.vue) / ProjectWorkspace provide `service.parts(projectId)` to [PartsView](../src/ui/pages/PartsView.vue). [PartForm](../src/ui/components/parts/PartForm.vue) parses a complete Part and requires explicit eligible material selection. Empty numeric fields stay empty until validation. Grain changes hide/show rotation without discarding its draft preference.
 
 `ProjectPartsRepository.withProject` verifies live project existence and no overlapping Part ownership with other projects. Save validates the selected material inside that same transaction; create updates project partIds, edit retains ID, delete removes both entity and ownership. Existing Parts are not silently deleted when Materials choices change.
 
@@ -97,7 +97,7 @@ Duplicate names are allowed; reimport adds a second batch. No material is create
 
 ## Optimization and source allocation
 
-[OptimizationView.start](../src/features/optimization/OptimizationView.vue) rereads inputs and saved settings, computes catalog demand bound, keeps exact physical capacities and rejects missing/circular choices. It passes plain input through the injected optimization service, not a Worker directly.
+[OptimizationView.start](../src/ui/pages/OptimizationView.vue) rereads inputs and saved settings, computes catalog demand bound, keeps exact physical capacities and rejects missing/circular choices. It passes plain input through the injected optimization service, not a Worker directly.
 
 ```mermaid
 sequenceDiagram
@@ -128,7 +128,7 @@ Saving Cutting settings persists kerf/margin/preference and closes the dialog wi
 
 ## Manual cutting-plan editing
 
-Entry: [CuttingPlanViewer](../src/features/optimization/CuttingPlanViewer.vue) and [PanelPlanView](../src/features/optimization/PanelPlanView.vue). A canvas click selects a Part copy; dragging pans the viewport. Toolbar rotate/swap/undo/redo/reset operate on a panel-isolated [PlanEditingSession](../src/application/optimization/plan-editing-session.ts).
+Entry: [CuttingPlanViewer](../src/ui/components/optimization/CuttingPlanViewer.vue) and [PanelPlanView](../src/ui/components/optimization/PanelPlanView.vue). A canvas click selects a Part copy; dragging pans the viewport. Toolbar rotate/swap/undo/redo/reset operate on a panel-isolated [PlanEditingSession](../src/application/optimization/plan-editing-session.ts).
 
 `applyPlanEdit` calls domain `editCuttingTree`, validates original/candidate trees, rebuilds scene-derived placements and metrics, and appends history after the cursor (discarding obsolete redo branch). Rotate can recut only a permitted anchored region containing the target and waste; swap cannot relocate cut boundaries. Invalid edits preserve the accepted session.
 
@@ -136,7 +136,7 @@ The view collects all accepted panel edits into one SavePlanInput, persists repl
 
 ## PDF generation and output
 
-Entry: [CuttingPlansWorkspace](../src/features/optimization/CuttingPlansWorkspace.vue), not older `PdfExportControls`. Settings update through OptimizationView's serialized project writes; title override does not rename the project. A watcher regenerates actual bytes, with generation/render revisions rejecting obsolete completions.
+Entry: [CuttingPlansWorkspace](../src/ui/components/optimization/CuttingPlansWorkspace.vue), not older `PdfExportControls`. Settings update through OptimizationView's serialized project writes; title override does not rename the project. A watcher regenerates actual bytes, with generation/render revisions rejecting obsolete completions.
 
 [CuttingPlanPdfService](../src/application/export/cutting-plan-pdf-service.ts) clones the input, validates the complete result, creates scenes and resolves optional exact-reference prices. The lazy infrastructure renderer produces cover, schedules, Part grids and cutting sheets. PDF.js renders detached generated bytes, not a second cutting-plan drawing implementation.
 
@@ -144,7 +144,7 @@ Print/Download share `regenerate()` and the same configuration. Print opens a bl
 
 ## Generated offcuts and Keep updates
 
-[ProjectStockView](../src/features/projects/ProjectStockView.vue) calls `sync()` then `preview()`, using current independently validated waste leaves. It filters Outdated rows from current inspection and gives per-panel temporary numbering in waste-index order. Hover/selection only update UI keys.
+[ProjectStockView](../src/ui/pages/ProjectStockView.vue) calls `sync()` then `preview()`, using current independently validated waste leaves. It filters Outdated rows from current inspection and gives per-panel temporary numbering in waste-index order. Hover/selection only update UI keys.
 
 ```mermaid
 sequenceDiagram
@@ -187,7 +187,7 @@ Supplier website normalization is UI input handling; domain stores absolute URLs
 
 ## File transfers and Settings
 
-[ProjectImport](../src/features/projects/ProjectImport.vue), [ProjectExport](../src/features/projects/ProjectExport.vue), [CatalogTransfer](../src/features/suppliers/CatalogTransfer.vue) and [StockTransfer](../src/features/inventory/StockTransfer.vue) are feature-level entry points. Settings mounts the latter two without changing route. Each calls its injected transfer service for preview/import/export; JSON.parse inside a component is not the authoritative validation layer.
+[ProjectImport](../src/ui/pages/ProjectImport.vue), [ProjectExport](../src/ui/components/projects/ProjectExport.vue), [CatalogTransfer](../src/ui/components/suppliers/CatalogTransfer.vue) and [StockTransfer](../src/ui/components/inventory/StockTransfer.vue) are feature-level entry points. Settings mounts the latter two without changing route. Each calls its injected transfer service for preview/import/export; JSON.parse inside a component is not the authoritative validation layer.
 
 Project/catalog imports can remap conflicts; Stock import must preserve physical identity and block unsafe conflicts. Settings import success increments the shared revision so active views refresh. No polling, automatic purchase, stock movement reset or global project-selection mutation follows a transfer. Read [JSON reference](json-formats.md) for exact envelopes and [storage](storage.md) for commit/rollback behavior.
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCuttingPlanScene } from '../../../../application/optimization/cutting-plan-scene'
 import { viewerPanel, viewerPart, viewerPlan, viewerSettings } from '../../../../domain/cutting-tree/__tests__/viewer-fixtures'
 import { swapInput, swapPlan } from '../../../../domain/cutting-tree/__tests__/editing-fixtures'
-import { createPlanCanvas, type PlanPalette } from '../plan-canvas'
+import { createPlanCanvas, type PlanPalette } from '@/ui/canvas/plan-canvas'
 
 // jsdom has no canvas backend: test Konva node attributes and events, not browser rasterization.
 const fake = vi.hoisted(() => {

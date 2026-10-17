@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import StockDetails from '../StockDetails.vue'
+import StockDetails from '@/ui/components/inventory/StockDetails.vue'
 import { stockItemSchema } from '../../../domain/model/stock-item'
 import { materialSchema } from '../../../domain/model/material'
 import { cuttingConfirmationSchema } from '../../../domain/model/cutting-confirmation'

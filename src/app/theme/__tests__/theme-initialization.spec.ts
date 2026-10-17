@@ -17,7 +17,7 @@ function initialize(saved: string | null, blocked = false): Record<string, strin
 describe('theme before application initialization', () => {
   it.each(['light', 'dark'])('restores explicit %s before the Vue entry point', theme => {
     expect(initialize(theme)).toEqual({ theme })
-    expect(html.indexOf('id="theme-init"')).toBeLessThan(html.indexOf('src="/src/main.ts"'))
+    expect(html.indexOf('id="theme-init"')).toBeLessThan(html.indexOf('src="/src/app/main.ts"'))
   })
   it.each([null, 'system', 'invalid'])('leaves CSS system fallback in control for %s', preference => {
     expect(initialize(preference)).toEqual({})

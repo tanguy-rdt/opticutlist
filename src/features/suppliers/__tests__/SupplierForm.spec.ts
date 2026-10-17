@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import SupplierForm from '../SupplierForm.vue'
+import SupplierForm from '@/ui/components/suppliers/SupplierForm.vue'
 import { supplierSchema } from '../../../domain/model/supplier'
 
 const supplier = supplierSchema.parse({ id: 'existing-supplier', name: 'Local supplier', websiteUrl: 'https://old.example/' })

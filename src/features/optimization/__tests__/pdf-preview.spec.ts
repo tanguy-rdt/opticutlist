@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadPdfPreview } from '../pdf-preview'
+import { loadPdfPreview } from '@/ui/pdf/pdf-preview'
 
 const fake = vi.hoisted(() => {
   const cancel = vi.fn()

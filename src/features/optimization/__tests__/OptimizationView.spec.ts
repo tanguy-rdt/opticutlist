@@ -1,10 +1,10 @@
 import { pngCover } from '../../../infrastructure/pdf/__tests__/cover-image-fixtures'
 import { ref } from 'vue'
 import { createPinia } from 'pinia'
-import { useToastStore } from '../../../shared/ui/toast-store'
-import { cuttingWorkspaceStateKey, type CuttingWorkspaceState } from '../../projects/cutting-workspace-state'
+import { useToastStore } from '@/ui/stores/toast-store'
+import { cuttingWorkspaceStateKey, type CuttingWorkspaceState } from '@/ui/state/cutting-workspace-state'
 import { createCurrentResultService } from '../../../application/plans/current-result-service'
-import { currentResultServiceKey } from '../../../features/optimization/current-result-service'
+import { currentResultServiceKey } from '@/ui/composables/use-current-result-service'
 import { panelSnapshotSchema } from '../../../domain/model/saved-cutting-plan'
 import { createSavedPlanService } from '../../../application/plans/saved-plan-service'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
@@ -21,25 +21,25 @@ import { partSchema } from '../../../domain/model/part'
 import { supplierProductSchema } from '../../../domain/model/supplier-product'
 import { validMaterialInput, validPartInput, validStockItemInput, validSupplierInput, validSupplierProductInput } from '../../../domain/model/__tests__/fixtures'
 import { optimizeProject } from '../../../domain/optimizer/optimize-project'
-import { handleOptimizationRequest } from '../../../workers/optimization/handle-optimization-request'
+import { handleOptimizationRequest } from '@/infrastructure/optimization/handle-optimization-request'
 import { createLocalPersistence } from '../../../infrastructure/persistence/local-database'
-import { materialRepositoryKey } from '../../materials/material-repository'
-import { projectIdKey, projectServiceKey } from '../../projects/project-service'
-import { supplierProductRepositoryKey, supplierRepositoryKey } from '../../suppliers/catalog-repositories'
-import OptimizationView from '../OptimizationView.vue'
-import { stockRepositoryKey } from '../../inventory/stock-repository'
+import { materialRepositoryKey } from '@/ui/composables/use-material-repository'
+import { projectIdKey, projectServiceKey } from '@/ui/composables/use-project-service'
+import { supplierProductRepositoryKey, supplierRepositoryKey } from '@/ui/composables/use-catalog-repositories'
+import OptimizationView from '@/ui/pages/OptimizationView.vue'
+import { stockRepositoryKey } from '@/ui/composables/use-stock-repository'
 import { createStockRepository } from '../../../application/inventory/stock-repository'
 import { stockPanel } from '../../../domain/optimizer/panel-source'
 import { stockItemSchema } from '../../../domain/model/stock-item'
-import { optimizationServiceFactoryKey } from '../optimization-service'
+import { optimizationServiceFactoryKey } from '@/ui/composables/use-optimization-service'
 import { createCuttingPlanPdfService, type ProjectCuttingPdfDocument } from '../../../application/export/cutting-plan-pdf-service'
-import { cuttingPlanPdfServiceKey } from '../pdf-export-service'
-import type * as PdfExportModule from '../pdf-export-service'
-import { downloadCuttingPlanPdf } from '../pdf-export-service'
+import { cuttingPlanPdfServiceKey } from '@/ui/composables/use-pdf-export-service'
+import type * as PdfExportModule from '@/ui/composables/use-pdf-export-service'
+import { downloadCuttingPlanPdf } from '@/ui/composables/use-pdf-export-service'
 
-vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
-vi.mock('../pdf-preview', () => ({ loadPdfPreview: vi.fn(() => Promise.resolve({ pageCount: 3, render: vi.fn(() => Promise.resolve()), destroy: vi.fn(() => Promise.resolve()) })) }))
-vi.mock('../pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn() }))
+vi.mock('@/ui/canvas/plan-canvas', () => ({ createPlanCanvas: () => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() }) }))
+vi.mock('@/ui/pdf/pdf-preview', () => ({ loadPdfPreview: vi.fn(() => Promise.resolve({ pageCount: 3, render: vi.fn(() => Promise.resolve()), destroy: vi.fn(() => Promise.resolve()) })) }))
+vi.mock('@/ui/composables/use-pdf-export-service', async importOriginal => ({ ...await importOriginal<typeof PdfExportModule>(), downloadCuttingPlanPdf: vi.fn() }))
 
 class FakeWorker implements OptimizationWorkerPort {
   onmessage: OptimizationWorkerPort['onmessage'] = null

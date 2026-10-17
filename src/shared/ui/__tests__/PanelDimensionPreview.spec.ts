@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import PanelDimensionPreview from '../PanelDimensionPreview.vue'
+import PanelDimensionPreview from '@/ui/components/common/PanelDimensionPreview.vue'
 
 const props = { lengthMm: 800, widthMm: 400.5 }
 describe('shared technical dimension preview', () => {

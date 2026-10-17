@@ -12,7 +12,7 @@ This is the physical-storage companion to [persistence and JSON](persistence-and
 
 Application services depend on [Persistence, Repositories and PersistenceResult](../src/application/persistence/repositories.ts), not Dexie. `Persistence` is the existing repository set plus `open`, `close` and `transaction`; the old `LocalPersistence` name is retained as a type alias so existing consumers continue to compile. Projects, catalog, physical stock, historical plans, inventory ledgers and ordering all use this one boundary. There is no additional repository framework.
 
-[createConfiguredPersistence](../src/app/persistence.ts) is the sole deployment selection point, called by [main.ts](../src/main.ts) before services are injected. Its configuration is **build-time**, using Vite's existing environment mechanism:
+[createConfiguredPersistence](../src/app/persistence.ts) is the sole deployment selection point, called by [main.ts](../src/app/main.ts) before services are injected. Its configuration is **build-time**, using Vite's existing environment mechanism:
 
 | `VITE_STORAGE_MODE` | Current behavior |
 | --- | --- |

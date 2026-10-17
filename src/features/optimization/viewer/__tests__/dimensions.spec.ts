@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createCuttingPlanScene } from '../../../../application/optimization/cutting-plan-scene'
 import { viewerPanel, viewerPart, viewerPlan, viewerSettings } from '../../../../domain/cutting-tree/__tests__/viewer-fixtures'
-import { dimensionAnnotations, fitDimensionedViewport } from '../dimensions'
+import { dimensionAnnotations, fitDimensionedViewport } from '@/ui/canvas/dimensions'
 function scene() {
   const result = createCuttingPlanScene(viewerPlan, { panel: viewerPanel, parts: [viewerPart], settings: viewerSettings })
   if (result.status !== 'valid') throw new Error('Invalid fixture')

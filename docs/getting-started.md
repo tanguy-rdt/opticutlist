@@ -44,18 +44,18 @@ Run all four validation commands before committing; see [testing](testing.md). A
 
 | Directory/file | Responsibility |
 | --- | --- |
-| [src/main.ts](../src/main.ts) | Composition root: factories, dependency injection and app mount |
-| [src/app](../src/app/) | Shell, router, theme, settings and top-level views |
+| [src/app/main.ts](../src/app/main.ts) | Composition root: factories, dependency injection and app mount |
+| [src/app](../src/app/) | Entry point, router, configuration and dependency composition |
 | [src/domain](../src/domain/) | Pure validated models, geometry, cutting trees and optimization |
 | [src/application](../src/application/) | Use cases, repository/worker/PDF ports and business coordination |
 | [src/infrastructure](../src/infrastructure/) | Dexie, JSON adapter and pdf-lib rendering |
-| [src/features](../src/features/) | Project and global Vue workflows; presentation adapters |
-| [src/shared/ui](../src/shared/ui/) | Shared controls, notifications, technical previews and browser helpers |
-| [src/workers](../src/workers/) | Thin optimization worker adapters |
+| [src/ui](../src/ui/) | Project and global Vue workflows; presentation adapters |
+| [src/ui/components/common](../src/ui/components/common/) | Shared controls and technical previews |
+| [src/infrastructure/optimization](../src/infrastructure/optimization/) | Thin optimization worker adapters |
 | [public/materials](../public/materials/) | Local material preview assets and manifest |
 | [docs](./) | Developer and portable-format references |
 
-Tests live beside their implementation under `__tests__/*.spec.ts`, rather than in a separate global test package.
+New tests live beside their implementation under `__tests__/*.spec.ts`. Existing UI and worker tests retain their historical locations after this structural move; their module/mock paths follow the new layers.
 
 ## Contribution workflow
 

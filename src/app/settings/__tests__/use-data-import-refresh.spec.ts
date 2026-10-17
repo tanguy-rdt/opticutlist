@@ -1,8 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { defineComponent, nextTick, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import { dataImportRevisionKey } from '../data-import-revision'
-import { useDataImportRefresh } from '../use-data-import-refresh'
+import { dataImportRevisionKey } from '@/ui/state/data-import-revision'
+import { useDataImportRefresh } from '@/ui/composables/use-data-import-refresh'
 
 describe('catalog import UI invalidation', () => {
   it('coalesces imports, waits for active drafts/writes and detaches on unmount', async () => {

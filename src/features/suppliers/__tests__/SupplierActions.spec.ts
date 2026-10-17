@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import SupplierActions from '../SupplierActions.vue'
+import SupplierActions from '@/ui/components/suppliers/SupplierActions.vue'
 
 function render(disabled = false) { return mount(SupplierActions, { props: { disabled }, attachTo: document.body }) }
 afterEach(() => { document.body.replaceChildren() })

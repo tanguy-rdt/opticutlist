@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import PartForm from '../PartForm.vue'
+import PartForm from '@/ui/components/parts/PartForm.vue'
 import { partSchema } from '../../../domain/model/part'
 import { materialSchema } from '../../../domain/model/material'
 import { validMaterialInput, validPartInput } from '../../../domain/model/__tests__/fixtures'

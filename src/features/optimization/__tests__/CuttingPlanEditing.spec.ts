@@ -1,8 +1,8 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import CuttingPlanViewer from '../CuttingPlanViewer.vue'
-import { dimensionAnnotations } from '../viewer/dimensions'
-import { createPlanCanvas } from '../viewer/plan-canvas'
+import CuttingPlanViewer from '@/ui/components/optimization/CuttingPlanViewer.vue'
+import { dimensionAnnotations } from '@/ui/canvas/dimensions'
+import { createPlanCanvas } from '@/ui/canvas/plan-canvas'
 import type { CuttingSettings } from '../../../domain/model/cutting-settings'
 import type { Part } from '../../../domain/model/part'
 import type { SupplierProduct } from '../../../domain/model/supplier-product'
@@ -10,7 +10,7 @@ import type { PanelCuttingPlan } from '../../../domain/optimizer/plan-with-strat
 import { rotationInput, rotationPlan, swapInput, swapPlan } from '../../../domain/cutting-tree/__tests__/editing-fixtures'
 import { freezeDeep } from '../../../domain/cutting-tree/__tests__/viewer-fixtures'
 
-vi.mock('../viewer/plan-canvas', () => ({ createPlanCanvas: vi.fn(() => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() })) }))
+vi.mock('@/ui/canvas/plan-canvas', () => ({ createPlanCanvas: vi.fn(() => ({ setViewport: vi.fn(), setSelection: vi.fn(), setPalette: vi.fn(), resize: vi.fn(), destroy: vi.fn() })) }))
 const wrappers: VueWrapper[] = []
 beforeEach(() => { vi.mocked(createPlanCanvas).mockClear() })
 afterEach(() => { wrappers.forEach(wrapper => { wrapper.unmount() }); wrappers.length = 0 })

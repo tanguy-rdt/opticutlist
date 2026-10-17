@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { supplierWebsiteInputSchema } from '../supplier-website'
+import { supplierWebsiteInputSchema } from '@/ui/utils/supplier-website'
 
 describe('supplier website input', () => {
   it.each([

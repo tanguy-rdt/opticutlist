@@ -49,7 +49,7 @@ A persisted offcut decision stores source panel snapshot, panel/copy/waste indic
 
 Checking Keep creates one physical `offcut`, quantity one, with copied material/thickness/grain and cutting provenance. A catalog-origin offcut retains exact supplierProductId; a stock-origin offcut retains sourceStockItemId. Unchecking or replacing geometry removes previously generated inventory **only if it is unchanged and unused**. Consumed offcuts are not recreated simply because a Keep decision remains checked.
 
-[ProjectStockView.vue](../src/features/projects/ProjectStockView.vue) separates inspection from inventory: row/canvas hover and selection do not invoke `setKeep`; only checkbox change does. Temporary `Offcut N` labels are per-panel UI references and are never stored or used for matching.
+[ProjectStockView.vue](../src/ui/pages/ProjectStockView.vue) separates inspection from inventory: row/canvas hover and selection do not invoke `setKeep`; only checkbox change does. Temporary `Offcut N` labels are per-panel UI references and are never stored or used for matching.
 
 ## Transactions, idempotency and rollback
 

@@ -46,7 +46,7 @@ All transfers use strict runtime validation, explicit preview/confirmation for i
 | Stock `stock.oclstock.json` | `opticutlist-stock`, `schemaVersion: 1` | Import/export in Settings; [stock-transfer-format.ts](../src/application/inventory/stock-transfer-format.ts) |
 | Parts `.oclparts.json` | `opticutlist-parts`, `version: 1` | **Import only**; [parts-transfer-format.ts](../src/application/projects/parts-transfer-format.ts) |
 
-Project download filenames use [project-filename.ts](../src/shared/ui/project-filename.ts) normalization. Parts import accepts existing filenames; there is no current Parts download filename generator. Older `.pocl` and general `.json` filenames are accepted by project import; these extensions do not imply an arbitrary legacy schema converter. The accepted content remains the validated version-1 contract. Missing supported optional fields are backward-compatible; unknown fields or unsupported versions are rejected.
+Project download filenames use [project-filename.ts](../src/ui/utils/project-filename.ts) normalization. Parts import accepts existing filenames; there is no current Parts download filename generator. Older `.pocl` and general `.json` filenames are accepted by project import; these extensions do not imply an arbitrary legacy schema converter. The accepted content remains the validated version-1 contract. Missing supported optional fields are backward-compatible; unknown fields or unsupported versions are rejected.
 
 ### Full project transfer
 

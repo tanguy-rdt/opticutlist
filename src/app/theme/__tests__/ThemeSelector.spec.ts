@@ -1,7 +1,7 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import ThemeSelector from '../ThemeSelector.vue'
+import ThemeSelector from '@/ui/components/settings/ThemeSelector.vue'
 
 const wrappers: VueWrapper[] = []
 const addListener = vi.fn<(type: string, listener: (event: MediaQueryListEvent) => void) => void>()
