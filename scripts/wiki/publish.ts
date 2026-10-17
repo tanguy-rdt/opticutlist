@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import type { Nodes } from 'mdast'
 import { z } from 'zod'
+import { hasControlCharacters, validateImage, validateMarkdown, validateName } from './publication-policy.ts'
 
 export const MANIFEST = '.opticutlist-docs-manifest.json'
 const ASSETS = '_assets/opticutlist-docs/'
@@ -24,6 +25,7 @@ function inside(root: string, path: string): boolean {
   return offset === '' || (!offset.startsWith(`..${sep}`) && offset !== '..' && !isAbsolute(offset))
 }
 function safePath(root: string, name: string): string {
+  if (isAbsolute(name) || name.includes('\\') || hasControlCharacters(name)) throw new Error('Unsafe path.')
   const target = resolve(root, name)
   if (!inside(root, target)) throw new Error(`Path escapes its root: ${name}`)
   let cursor = target
@@ -34,12 +36,16 @@ function safePath(root: string, name: string): string {
   }
   return target
 }
-function files(root: string, prefix = ''): string[] {
+function files(root: string, prefix = '', documentation = false): string[] {
   return readdirSync(resolve(root, prefix), { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1).flatMap(entry => {
     const name = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (documentation) {
+      try { validateName(name) } catch (error) { throw new Error(`Unsafe documentation file docs/${name}: ${error instanceof Error ? error.message : 'Invalid filename'}`, { cause: error }) }
+    }
     if (entry.name === '.git') return []
     if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not supported: ${name}`)
-    return entry.isDirectory() ? files(root, name) : [name]
+    if (!entry.isDirectory() && !entry.isFile()) throw new Error(`Unsupported special file: ${name}`)
+    return entry.isDirectory() ? files(root, name, documentation) : [name]
   })
 }
 function managed(name: string): boolean {
@@ -96,7 +102,7 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
   const docs = safePath(source, 'docs')
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(options.repository)) throw new Error('Use repository OWNER/REPO, without credentials or a URL.')
   if (!options.branch || /[\r\n]/.test(options.branch)) throw new Error('A valid source branch is required.')
-  const sourceFiles = files(docs)
+  const sourceFiles = files(docs, '', true)
   const pages = new Map(sourceFiles.filter(name => /\.(?:md|markdown)$/i.test(name)).map(name => [name, pageName(name)]))
   if (!pages.has('README.md')) throw new Error('docs/README.md is required for the Wiki Home page.')
   const names = [...pages.values()].map(name => name.toLowerCase())
@@ -108,32 +114,61 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
   function asset(path: string): string {
     const rel = portable(relative(source, path))
     const name = `${ASSETS}${rel}`
-    output.set(name, readFileSync(safePath(source, rel)))
+    if (!inside(docs, path)) throw new Error('Referenced assets must stay inside docs/.')
+    const data = readFileSync(safePath(docs, portable(relative(docs, path))))
+    validateImage(rel, data)
+    output.set(name, data)
     return `https://raw.githubusercontent.com/wiki/${options.repository}/${urlPath(name)}`
   }
   function convert(url: string, current: string, image: boolean): string {
-    if (!url || url.startsWith('#') || url.startsWith('?') || url.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(url)) return url
+    const fail = (reason: string): never => { throw new Error(`Unsafe reference in ${portable(relative(source, current))}: ${reason}`) }
+    if (!url || url.startsWith('#') || url.startsWith('?')) {
+      if (image) return fail('Images must reference a local documentation file.')
+      return url
+    }
+    if (url.startsWith('//') || url.includes('\\') || hasControlCharacters(url) || url.trim() !== url) return fail('Absolute or ambiguous URL is not allowed.')
+    if (/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+      if (image) return fail('Images must be local documentation assets.')
+      try {
+        const external = new URL(url)
+        if (!['https:', 'http:', 'mailto:'].includes(external.protocol) || external.username || external.password) return fail('Unsupported scheme or authenticated URL.')
+      } catch { return fail('Invalid external URL.') }
+      return url
+    }
     const boundary = url.search(/[?#]/)
     const pathPart = boundary === -1 ? url : url.slice(0, boundary)
     const tail = url.slice(pathPart.length)
-    const decoded = decodeURIComponent(pathPart)
-    const target = safePath(source, portable(relative(source, resolve(decoded.startsWith('/') ? source : dirname(current), decoded.replace(/^\//, '')))))
-    if (!existsSync(target)) throw new Error(`Missing link target in ${portable(relative(source, current))}: ${url}`)
+    let decoded: string
+    try { decoded = decodeURIComponent(pathPart) } catch { return fail('Invalid path encoding.') }
+    if (decoded.startsWith('/') || decoded.includes('\\') || /[%:]/.test(decoded) || hasControlCharacters(decoded)) return fail('Absolute or ambiguous path.')
+    if (decoded !== pathPart && decoded.split('/').includes('..')) return fail('Encoded traversal is not allowed.')
+    const target = safePath(source, portable(relative(source, resolve(dirname(current), decoded))))
+    const relSource = portable(relative(source, target))
+    try {
+      if (inside(docs, target) || image) validateName(relSource)
+      else if (relSource.split('/').some(part => part === '.git' || part.startsWith('.env'))) throw new Error('Hidden target')
+    } catch { return fail('Sensitive or ambiguous target filename.') }
+    if (!existsSync(target)) fail('Missing link target.')
     const stat = lstatSync(target)
     const relDocs = portable(relative(docs, target))
     if (!image && inside(docs, target)) {
       const page = stat.isDirectory() ? pages.get(relDocs === '' ? 'README.md' : `${relDocs}/README.md`) : pages.get(relDocs)
       if (page) return pageUrl(page) + tail
     }
-    if (image || inside(docs, target) && stat.isFile() && !pages.has(relDocs)) return asset(target) + tail
+    if (image && !inside(docs, target)) return fail('Referenced assets must stay inside docs/.')
+    if (image || inside(docs, target) && stat.isFile() && !pages.has(relDocs)) {
+      if (!stat.isFile()) return fail('Images must reference regular files.')
+      try { return asset(target) + tail } catch (error) { return fail(error instanceof Error ? error.message : 'Invalid asset.') }
+    }
     return `${repoUrl}/${stat.isDirectory() ? 'tree' : 'blob'}/${encodeURIComponent(options.branch)}/${urlPath(portable(relative(source, target)))}`.replace(/\/$/, '') + tail
   }
-  for (const name of sourceFiles) if (!pages.has(name)) asset(resolve(docs, name))
   const banner = '<!-- Generated from docs/ by publish-wiki.yml. Edit the main repository, not this page. -->\n\n'
   const titles = new Map<string, string>()
   for (const [name, page] of pages) {
     const current = resolve(docs, name)
-    const markdown = readFileSync(current, 'utf8')
+    const data = readFileSync(current)
+    try { validateMarkdown(data) } catch { throw new Error(`Invalid or sensitive Markdown content in docs/${name}.`) }
+    const markdown = data.toString('utf8')
     const patches: Patch[] = []
     const root = fromMarkdown(markdown)
     const imageReferences = new Set<string>()
@@ -148,24 +183,14 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
         const range = offset(node)
         const segment = markdown.slice(range.start, range.end)
         // Absolute autolinks have no destination parentheses and already work unchanged.
-        if (segment.startsWith('<')) return
+        if (segment.startsWith('<')) { convert(node.url, current, false); return }
         const value = convert(node.url, current, node.type === 'image' || node.type === 'definition' && imageReferences.has(node.identifier))
         if (value !== node.url) {
           const local = destinationRange(segment, node.type === 'definition')
           patches.push({ start: range.start + local.start, end: range.start + local.end, value })
         }
       }
-      if (node.type === 'html') {
-        const range = offset(node)
-        for (const match of node.value.matchAll(/<(img|a|source)\b[^>]*?\b(src|href)\s*=\s*(["'])(.*?)\3[^>]*>/gi)) {
-          const raw = match[4]
-          const value = convert(raw, current, match[2].toLowerCase() === 'src')
-          if (value !== raw) {
-            const token = match[0].indexOf(`${match[3]}${raw}${match[3]}`) + 1
-            patches.push({ start: range.start + match.index + token, end: range.start + match.index + token + raw.length, value })
-          }
-        }
-      }
+      if (node.type === 'html') throw new Error(`Raw HTML is not supported in docs/${name}; use Markdown links/images or fenced examples.`)
       if ('children' in node) for (const child of node.children) visit(child)
     }
     visit(root)
@@ -196,8 +221,15 @@ export function syncWiki(options: WikiOptions): { changed: string[]; removed: st
   const destination = resolve(options.destination)
   if (inside(source, destination) || inside(destination, source)) throw new Error('Wiki destination must be separate from the source checkout.')
   const output = buildWiki(options)
-  mkdirSync(destination, { recursive: true })
+  let ancestor = destination
+  for (;;) {
+    // macOS supplies these root aliases; all application-controlled symlinks remain forbidden.
+    if (lstatSync(ancestor, { throwIfNoEntry: false })?.isSymbolicLink() && !(['/var', '/tmp'].includes(ancestor) && realpathSync(ancestor) === `/private${ancestor}`)) throw new Error('Symbolic links are not supported in the destination path.')
+    if (dirname(ancestor) === ancestor) break
+    ancestor = dirname(ancestor)
+  }
   safePath(destination, '')
+  mkdirSync(destination, { recursive: true })
   const manifestPath = safePath(destination, MANIFEST)
   const previous = existsSync(manifestPath) ? manifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8'))) : undefined
   if (previous && previous.repository !== options.repository) throw new Error('Wiki manifest belongs to another repository.')

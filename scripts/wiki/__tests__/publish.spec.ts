@@ -1,10 +1,13 @@
 // @vitest-environment node
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
+import { jpegCover } from '../../../src/infrastructure/pdf/__tests__/cover-image-fixtures'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { buildWiki, MANIFEST, pageName, syncWiki, type WikiOptions } from '../publish.ts'
 
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 const temporary: string[] = []
 function fixture(): WikiOptions {
   const root = mkdtempSync(join(tmpdir(), 'opticutlist-wiki-test-'))
@@ -15,7 +18,7 @@ function fixture(): WikiOptions {
   writeFileSync(join(source, 'docs/architecture.md'), '# Architecture\n')
   return { source, destination: join(root, 'wiki'), repository: 'example/opticutlist', branch: 'master' }
 }
-function put(options: WikiOptions, name: string, content: string): void {
+function put(options: WikiOptions, name: string, content: string | Buffer): void {
   const path = join(options.source, name)
   mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content)
 }
@@ -79,19 +82,17 @@ describe('Wiki generation and managed synchronization', () => {
     expect(result).toContain(external)
   })
 
-  it('copies docs assets, referenced repository images and rewrites HTML and reference images', () => {
+  it('copies only referenced verified documentation images and rewrites reference images', () => {
     const options = fixture()
-    put(options, 'docs/assets/panel image.png', 'image-bytes')
-    put(options, 'docs/assets/template.json', '{"example":true}')
-    put(options, 'public/sample.svg', '<svg/>')
-    put(options, 'docs/images.md', '![Panel](assets/panel%20image.png)\n[Template](assets/template.json)\n![External asset][sample]\n\n[sample]: ../public/sample.svg\n\n<img src="assets/panel%20image.png" alt="Panel">\n<a href="architecture.md">Architecture</a>\n')
+    put(options, 'docs/assets/panel image.png', png)
+    put(options, 'docs/assets/unused.png', png)
+    put(options, 'docs/notes.txt', 'not a published page')
+    put(options, 'docs/images.md', '![Panel](assets/panel%20image.png)\n![Reference][sample]\n\n[sample]: assets/panel%20image.png\n')
     const output = buildWiki(options)
-    expect(output.get('_assets/opticutlist-docs/docs/assets/panel image.png')?.toString()).toBe('image-bytes')
-    expect(output.get('_assets/opticutlist-docs/public/sample.svg')?.toString()).toBe('<svg/>')
-    const result = output.get('Docs-images.md')?.toString()
-    expect(result).toContain('https://raw.githubusercontent.com/wiki/example/opticutlist/_assets/opticutlist-docs/docs/assets/panel%20image.png')
-    expect(result).toContain('[sample]: https://raw.githubusercontent.com/wiki/example/opticutlist/_assets/opticutlist-docs/public/sample.svg')
-    expect(result).toContain('<a href="https://github.com/example/opticutlist/wiki/Docs-architecture">')
+    expect(output.get('_assets/opticutlist-docs/docs/assets/panel image.png')).toEqual(png)
+    expect([...output.keys()]).not.toContain('_assets/opticutlist-docs/docs/assets/unused.png')
+    expect([...output.keys()]).not.toContain('_assets/opticutlist-docs/docs/notes.txt')
+    expect(output.get('Docs-images.md')?.toString()).toContain('[sample]: https://raw.githubusercontent.com/wiki/example/opticutlist/_assets/opticutlist-docs/docs/assets/panel%20image.png')
   })
 
   it('links source code, root documentation and non-doc directories to the main repository', () => {
@@ -107,8 +108,8 @@ describe('Wiki generation and managed synchronization', () => {
 
   it('is idempotent and removes only unmodified obsolete managed pages and assets', () => {
     const options = fixture()
-    put(options, 'docs/old.md', '# Old\n')
-    put(options, 'docs/old.png', 'old-image')
+    put(options, 'docs/old.md', '# Old\n![Panel](old.png)\n')
+    put(options, 'docs/old.png', png)
     syncWiki(options)
     writeFileSync(join(options.destination, 'Manual-notes.md'), '# Keep this\n')
     writeFileSync(join(options.destination, '_Footer.md'), 'Manual footer\n')
@@ -190,4 +191,149 @@ describe('Wiki generation and managed synchronization', () => {
     syncWiki(options)
     expect(readdirSync(join(options.source, 'docs')).map(name => [name, readFileSync(join(options.source, 'docs', name), 'utf8')])).toEqual(before)
   })
+  it.each(['.env', '.hidden/page.md', 'credentials.md', 'private.key', 'backup.zip', 'database.sql', 'debug.log', 'project.export.json', 'image.png.md', 'secret.pem.png'])('rejects suspicious documentation files before writing: %s', name => {
+    const options = fixture()
+    put(options, `docs/${name}`, 'not public')
+    // Unsupported ordinary files are never copied; references must fail closed.
+    put(options, 'docs/unsafe.md', `![Image](${name})`)
+    expect(() => syncWiki(options)).toThrow()
+    expect(existsSync(options.destination)).toBe(false)
+  })
+
+  it.each(['../outside.png', '/absolute.png', '../../escape.png', '%2e%2e/outside.png', '%252e%252e/outside.png', 'assets/%2fetc.png', 'C:/image.png', 'javascript:alert(1)', 'data:image/png;base64,AAAA', 'file:///image.png', '//host/image.png', 'https://example.org/image.png'])('rejects unsafe image references without modifying an existing Wiki: %s', reference => {
+    const options = fixture()
+    syncWiki(options)
+    put(options, 'outside.png', png)
+    const before = readFileSync(join(options.destination, MANIFEST))
+    put(options, 'docs/unsafe.md', `![Image](${reference})`)
+    expect(() => syncWiki(options)).toThrow()
+    expect(readFileSync(join(options.destination, MANIFEST))).toEqual(before)
+    expect(existsSync(join(options.destination, 'Docs-unsafe.md'))).toBe(false)
+  })
+
+  it.each(['javascript:alert(1)', 'file:///etc/passwd', 'data:text/html,hello', 'vbscript:hello', '//example.org/path'])('rejects unsafe link schemes: %s', reference => {
+    const options = fixture()
+    put(options, 'docs/unsafe.md', `[Link](${reference})`)
+    expect(() => buildWiki(options)).toThrow()
+  })
+
+  it.each(['<svg/>', '<svg><script>alert(1)</script></svg>'])('rejects all SVG, including active content', svg => {
+    const options = fixture()
+    put(options, 'docs/image.svg', svg)
+    put(options, 'docs/image.md', '![Image](image.svg)')
+    expect(() => syncWiki(options)).toThrow(/SVG is not supported/)
+    expect(existsSync(options.destination)).toBe(false)
+  })
+
+  it('rejects disguised images, image metadata and trailing payloads', () => {
+    for (const data of [Buffer.from('not an image'), Buffer.concat([png, Buffer.from('payload')]), Buffer.from('<svg/>')]) {
+      const options = fixture()
+      put(options, 'docs/image.png', data)
+      put(options, 'docs/image.md', '![Image](image.png)')
+      expect(() => syncWiki(options)).toThrow(/Image content/)
+      expect(existsSync(options.destination)).toBe(false)
+    }
+  })
+
+  it('rejects binary and private-key contents disguised as Markdown without echoing contents', () => {
+    for (const data of [Buffer.from([0, 255]), Buffer.from('-----BEGIN PRIVATE KEY-----\nnot-a-real-key')]) {
+      const options = fixture()
+      put(options, 'docs/guide.md', data)
+      expect(() => syncWiki(options)).toThrow('Invalid or sensitive Markdown content in docs/guide.md.')
+      expect(existsSync(options.destination)).toBe(false)
+    }
+  })
+
+  it('rejects raw HTML instead of attempting partial sanitization', () => {
+    const options = fixture()
+    put(options, 'docs/unsafe.md', '<img src="image.png" onerror="alert(1)">')
+    expect(() => buildWiki(options)).toThrow(/Raw HTML/)
+  })
+
+  it('rejects symlinks in destination ancestors', () => {
+    const options = fixture()
+    const alias = join(options.source, 'alias')
+    symlinkSync(options.source, alias)
+    expect(() => syncWiki({ ...options, destination: join(alias, 'output') })).toThrow()
+    expect(existsSync(join(options.source, 'output'))).toBe(false)
+  })
+
+  it('builds the actual documentation without publishing or modifying it', () => {
+    const output = buildWiki({ source: process.cwd(), destination: '', repository: 'example/opticutlist', branch: 'master' })
+    expect(output.has('Home.md')).toBe(true)
+    expect(output.has('Docs-wiki-publishing.md')).toBe(true)
+  })
+
+  it('accepts verified JPEG and WebP images and rejects JPEG metadata', () => {
+    const original = Buffer.from(jpegCover.data, 'base64')
+    const profile = original.indexOf(Buffer.from([255, 226]))
+    expect(profile).toBeGreaterThan(0)
+    const jpeg = Buffer.concat([original.subarray(0, profile), original.subarray(profile + 2 + original.readUInt16BE(profile + 2))])
+    for (const [name, data] of [['panel.jpeg', jpeg], ['panel.webp', readFileSync('public/materials/previews/mdf.webp')]] as const) {
+      const options = fixture()
+      put(options, `docs/${name}`, data)
+      put(options, 'docs/image.md', `![Panel](${name})`)
+      expect(buildWiki(options).get(`_assets/opticutlist-docs/docs/${name}`)).toEqual(data)
+    }
+    const options = fixture()
+    put(options, 'docs/image.jpeg', original)
+    put(options, 'docs/image.md', '![Panel](image.jpeg)')
+    expect(() => buildWiki(options)).toThrow(/Image content/)
+  })
+
+  it('rejects PNG metadata chunks even with a valid container signature', () => {
+    const options = fixture()
+    const modified = Buffer.from(png)
+    modified.write('tEXt', 37, 'ascii')
+    put(options, 'docs/image.png', modified)
+    put(options, 'docs/image.md', '![Panel](image.png)')
+    expect(() => buildWiki(options)).toThrow(/Image content/)
+  })
+
+  it('validates through the CLI without requiring or creating a destination', () => {
+    const options = fixture()
+    const result = execFileSync(process.execPath, ['scripts/wiki/cli.ts', '--validate', '--source', options.source, '--repository', options.repository, '--branch', options.branch], { encoding: 'utf8' })
+    expect(result).toContain('no files written.')
+    expect(existsSync(options.destination)).toBe(false)
+  })
+
+  it('exposes the Wiki secret only to the clone and push steps', () => {
+    const workflow = readFileSync('.github/workflows/publish-wiki.yml', 'utf8')
+    const steps = workflow.split('      - name: ')
+    const credentialed = steps.filter(step => step.includes('secrets.WIKI_PUBLISH_TOKEN'))
+    expect(credentialed).toHaveLength(2)
+    expect(credentialed.every(step => !step.includes('node ') && !step.includes('npm '))).toBe(true)
+    expect(steps.find(step => step.startsWith('Validate documentation'))).toContain('--validate')
+    expect(workflow.indexOf('--validate')).toBeLessThan(workflow.indexOf('secrets.WIKI_PUBLISH_TOKEN'))
+    expect(workflow).toContain('github.event.repository.default_branch')
+    expect(workflow).not.toContain('pull_request_target')
+  })
+
+  it('retains manually modified managed assets instead of deleting them', () => {
+    const options = fixture()
+    put(options, 'docs/image.png', png)
+    put(options, 'docs/image.md', '![Panel](image.png)')
+    syncWiki(options)
+    const asset = join(options.destination, '_assets/opticutlist-docs/docs/image.png')
+    writeFileSync(asset, 'Manual edit')
+    put(options, 'docs/image.md', '# No image')
+    expect(() => syncWiki(options)).toThrow(/edited manually/)
+    expect(readFileSync(asset, 'utf8')).toBe('Manual edit')
+  })
+
+  it('rejects encoded parent traversal even when its target exists inside docs', () => {
+    const options = fixture()
+    put(options, 'docs/image.png', png)
+    put(options, 'docs/nested/guide.md', '![Panel](%2e%2e/image.png)')
+    expect(() => syncWiki(options)).toThrow(/Encoded traversal/)
+    expect(existsSync(options.destination)).toBe(false)
+  })
+
+  it('supports ordinary parent-relative documentation images within docs', () => {
+    const options = fixture()
+    put(options, 'docs/image.png', png)
+    put(options, 'docs/nested/guide.md', '![Panel](../image.png)')
+    expect(buildWiki(options).get('_assets/opticutlist-docs/docs/image.png')).toEqual(png)
+  })
+
 })

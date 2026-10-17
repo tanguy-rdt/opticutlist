@@ -44,48 +44,38 @@ jobs:
       - name: Test the local publisher
         run: npm run test:unit -- scripts/wiki/__tests__/publish.spec.ts
 
-      - name: Generate and publish changed Wiki content
+      - name: Validate documentation before accessing the Wiki
+        env:
+          WIKI_REPOSITORY: ${{ github.repository }}
+          SOURCE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node scripts/wiki/cli.ts --validate --source "$GITHUB_WORKSPACE" --repository "$WIKI_REPOSITORY" --branch "$SOURCE_BRANCH"
+
+      - name: Clone Wiki
         env:
           WIKI_PUBLISH_TOKEN: ${{ secrets.WIKI_PUBLISH_TOKEN }}
           WIKI_REPOSITORY: ${{ github.repository }}
+        run: bash scripts/wiki/git-auth.sh clone "$RUNNER_TEMP/opticutlist-wiki"
+
+      - name: Generate, check ownership and commit changed content without credentials
+        id: content
+        env:
+          WIKI_REPOSITORY: ${{ github.repository }}
           SOURCE_BRANCH: ${{ github.event.repository.default_branch }}
-          GIT_TERMINAL_PROMPT: '0'
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$WIKI_PUBLISH_TOKEN" ]]; then
-            echo '::error::Missing WIKI_PUBLISH_TOKEN. Follow docs/wiki-publishing.md to configure Wiki write access.'
-            exit 1
-          fi
           wiki_dir="$RUNNER_TEMP/opticutlist-wiki"
-          askpass="$RUNNER_TEMP/opticutlist-wiki-askpass"
-          trap 'rm -f "$askpass"' EXIT
-          umask 077
-          cat > "$askpass" <<'ASKPASS'
-          #!/usr/bin/env bash
-          case "$1" in
-            *Username*) printf '%s\n' 'x-access-token' ;;
-            *Password*) printf '%s\n' "$WIKI_PUBLISH_TOKEN" ;;
-            *) exit 1 ;;
-          esac
-          ASKPASS
-          chmod 700 "$askpass"
-          export GIT_ASKPASS="$askpass"
-          # No token in URLs, git config, process arguments or diagnostic output.
-          if ! git -c credential.helper= clone --quiet --depth=1 "https://github.com/${WIKI_REPOSITORY}.wiki.git" "$wiki_dir"; then
-            echo '::error::Cannot clone the Wiki. Enable and initialize it, and check WIKI_PUBLISH_TOKEN access and organization policies. No GITHUB_TOKEN fallback is used.'
-            exit 1
-          fi
-          wiki_branch="$(git -C "$wiki_dir" symbolic-ref --short HEAD)"
           node scripts/wiki/cli.ts --source "$GITHUB_WORKSPACE" --destination "$wiki_dir" --repository "$WIKI_REPOSITORY" --branch "$SOURCE_BRANCH"
-          # Fresh clone: only the generator changes files; include managed output even if a manual .gitignore matches it.
           git -C "$wiki_dir" add --force --all
           if git -C "$wiki_dir" diff --cached --quiet; then
             echo 'Wiki content is unchanged; no commit or push.'
             exit 0
           fi
           git -C "$wiki_dir" -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit --quiet -m 'docs: synchronize developer documentation'
-          if ! git -C "$wiki_dir" -c credential.helper= push origin "HEAD:$wiki_branch"; then
-            echo '::error::Wiki push failed. Check token write permission, expiry, SSO/approval and concurrent Wiki edits. No force-push or authentication fallback is attempted.'
-            exit 1
-          fi
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Push changed Wiki content
+        if: steps.content.outputs.changed == 'true'
+        env:
+          WIKI_PUBLISH_TOKEN: ${{ secrets.WIKI_PUBLISH_TOKEN }}
+        run: bash scripts/wiki/git-auth.sh push "$RUNNER_TEMP/opticutlist-wiki"

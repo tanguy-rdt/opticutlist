@@ -116,7 +116,7 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 - Configure Vite's base path for the actual repository and Vue Router hash history for static hosting.
 - Document required GitHub repository settings in `README.md`.
 - Never deploy a failed build.
-- Developer documentation lives in `docs/`; the Wiki publishing workflow generates a separate managed copy. Edit source documentation, preserve unrelated Wiki pages and keep local publisher tests free of network publication. See `docs/wiki-publishing.md` for credential setup and ownership rules.
+- Developer documentation lives in `docs/`; the Wiki publishing workflow generates a separate managed copy. Edit source documentation, preserve unrelated Wiki pages and keep local publisher tests free of network publication. Wiki publication permits only Markdown and referenced validated PNG/JPEG/WebP assets inside docs; keep SVG/HTML rejected and generation isolated from Wiki credentials. See `docs/wiki-publishing.md` for credential setup and ownership rules.
 
 ## Documentation Maintenance
 

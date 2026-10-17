@@ -40,7 +40,7 @@ Automatic runs are scheduled by pushes changing `docs/**`, `scripts/wiki/**`, th
 
 Manual execution: **Actions → Publish developer Wiki → Run workflow**, selecting the default branch. This publishes; use the local preview command below when publication is not intended. The workflow must already exist on the default branch for manual dispatch to be available.
 
-The job checks out source with persisted credentials disabled, uses Node from `.nvmrc`, installs locked dependencies without lifecycle scripts and runs the publisher tests. It then clones the Wiki, generates locally, stages its changes, commits only if content differs and pushes without force. Identical reruns produce no commit. Concurrent automation runs serialize; a competing manual Wiki push causes a safe non-fast-forward failure, requiring a fresh rerun.
+The job checks out source with persisted credentials disabled, uses Node from `.nvmrc`, installs locked dependencies without lifecycle scripts and runs the publisher tests. It validates the complete documentation before cloning, then generates locally and checks Wiki ownership without the token. It stages changes, commits only if content differs and pushes without force. Only the clone and push steps receive `WIKI_PUBLISH_TOKEN`; the parser, tests and commit step do not. `scripts/wiki/git-auth.sh` provides the temporary askpass helper for each authenticated Git operation. Identical reruns produce no commit. Concurrent automation runs serialize; a competing manual Wiki push causes a safe non-fast-forward failure, requiring a fresh rerun.
 
 ## Managed files, names and links
 
@@ -49,19 +49,32 @@ The job checks out source with persisted credentials disabled, uses Node from `.
 | `Home.md` | Converted `docs/README.md`, plus complete generated navigation |
 | `_Sidebar.md` | Grouped links to every Markdown page, including nested directories |
 | `Docs-<path>.md` | Other `.md` / `.markdown` files, named by relative path rather than heading |
-| `_assets/opticutlist-docs/docs/...` | Non-Markdown files from docs, with original directory structure |
-| `_assets/opticutlist-docs/...` outside the docs prefix | Repository files explicitly referenced as embedded images |
+| `_assets/opticutlist-docs/docs/...` | Referenced, validated PNG/JPEG/WebP images inside docs only |
 | `.opticutlist-docs-manifest.json` | Versioned repository identity and SHA-256 hashes authorizing managed updates/deletions |
 
 Example: `docs/optimization.md` → `Docs-optimization.md`; `docs/guides/setup.md` → `Docs-guides--setup.md`. Each path component is normalized to ASCII letters/numbers and hyphens. Changing a page heading does not change its URL. Ambiguous case/slug collisions fail instead of silently overwriting another page.
 
-Add a Markdown file under docs to publish it automatically. Relative Markdown links, reference definitions and ordinary HTML image/link attributes are rewritten through source offsets from a Markdown parser. Links to docs pages/directories with README become absolute Wiki page URLs, retaining query/anchor suffixes. Links to source code, root guidance or directories outside docs point to the main repository's default branch. Copied images/assets use raw Wiki asset URLs. External URLs and same-page anchors remain unchanged.
+Add a Markdown file under docs to publish it automatically. Relative Markdown links, reference definitions and image destinations are rewritten through source offsets from a Markdown parser. Links to docs pages/directories with README become absolute Wiki page URLs, retaining query/anchor suffixes. Links to source code, root guidance or directories outside docs point to the main repository's default branch. Copied images/assets use raw Wiki asset URLs. HTTP(S), mailto links and same-page anchors remain unchanged; authenticated URLs and other schemes are rejected. Images must be local.
 
-Fenced code (including Mermaid), indented/inline code, tables, labels and link titles are preserved; the script patches destinations rather than reserializing Markdown. Keep authored asset references explicit: complex HTML `srcset`, CSS URLs and custom Markdown extension syntax are not rewritten. Raw Wiki asset delivery must be accessible to readers; public Wiki assets work without an account, while private deployment/access policies need maintainer verification. Symlinks, missing local link targets and paths outside the repository are rejected.
+Fenced code (including Mermaid), indented/inline code, tables, labels and link titles are preserved; the script patches destinations rather than reserializing Markdown. Raw HTML is rejected; use Markdown image/link syntax or fenced examples. This avoids incomplete HTML sanitization. Raw Wiki asset delivery must be accessible to readers; public Wiki assets work without an account, while private deployment/access policies need maintainer verification. Symlinks, missing local link targets and paths outside the repository are rejected.
 
 Renaming/removing a source page updates generated links/navigation and removes the old output **only if the manifest owns it and its content remains unchanged**. Update inbound links when renaming. There are no automatic old-URL redirects; manually maintained aliases can be added under nonconflicting names. An unrelated Wiki page is never deleted just because it is absent from docs. A manually modified managed file blocks publication until its changes are preserved in docs or a separate manual page.
 
 Do not delete or hand-edit the manifest. If it is lost, the publisher refuses existing generated filenames rather than guessing ownership. Recover the tracked manifest from Wiki history, or carefully migrate generated files with a maintainer-reviewed backup before rerunning.
+
+## Publication security rules
+
+Only `.md` and `.markdown` pages under `docs/` are published as pages. All such pages are intended to be public: do not put private drafts in this directory. Ordinary unreferenced non-Markdown files are not copied. Only explicitly referenced PNG, JPEG (`.jpg`/`.jpeg`) and WebP images within `docs/` are copied. Keep images in a directory such as `docs/assets/` and reference them with `![Panel](assets/panel.png)`; nested pages may use a relative parent path only when it resolves inside docs. Links to repository source code remain GitHub links, never copied assets.
+
+SVG is rejected entirely, including otherwise harmless SVG. Export it to PNG, JPEG or WebP. Remote images, raw HTML, absolute filesystem paths, protocol-relative URLs, encoded traversal, symlinks, hidden source paths and ambiguous/double extensions are rejected. Root guidance and source-code links such as `../ARCHITECTURE.md` and `../src/...` remain supported; they cannot publish those files to the Wiki.
+
+Sensitive filenames (environment/local configuration, credentials, private keys/certificates, dumps, backups, logs and exports) are forbidden even when unreferenced. Rename a legitimate document to an unambiguous name; never rename sensitive data to bypass validation. Unreferenced ordinary assets can remain locally but are not published.
+
+Images must be at most 5 MiB and have matching PNG/JPEG/WebP container structure. PNG chunks include CRC validation; image metadata, trailing payloads and unsupported container features are rejected. Re-export rejected images without EXIF, comments, color profiles or other metadata. Markdown must be UTF-8 text, not binary or private-key/certificate/dump content. Validation is a publication boundary, not a complete image decoder, secret scanner or steganography detector: review all public text and images before committing.
+
+All source validation runs before destination creation/writes. Errors identify the referring document and reason without quoting URL values or file contents. Existing manifest ownership, manual-edit detection and obsolete-page protections still apply. An upgrade removes previously managed assets that are no longer referenced/allowed only when their recorded content is unchanged; manually modified assets block publication.
+
+Use `node scripts/wiki/cli.ts --validate --source . --repository OWNER/REPO --branch DEFAULT_BRANCH` to validate in memory without a Wiki checkout, credentials or writes. Resolve errors in the source document or asset, rerun validation and inspect the local preview before publishing. Do not weaken the allowlist to publish a backup or private export.
 
 ## Test without publishing
 
