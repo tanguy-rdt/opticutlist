@@ -5,11 +5,19 @@ import type { StorageServices } from '../../application/storage/services'
 import { prepareSavedPlan } from '../../application/plans/saved-plan-service'
 import { savedCuttingPlanIdSchema } from '../../domain/model/ids'
 
+const REQUEST_TIMEOUT_MS = 30_000
+
 /** Remote service operations, never remote transaction callbacks or raw database writes. */
 export function createHttpStorageServices(base = '/api/v1/'): StorageServices {
   async function call<A, T>(name: string, contract: { method: string; args: z.ZodType<A>; value: z.ZodType<T> }, args: NoInfer<A>): Promise<PersistenceResult<T>> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => { controller.abort() }, REQUEST_TIMEOUT_MS)
     try {
-      const values: unknown = contract.args.parse(args)
+      const parsed = contract.args.safeParse(args)
+      if (!parsed.success) {
+        return { ok: false, error: { kind: 'invalidRecord', issues: parsed.error.issues } }
+      }
+      const values: unknown = parsed.data
       const compact: unknown = Array.isArray(values) ? Array.from<unknown>(values) : values
       if (Array.isArray(compact)) {
         while (compact.length && compact.at(-1) === undefined) {
@@ -21,6 +29,7 @@ export function createHttpStorageServices(base = '/api/v1/'): StorageServices {
       const response = await fetch(contract.method === 'GET' ? `${url}?args=${encodeURIComponent(serialized)}` : url, {
         method: contract.method,
         credentials: 'same-origin',
+        signal: controller.signal,
         headers: contract.method === 'GET' ? { Accept: 'application/json' } : { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID(), 'X-OptiCutList': '1' },
         ...(contract.method === 'GET' ? {} : { body: serialized }),
       })
@@ -38,9 +47,13 @@ export function createHttpStorageServices(base = '/api/v1/'): StorageServices {
         ok: false,
         error: {
           kind: 'storageFailure',
-          message: 'Server storage is unavailable or returned invalid data. Check the connection and reload before retrying a change; it may already have committed.'
+          message: controller.signal.aborted
+            ? 'Server storage request timed out. Reload before retrying a change; it may already have committed.'
+            : 'Server storage is unavailable or returned invalid data. Check the connection and reload before retrying a change; it may already have committed.'
         }
       }
+    } finally {
+      clearTimeout(timeout)
     }
   }
   return {
