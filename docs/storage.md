@@ -330,16 +330,20 @@ A reverse proxy must preserve the configured Host and forward the actual browser
 
 ### Standalone Docker deployment
 
-The [Dockerfile](../docker/Dockerfile) packages the existing self-hosted application as one image, one Node process, port **3000/TCP**, and one persistent **`/data`** volume. No Compose, Stack, additional HTTP server or image registry is required. Optimization remains in the browser. The ordinary GitHub Pages build is unchanged.
+The [Dockerfile](../docker/Dockerfile) packages the existing self-hosted application as one image, one Node process, port **3000/TCP**, and one persistent **`/data`** volume. No Compose, Stack or additional HTTP server is required. Optimization remains in the browser. The ordinary GitHub Pages build is unchanged.
 
-**Requirements:** an existing Docker Engine/Desktop installation with Linux containers and network access for the official `node:24-bookworm-slim` base and locked npm packages. Build on the Docker host targeted by Portainer (or explicitly transfer the locally built image to that host). Nothing is published to GHCR.
+**Requirements:** Docker Engine/Desktop with Linux containers, or Portainer connected to such a Docker host. Published images require no Git, Node.js installation or local compilation.
 
-#### Build and start
+Stable release tags publish **`ghcr.io/tanguy-rdt/opticutlist:MAJOR.MINOR.PATCH`**. The examples below use `1.2.3` as an example version, not a claim that this version has already been published. Choose a version from a successful [release publication](ci-cd.md#docker-image-publication). There are no `latest`, `stable`, major-only or minor-only aliases. The workflow targets `linux/amd64` and `linux/arm64`; it publishes the versioned multi-platform image only after both platform builds succeed. Local Docker/multi-platform verification depends on an available daemon; configuration alone is not proof of a successful image build.
 
-From the repository root:
+A maintainer must set the GHCR package visibility to **Public** before anonymous Docker or Portainer pulls work. GitHub initially creates container packages as private; no GitHub login or personal access token is required to pull a public package. See [registry visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+#### Pull and start
+
+Choose an available explicit version:
 
 ```sh
-docker build -f docker/Dockerfile -t opticutlist:local .
+docker pull ghcr.io/tanguy-rdt/opticutlist:1.2.3
 docker volume create opticutlist-data
 docker run -d \
   --name opticutlist \
@@ -348,7 +352,7 @@ docker run -d \
   -p 127.0.0.1:8080:3000 \
   -e OCL_ORIGIN=http://127.0.0.1:8080 \
   -v opticutlist-data:/data \
-  opticutlist:local
+  ghcr.io/tanguy-rdt/opticutlist:1.2.3
 ```
 
 Open **`http://127.0.0.1:8080/opticutlist/`**. Use that exact hostname: `localhost` is a different origin. Publishing to host loopback restricts access to the Docker host; the backend still listens on `0.0.0.0` inside its bridge-network container. No host networking, privileged mode or Docker socket mount is used.
@@ -367,6 +371,16 @@ The builder uses `npm ci` with the lockfile and `npm run build:self-hosted`, whi
 
 An empty named volume receives the image's writable `/data` directory. SQLite and its WAL/journal sidecars stay together there; the image contains no database. Existing databases are opened and checked with the current transactional migrations, never reset. Migration/permission failures stop startup. For a bind mount or an imported volume, the directory and database must be writable by UID/GID `1000:1000`; configure ownership deliberately while stopped rather than running the application as root. See [Docker volumes](https://docs.docker.com/engine/storage/volumes/).
 
+#### Optional local build
+
+Contributors can still build from the repository root, using the same Dockerfile and root build context:
+
+```sh
+docker build -f docker/Dockerfile -t opticutlist:local .
+```
+
+Use `opticutlist:local` instead of the GHCR image in the start command. This path needs the repository source and network access to the official Node base image and locked npm packages; it does not publish anything.
+
 #### Status, logs and lifecycle
 
 ```sh
@@ -384,12 +398,12 @@ An unhealthy result does not itself trigger Docker's restart policy. Inspect log
 
 #### Portainer: create a container
 
-Use the target Docker environment's **Containers → Add container** interface, not a Stack. The `opticutlist:local` image must already exist on **that Docker host**. Disable **Always pull the image**; there is no published GHCR image to pull.
+Use the target Docker environment's **Containers → Add container** interface, not a Stack. Enter the explicit GHCR version below and enable **Always pull the image** for this public image. No registry credentials, Git checkout, Node.js or local build is needed. For a locally built `opticutlist:local` image instead, it must already exist on that Docker host and **Always pull** must be disabled.
 
 | Portainer field | Value |
 | --- | --- |
 | Name | `opticutlist` |
-| Image | `opticutlist:local` |
+| Image | `ghcr.io/tanguy-rdt/opticutlist:1.2.3` (choose an available release version) |
 | Manual port publishing | Host `8080` → container `3000`, TCP; disable automatic publication of all exposed ports |
 | Environment | `OCL_ORIGIN=http://127.0.0.1:8080` for Docker-host loopback access; otherwise the exact approved HTTPS origin |
 | Volumes | Create/select named volume `opticutlist-data`, mount at `/data`, writable |
@@ -421,7 +435,7 @@ docker start opticutlist
 
 Use a fresh backup filename. Check that the copy command succeeded before relying on the archive; an interrupted copy is not a valid backup. Docker supports tar streaming and copying from stopped containers; `-a` preserves ownership for restoration. See [Docker copy semantics](https://docs.docker.com/reference/cli/docker/container/cp/).
 
-Restore into a **new, empty volume** and a new container name, keeping the original dataset untouched. Set `backup_file` to the completed archive if using a new shell. The example uses port 8081 so the original container can remain intact:
+Restore into a **new, empty volume** and a new container name, keeping the original dataset untouched. Set `backup_file` to the completed archive if using a new shell. The example uses port 8081 so the original container can remain intact. Use the application image version corresponding to the backup:
 
 ```sh
 docker volume create opticutlist-restored-data
@@ -432,7 +446,7 @@ docker create \
   -p 127.0.0.1:8081:3000 \
   -e OCL_ORIGIN=http://127.0.0.1:8081 \
   -v opticutlist-restored-data:/data \
-  opticutlist:local
+  ghcr.io/tanguy-rdt/opticutlist:1.2.3
 docker cp -a - opticutlist-restored:/data/ < "$backup_file"
 docker start opticutlist-restored
 ```
@@ -441,15 +455,33 @@ Verify health, projects and physical inventory before choosing the restored inst
 
 #### Updating the image
 
-Take and verify a backup first. Build the replacement from the intended source revision, stop/remove only the old **container**, then repeat the start command with the **same named volume**:
+1. Take and verify a [consistent SQLite backup](#consistent-backups-and-restoration).
+2. Pull the desired available newer version (the example below uses `1.2.4`).
+3. Stop and remove only the old **container**.
+4. Recreate it with the new version, the **same named volume**, and the same ports/environment.
+5. Verify health, projects and inventory before accepting the upgrade.
 
 ```sh
-docker build --pull -f docker/Dockerfile -t opticutlist:local .
+docker pull ghcr.io/tanguy-rdt/opticutlist:1.2.4
 docker stop --time 30 opticutlist
 docker rm opticutlist
+docker run -d \
+  --name opticutlist \
+  --restart unless-stopped \
+  --stop-timeout 30 \
+  -p 127.0.0.1:8080:3000 \
+  -e OCL_ORIGIN=http://127.0.0.1:8080 \
+  -v opticutlist-data:/data \
+  ghcr.io/tanguy-rdt/opticutlist:1.2.4
+docker inspect --format '{{.State.Health.Status}}' opticutlist
+docker logs --tail 100 opticutlist
 ```
 
-Repeat `docker run` above, or recreate through Portainer while retaining the named volume and environment. Never remove the volume as part of an update. A rebuilt image alone does not update an existing container. Startup migrations run before HTTP listening; if an upgrade fails, preserve the volume and inspect logs. Image rollback is safe only when its database schema remains compatible; otherwise restore the matching backup into a fresh volume.
+In Portainer, stop the container, use **Duplicate/Edit** to change the image version, pull/redeploy and replace the container, preserving the existing volume, environment, published port and restart policy. Inspect the replacement's health and logs. Do not select any option that deletes the persistent volume.
+
+For local-source images, rebuild with `docker build --pull -f docker/Dockerfile -t opticutlist:local .` and recreate using that local image instead. Pulling or rebuilding alone does not update a running container; there is no automatic updater.
+
+Never remove the volume as part of an update. Startup migrations run before HTTP listening; if an upgrade fails, preserve the volume and inspect logs. Database migrations may make downgrading unsafe: roll back an image only when its schema remains compatible, otherwise restore the matching backup into a fresh volume.
 
 
 ### Execution and storage boundary

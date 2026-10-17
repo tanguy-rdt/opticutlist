@@ -40,7 +40,7 @@ Credentials reach Git only through a temporary `GIT_ASKPASS` executable reading 
 
 ## Triggers and execution
 
-Native CD path filters publish the Wiki for master pushes changing `docs/**`, `scripts/wiki/**`, `.github/workflows/cd.yml` or npm manifests. Path filters do not apply to tag pushes; the Pages job alone handles those. The Wiki job explicitly requires a master push and excludes deleted refs. Pull requests, other branches and version tags never publish the Wiki. Branch renames require updating the YAML guards.
+Native CD path filters publish the Wiki for master pushes changing `docs/**`, `scripts/wiki/**`, `.github/workflows/cd.yml` or npm manifests. Path filters do not apply to tag pushes; the independent Pages and Docker jobs handle those. The Wiki job explicitly requires a master push and excludes deleted refs. Pull requests, other branches and version tags never publish the Wiki. Branch renames require updating the YAML guards.
 
 CD has no manual-dispatch trigger. After completing setup or correcting an authentication problem, rerun the Wiki job from the original relevant master-push run. For a local dry run, use the preview command below. See [CI/CD and releases](ci-cd.md).
 
