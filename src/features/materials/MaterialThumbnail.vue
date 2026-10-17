@@ -5,9 +5,14 @@ import { materialThumbnail } from './material-library'
 const props = defineProps<{ presetId: string | undefined }>()
 const failed = ref(false)
 const source = computed(() => materialThumbnail(props.presetId))
-watch(source, () => { failed.value = false })
+watch(source, () => {
+  failed.value = false
+})
+
 function imageError(event: Event): void {
-  if (event.currentTarget instanceof HTMLImageElement && event.currentTarget.getAttribute('src') === source.value) failed.value = true
+  if (event.currentTarget instanceof HTMLImageElement && event.currentTarget.getAttribute('src') === source.value) {
+    failed.value = true
+  }
 }
 </script>
 <template>

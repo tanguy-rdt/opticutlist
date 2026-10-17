@@ -13,5 +13,7 @@ const manifestSchema = z.strictObject({
   })),
 })
 export const builtInMaterialPresets = manifestSchema.parse(manifest).materials.map(preset => ({ ...preset, category: categories[preset.category] }))
-if (new Set(builtInMaterialPresets.map(preset => preset.id)).size !== builtInMaterialPresets.length) throw new Error('Duplicate material preset IDs')
+if (new Set(builtInMaterialPresets.map(preset => preset.id)).size !== builtInMaterialPresets.length) {
+  throw new Error('Duplicate material preset IDs')
+}
 export const materialPresetGroups = Object.values(categories)

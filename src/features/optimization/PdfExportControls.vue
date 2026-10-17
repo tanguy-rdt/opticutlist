@@ -13,10 +13,14 @@ const exporting = ref(false)
 const error = ref('')
 const feedback = ref('')
 const previewUrl = ref('')
+
 function clearPreview(): void {
-  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value);
+  }
   previewUrl.value = ''
 }
+
 let generation = 0
 watch([() => props.input, () => props.title, orientation], () => {
   generation += 1;
@@ -34,26 +38,41 @@ onDeactivated(() => {
   clearPreview();
   exporting.value = false
 })
+
 async function exportPdf(download: boolean): Promise<void> {
-  if (exporting.value || service === undefined) return
+  if (exporting.value || service === undefined) {
+    return
+  }
   const current = ++generation
   exporting.value = true;
   error.value = '';
   feedback.value = ''
   try {
     const result = await service.exportProject({ ...toRaw(props.input), title: props.title, orientation: orientation.value })
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     if (!result.ok) {
       error.value = `PDF export failed: ${result.error.message}`;
       return
     }
     clearPreview()
     previewUrl.value = URL.createObjectURL(new Blob([result.bytes], { type: 'application/pdf' }))
-    if (download) downloadCuttingPlanPdf(result.bytes)
-    if (!download) feedback.value = 'Complete PDF preview generated. Inventory is unchanged.'
+    if (download) {
+      downloadCuttingPlanPdf(result.bytes)
+    }
+    if (!download) {
+      feedback.value = 'Complete PDF preview generated. Inventory is unchanged.'
+    }
   } catch (cause) {
-    if (current === generation) error.value = cause instanceof Error ? `PDF export failed: ${cause.message}` : 'PDF export failed. Try again.'
-  } finally { if (current === generation) exporting.value = false }
+    if (current === generation) {
+      error.value = cause instanceof Error ? `PDF export failed: ${cause.message}` : 'PDF export failed. Try again.'
+    }
+  } finally {
+    if (current === generation) {
+      exporting.value = false
+    }
+  }
 }
 </script>
 <template>

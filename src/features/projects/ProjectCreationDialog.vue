@@ -31,11 +31,15 @@ onBeforeUnmount(() => {
 })
 
 function close(): void {
-  if (!busy.value) emit('close')
+  if (!busy.value) {
+    emit('close')
+  }
 }
 
 async function create(): Promise<void> {
-  if (busy.value) return
+  if (busy.value) {
+    return
+  }
   nameError.value = ''
   descriptionError.value = ''
   error.value = ''
@@ -50,13 +54,18 @@ async function create(): Promise<void> {
   if (!parsed.success) {
     nameError.value = parsed.error.issues.find(issue => issue.path[0] === 'name')?.message ?? ''
     descriptionError.value = parsed.error.issues.find(issue => issue.path[0] === 'description')?.message ?? ''
-    if (nameError.value) nameInput.value?.focus()
-    else descriptionInput.value?.focus()
+    if (nameError.value) {
+      nameInput.value?.focus()
+    } else {
+      descriptionInput.value?.focus()
+    }
     return
   }
   busy.value = true
   const result = await service.projects.create(parsed.data)
-  if (!active) return
+  if (!active) {
+    return
+  }
   if (result.ok) {
     await router.push({ name: 'project-materials', params: { projectId: result.value.id } })
   } else {

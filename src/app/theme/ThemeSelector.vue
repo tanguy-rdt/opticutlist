@@ -23,7 +23,9 @@ const media = typeof window.matchMedia === 'function' ? window.matchMedia('(pref
 const systemDark = ref(media?.matches ?? false)
 const storageWarning = ref('')
 const resolved = computed(() => {
-  if (preference.value !== 'system') return preference.value
+  if (preference.value !== 'system') {
+    return preference.value
+  }
   return systemDark.value ? 'dark' : 'light'
 })
 
@@ -39,9 +41,11 @@ watch(preference, (value) => {
     storageWarning.value = 'Theme applies for this visit. Your browser could not save the preference.'
   }
 })
+
 function systemChanged(event: MediaQueryListEvent): void {
   systemDark.value = event.matches
 }
+
 onMounted(() => {
   media?.addEventListener('change', systemChanged)
 })

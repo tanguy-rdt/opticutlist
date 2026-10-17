@@ -12,8 +12,12 @@ export type PdfPricingRepositories = {
 type Price = { readonly price: number; readonly currency: string }
 
 function readOptionalRecord<T>(result: PersistenceResult<T>): T | undefined {
-  if (result.ok) return result.value
-  if (result.error.kind === 'notFound') return undefined
+  if (result.ok) {
+    return result.value
+  }
+  if (result.error.kind === 'notFound') {
+    return undefined
+  }
   throw new Error('Could not read panel pricing. Check the catalog and stock data, then retry PDF generation.')
 }
 
@@ -41,21 +45,33 @@ export async function resolveProjectPdfPricing(document: ProjectCuttingPdfDocume
   }
 
   async function resolveStockProductId(id: StockItemId, visited = new Set<StockItemId>()): Promise<SupplierProductId | undefined> {
-    if (visited.has(id)) return undefined // Ambiguous/cyclic provenance cannot establish a price.
+    if (visited.has(id)) {
+      return undefined // Ambiguous/cyclic provenance cannot establish a price.
+    }
     visited.add(id)
     const item = await getStockItem(id)
-    if (!item || item.provenance.source === 'manual') return undefined
-    if (item.provenance.source === 'purchase' || item.provenance.supplierProductId) return item.provenance.supplierProductId
-    if (!item.provenance.sourceStockItemId) return undefined
+    if (!item || item.provenance.source === 'manual') {
+      return undefined
+    }
+    if (item.provenance.source === 'purchase' || item.provenance.supplierProductId) {
+      return item.provenance.supplierProductId
+    }
+    if (!item.provenance.sourceStockItemId) {
+      return undefined
+    }
     return resolveStockProductId(item.provenance.sourceStockItemId, visited)
   }
 
   const panels = await Promise.all(document.panels.map(async panel => {
-    if (panel.pricing) return panel // Preserve explicitly supplied, validated export metadata.
+    if (panel.pricing) {
+      return panel // Preserve explicitly supplied, validated export metadata.
+    }
     const productId = panel.panel.stockItemId
       ? await resolveStockProductId(panel.panel.stockItemId)
       : panel.panel.id
-    if (!productId) return panel
+    if (!productId) {
+      return panel
+    }
     const reference = await getProduct(productId)
     const pricing: Price | undefined = reference?.price === undefined
       ? undefined

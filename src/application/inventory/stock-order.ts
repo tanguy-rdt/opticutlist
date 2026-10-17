@@ -12,7 +12,9 @@ export type StockOrder = z.infer<typeof stockOrderSchema>
 export function orderStockItems(items: readonly StockItem[], orders: readonly StockOrder[]): StockItem[] {
   const ranks = new Map(orders.map(order => [order.id, new Map(order.stockItemIds.map((id, index) => [id, index]))]))
   return [...items].sort((a, b) => {
-    if (a.materialId !== b.materialId) return a.materialId < b.materialId ? -1 : 1
+    if (a.materialId !== b.materialId) {
+      return a.materialId < b.materialId ? -1 : 1
+    }
     const materialRanks = ranks.get(a.materialId)
     const rank = (materialRanks?.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (materialRanks?.get(b.id) ?? Number.MAX_SAFE_INTEGER)
     return rank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)

@@ -18,6 +18,7 @@ export const partsTransferSchema = z.strictObject({
   })),
 })
 export type PartsTransfer = z.infer<typeof partsTransferSchema>
+
 export function validatePartsTransfer(input: unknown): PersistenceResult<PartsTransfer> {
   const result = partsTransferSchema.safeParse(input)
   return result.success ? { ok: true, value: result.data } : { ok: false, error: { kind: 'invalidRecord', issues: result.error.issues } }

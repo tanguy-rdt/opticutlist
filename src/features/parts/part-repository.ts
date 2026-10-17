@@ -7,6 +7,8 @@ export const partRepositoryKey: InjectionKey<Repository<Part>> = Symbol('partRep
 
 export function usePartRepository(): Repository<Part> {
   const repository = inject(partRepositoryKey)
-  if (repository === undefined) throw new Error('Part repository was not provided')
+  if (repository === undefined) {
+    throw new Error('Part repository was not provided')
+  }
   return repository
 }

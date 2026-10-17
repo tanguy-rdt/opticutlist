@@ -24,8 +24,11 @@ const sections = [
   { label: 'Cutting Plans', route: 'project-cutting-plans' },
   { label: 'Stock', route: 'project-stock' },
 ] as const
+
 function remember(): void {
-  if (route.params.projectId !== props.projectId || !project.value) return
+  if (route.params.projectId !== props.projectId || !project.value) {
+    return
+  }
   workspaceRoute.value = { ...route }
   if (navigation) {
     navigation.activeId = project.value.id;
@@ -33,6 +36,7 @@ function remember(): void {
     navigation.tabs.set(project.value.id, route.fullPath)
   }
 }
+
 watch(() => route.fullPath, remember)
 const parsedId = cuttingProjectIdSchema.safeParse(props.projectId)
 const project = shallowRef<CuttingProject | null>(null)
@@ -45,36 +49,41 @@ if (parsedId.success) {
   provide(projectIdKey, parsedId.data)
   provide(partRepositoryKey, service.parts(parsedId.data))
 }
+
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   project.value = null
-  if (!parsedId.success) error.value = 'Invalid project ID. Open an existing project from Home.'
-  else {
+  if (!parsedId.success) {
+    error.value = 'Invalid project ID. Open an existing project from Home.'
+  } else {
     const result = await service.projects.get(parsedId.data)
     if (result.ok) {
       project.value = result.value
       remember()
       const current = await currentResults?.forProject(parsedId.data).load()
       cuttingState.available.value = current?.ok === true && current.value.result !== null
+    } else {
+      error.value = persistenceErrorMessage(result.error, 'Project')
     }
-    else error.value = persistenceErrorMessage(result.error, 'Project')
   }
   loading.value = false
 }
+
 let activated = false
 onActivated(async () => {
   if (!activated) {
     activated = true;
     return
   }
-  if (!parsedId.success) return
+  if (!parsedId.success) {
+    return
+  }
   const latest = await service.projects.get(parsedId.data)
   if (latest.ok) {
     project.value = latest.value;
     remember()
-  }
-  else {
+  } else {
     project.value = null;
     error.value = persistenceErrorMessage(latest.error, 'Project')
   }

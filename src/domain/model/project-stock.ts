@@ -30,18 +30,34 @@ export const projectOffcutSchema = z.strictObject({
   const width = tryToMicrometres(entry.region.widthMm, 1)
   const panelLength = tryToMicrometres(entry.panel.lengthMm, 1)
   const panelWidth = tryToMicrometres(entry.panel.widthMm, 1)
-  if (x === null || y === null || length === null || width === null || panelLength === null || panelWidth === null || !Number.isSafeInteger(x + length)
+  if (
+    x === null
+    || y === null
+    || length === null
+    || width === null
+    || panelLength === null
+    || panelWidth === null
+    || !Number.isSafeInteger(x + length)
     || !Number.isSafeInteger(y + width)
     || x + length > panelLength
-    || y + width > panelWidth) context.addIssue({
+    || y + width > panelWidth
+  ) {
+    context.addIssue({
       code: 'custom',
       path: ['region'],
       message: 'The offcut must lie within its physical source panel at supported geometry resolution.'
     })
+  }
   const stock = entry.stock
-  if (!stock) return
+  if (!stock) {
+    return
+  }
   const provenance = stock.provenance
-  if (stock.kind !== 'offcut' || stock.quantity !== 1 || stock.materialId !== entry.panel.materialId || stock.thicknessMm !== entry.panel.thicknessMm
+  if (
+    stock.kind !== 'offcut'
+    || stock.quantity !== 1
+    || stock.materialId !== entry.panel.materialId
+    || stock.thicknessMm !== entry.panel.thicknessMm
     || stock.grainDirection !== entry.panel.grainDirection
     || tryToMicrometres(stock.lengthMm, 1) !== length
     || tryToMicrometres(stock.widthMm, 1) !== width
@@ -49,11 +65,15 @@ export const projectOffcutSchema = z.strictObject({
     || provenance.savedPlanId !== entry.planId
     || provenance.panelIndex !== entry.panelIndex
     || provenance.wasteIndex !== entry.wasteIndex
-    || entry.panel.stockItemId !== undefined && provenance.sourceStockItemId !== entry.panel.stockItemId) context.addIssue({
+    || entry.panel.stockItemId !== undefined
+    && provenance.sourceStockItemId !== entry.panel.stockItemId
+  ) {
+    context.addIssue({
       code: 'custom',
       path: ['stock'],
       message: 'The original offcut snapshot must match its geometry, material, grain and cutting provenance.'
     })
+  }
 })
 export type ProjectOffcut = z.infer<typeof projectOffcutSchema>
 export const projectStockSchema = z.strictObject({
@@ -72,10 +92,26 @@ export const projectStockSchema = z.strictObject({
     restored: z.array(z.strictObject({ stock: stockItemSchema, quantity: z.number().int().positive() }).refine(movement => movement.quantity <= movement.stock.quantity, 'Movement quantity cannot exceed its source snapshot')).default([]),
   })),
 }).superRefine((value, context) => {
-  if (new Set(value.entries.map(entry => entry.id)).size !== value.entries.length) context.addIssue({ code: 'custom', path: ['entries'], message: 'Offcut identities must be unique.' })
-  if (new Set(value.entries.flatMap(entry => entry.stock ? [entry.stock.id] : [])).size !== value.entries.filter(entry => entry.stock).length) context.addIssue({ code: 'custom', path: ['entries'], message: 'Physical offcut identities must be unique.' })
-  if (new Set(value.movements.map(movement => movement.id)).size !== value.movements.length) context.addIssue({ code: 'custom', path: ['movements'], message: 'Stock update identities must be unique.' })
-  for (const movement of value.movements) for (const stock of [...movement.added, ...movement.removed]) if (stock.kind !== 'offcut' || stock.provenance.source !== 'cutting' || stock.provenance.projectId !== value.id) context.addIssue({ code: 'custom', path: ['movements'], message: 'Stock updates can only contain this project’s offcuts.' })
-  for (const entry of value.entries) if (entry.stock && (entry.stock.provenance.source !== 'cutting' || entry.stock.provenance.projectId !== value.id)) context.addIssue({ code: 'custom', path: ['entries'], message: 'Offcuts must retain their project cutting provenance.' })
+  if (new Set(value.entries.map(entry => entry.id)).size !== value.entries.length) {
+    context.addIssue({ code: 'custom', path: ['entries'], message: 'Offcut identities must be unique.' })
+  }
+  if (new Set(value.entries.flatMap(entry => entry.stock ? [entry.stock.id] : [])).size !== value.entries.filter(entry => entry.stock).length) {
+    context.addIssue({ code: 'custom', path: ['entries'], message: 'Physical offcut identities must be unique.' })
+  }
+  if (new Set(value.movements.map(movement => movement.id)).size !== value.movements.length) {
+    context.addIssue({ code: 'custom', path: ['movements'], message: 'Stock update identities must be unique.' })
+  }
+  for (const movement of value.movements) {
+    for (const stock of [...movement.added, ...movement.removed]) {
+      if (stock.kind !== 'offcut' || stock.provenance.source !== 'cutting' || stock.provenance.projectId !== value.id) {
+        context.addIssue({ code: 'custom', path: ['movements'], message: 'Stock updates can only contain this project’s offcuts.' })
+      }
+    }
+  }
+  for (const entry of value.entries) {
+    if (entry.stock && (entry.stock.provenance.source !== 'cutting' || entry.stock.provenance.projectId !== value.id)) {
+      context.addIssue({ code: 'custom', path: ['entries'], message: 'Offcuts must retain their project cutting provenance.' })
+    }
+  }
 })
 export type ProjectStock = z.infer<typeof projectStockSchema>

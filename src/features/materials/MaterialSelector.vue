@@ -22,32 +22,46 @@ const activeOptionId = computed(() => {
 })
 const groups = computed(() => [...new Set(visible.value.map(option => option.group))])
 const listId = computed(() => `${props.id}-list`)
+
 function optionId(option: MaterialOption): string {
   return `${props.id}-option-${String(props.options.indexOf(option))}`
 }
+
 function close(restoreFocus = false): void {
   open.value = false
-  if (restoreFocus) trigger.value?.focus()
+  if (restoreFocus) {
+    trigger.value?.focus()
+  }
 }
+
 async function show(): Promise<void> {
-  if (props.disabled) return
+  if (props.disabled) {
+    return
+  }
   query.value = ''
   active.value = Math.max(0, props.options.findIndex(option => option.value === props.modelValue))
   open.value = true
   await nextTick()
   search.value?.focus({ preventScroll: true })
   scrollActive()
-  if (popup.value && typeof popup.value.scrollIntoView === 'function') popup.value.scrollIntoView({ block: 'nearest' })
+  if (popup.value && typeof popup.value.scrollIntoView === 'function') {
+    popup.value.scrollIntoView({ block: 'nearest' })
+  }
 }
+
 function scrollActive(): void {
   const option = visible.value[active.value]
   const element = option ? document.getElementById(optionId(option)) : null
-  if (element && typeof element.scrollIntoView === 'function') element.scrollIntoView({ block: 'nearest' })
+  if (element && typeof element.scrollIntoView === 'function') {
+    element.scrollIntoView({ block: 'nearest' })
+  }
 }
+
 function choose(option: MaterialOption): void {
   emit('update:modelValue', option.value)
   close(true)
 }
+
 function keyboard(event: KeyboardEvent): void {
   if (!open.value) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -60,34 +74,57 @@ function keyboard(event: KeyboardEvent): void {
     event.preventDefault();
     event.stopPropagation();
     close(true)
-  }
-  else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
     event.preventDefault()
     const last = Math.max(0, visible.value.length - 1)
-    if (event.key === 'Home') active.value = 0
-    else if (event.key === 'End') active.value = last
-    else active.value = Math.min(last, Math.max(0, active.value + (event.key === 'ArrowDown' ? 1 : -1)))
+    if (event.key === 'Home') {
+      active.value = 0
+    } else if (event.key === 'End') {
+      active.value = last
+    } else {
+      active.value = Math.min(last, Math.max(0, active.value + (event.key === 'ArrowDown' ? 1 : -1)))
+    }
     scrollActive()
   } else if (event.key === 'Enter' && event.target === search.value) {
     event.preventDefault()
     const option = visible.value[active.value]
-    if (option) choose(option)
+    if (option) {
+      choose(option)
+    }
   }
 }
+
 function outside(event: PointerEvent): void {
-  if (event.target instanceof Node && !root.value?.contains(event.target)) close()
+  if (event.target instanceof Node && !root.value?.contains(event.target)) {
+    close()
+  }
 }
+
 function focusOut(event: FocusEvent): void {
-  if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) close()
+  if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) {
+    close()
+  }
 }
+
 function create(): void {
   close();
   emit('create')
 }
-watch(query, () => { active.value = 0 })
-watch(() => props.disabled, disabled => { if (disabled) close() })
-onMounted(() => { document.addEventListener('pointerdown', outside); })
-onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside); })
+
+watch(query, () => {
+  active.value = 0
+})
+watch(() => props.disabled, disabled => {
+  if (disabled) {
+    close()
+  }
+})
+onMounted(() => {
+  document.addEventListener('pointerdown', outside);
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', outside);
+})
 </script>
 <template>
   <div

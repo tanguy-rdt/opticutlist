@@ -22,21 +22,29 @@ const numbers = reactive<{ lengthMm: number | string; widthMm: number | string; 
 })
 const dimensions = [{ key: 'lengthMm', label: 'Length (mm)' }, { key: 'widthMm', label: 'Width (mm)' }, { key: 'thicknessMm', label: 'Thickness (mm)' }] as const
 const errors = shallowRef<ReadonlyMap<string, string>>(new Map())
+
 function presetValue(id: string): string {
   let value = `preset:${id}`
-  while (props.materials.some(material => material.id === value)) value += ':'
+  while (props.materials.some(material => material.id === value)) {
+    value += ':'
+  }
   return value
 }
+
 const preset = computed(() => materialPresets.find(item => presetValue(item.id) === materialId.value))
 const options = computed(() => [
   ...materialPresets.map(item => ({ value: presetValue(item.id), name: item.name, group: item.category, presetId: item.id })),
   ...props.materials.map(item => ({ value: item.id, name: item.name, group: 'Existing catalog materials', presetId: item.libraryPresetId })),
 ])
+
 function numeric(value: number | string): number | undefined {
   return typeof value === 'string' && value.trim() === '' ? undefined : Number(value)
 }
+
 async function submit(): Promise<void> {
-  if (props.disabled) return
+  if (props.disabled) {
+    return
+  }
   const parsed = stockItemSchema.safeParse({
     id: props.item?.id ?? crypto.randomUUID(),
     materialId: preset.value ? crypto.randomUUID() : materialId.value,
@@ -49,13 +57,16 @@ async function submit(): Promise<void> {
     provenance: props.item?.provenance ?? { source: 'manual' }
   })
   const issues = new Map(parsed.success ? [] : parsed.error.issues.map(issue => [String(issue.path[0]), issue.message]))
-  if (!preset.value && !props.materials.some(item => item.id === materialId.value)) issues.set('materialId', 'Choose a material or built-in preset.')
+  if (!preset.value && !props.materials.some(item => item.id === materialId.value)) {
+    issues.set('materialId', 'Choose a material or built-in preset.')
+  }
   errors.value = issues
   if (issues.size) {
     await nextTick();
     form.value?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  } else if (parsed.success) {
+    emit('save', parsed.data, preset.value?.id)
   }
-  else if (parsed.success) emit('save', parsed.data, preset.value?.id)
 }
 </script>
 <template>

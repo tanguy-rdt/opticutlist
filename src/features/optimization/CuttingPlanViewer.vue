@@ -31,7 +31,9 @@ const editError = ref('')
 const swapKey = ref('')
 const swapOpen = ref(false)
 const detailedDimensions = ref(false)
-watch(detailedDimensions, value => { canvas?.setDimensions?.(value) })
+watch(detailedDimensions, value => {
+  canvas?.setDimensions?.(value)
+})
 watch([() => props.plan, () => props.panel, () => props.parts, () => props.settings], () => {
   session.value = null
   swapOpen.value = false
@@ -40,14 +42,20 @@ watch([() => props.plan, () => props.panel, () => props.parts, () => props.setti
   editError.value = ''
   if (props.plan !== null) {
     const created = createPlanEditingSession(toRaw(props.plan), { panel: toRaw(props.panel), parts: toRaw(props.parts), settings: toRaw(props.settings) })
-    if (created.ok) session.value = created.session
+    if (created.ok) {
+      session.value = created.session
+    }
   }
 }, { immediate: true, flush: 'sync' })
 const displayedPlan = computed(() => session.value === null ? props.plan : currentEditingPlan(session.value))
 const projection = computed(() => createCuttingPlanScene(displayedPlan.value, { panel: props.panel, parts: props.parts, settings: props.settings }))
 const host = ref<HTMLDivElement | null>(null)
 const selectedKey = ref(props.selectedCopyKey ?? '')
-watch(() => props.selectedCopyKey, key => { if (key !== undefined) selectedKey.value = key })
+watch(() => props.selectedCopyKey, key => {
+  if (key !== undefined) {
+    selectedKey.value = key
+  }
+})
 const selectedPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === selectedKey.value) : undefined)
 const swapPart = computed(() => projection.value.status === 'valid' ? projection.value.scene.parts.find(part => part.key === swapKey.value) : undefined)
 const rotationEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === undefined ? null : { kind: 'rotate', copy: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex } })
@@ -56,16 +64,24 @@ const swapEdit = computed<CuttingTreeEdit | null>(() => selectedPart.value === u
   first: { partId: selectedPart.value.part.id, copyIndex: selectedPart.value.copyIndex },
   second: { partId: swapPart.value.part.id, copyIndex: swapPart.value.copyIndex }
 })
+
 function unavailableReason(edit: CuttingTreeEdit | null, emptyMessage: string): string {
-  if (session.value === null) return 'A valid cutting plan is required.'
-  if (edit === null) return emptyMessage
+  if (session.value === null) {
+    return 'A valid cutting plan is required.'
+  }
+  if (edit === null) {
+    return emptyMessage
+  }
   const proposed = applyPlanEdit(session.value, edit)
   return proposed.ok ? '' : proposed.error.message
 }
+
 const compatibleSwaps = computed(() => {
   const selected = selectedPart.value
   const editingSession = session.value
-  if (!selected || !editingSession || projection.value.status !== 'valid') return []
+  if (!selected || !editingSession || projection.value.status !== 'valid') {
+    return []
+  }
   return projection.value.scene.parts.filter(part => part.key !== selectedKey.value && applyPlanEdit(editingSession, {
     kind: 'swap', first: { partId: selected.part.id, copyIndex: selected.copyIndex },
     second: { partId: part.part.id, copyIndex: part.copyIndex },
@@ -77,14 +93,18 @@ watch(selectedKey, () => {
 })
 const rotationReason = computed(() => unavailableReason(rotationEdit.value, 'Select a placed copy to rotate.'))
 const swapReason = computed(() => unavailableReason(swapEdit.value, 'Select two different placed copies to swap.'))
+
 function announceSession(next: PlanEditingSession, message: string): void {
   session.value = next
   editError.value = ''
   editFeedback.value = message
   emit('plan-change', currentEditingPlan(next), next.cursor > 0)
 }
+
 function applyEdit(edit: CuttingTreeEdit | null): void {
-  if (session.value === null || edit === null) return
+  if (session.value === null || edit === null) {
+    return
+  }
   const outcome = applyPlanEdit(session.value, edit)
   if (!outcome.ok) {
     editError.value = outcome.error.message;
@@ -95,16 +115,28 @@ function applyEdit(edit: CuttingTreeEdit | null): void {
   swapKey.value = ''
   announceSession(outcome.session, edit.kind === 'rotate' ? 'Rotation accepted and independently validated.' : 'Swap accepted and independently validated.')
 }
+
 function undo(): void {
-  if (session.value !== null) announceSession(undoPlanEdit(session.value), 'Edit undone.')
+  if (session.value !== null) {
+    announceSession(undoPlanEdit(session.value), 'Edit undone.')
+  }
 }
+
 function redo(): void {
-  if (session.value !== null) announceSession(redoPlanEdit(session.value), 'Edit restored.')
+  if (session.value !== null) {
+    announceSession(redoPlanEdit(session.value), 'Edit restored.')
+  }
 }
+
 function resetOptimized(): void {
-  if (session.value !== null && session.value.cursor > 0 && props.confirmReset?.() === false) return
-  if (session.value !== null) announceSession(resetPlanEdits(session.value), props.savedBaseline ? 'Saved plan restored. Edit history cleared.' : 'Optimized plan restored. Edit history cleared.')
+  if (session.value !== null && session.value.cursor > 0 && props.confirmReset?.() === false) {
+    return
+  }
+  if (session.value !== null) {
+    announceSession(resetPlanEdits(session.value), props.savedBaseline ? 'Saved plan restored. Edit history cleared.' : 'Optimized plan restored. Edit history cleared.')
+  }
 }
+
 const canvasError = ref('')
 const canvasReady = ref(false)
 const view = ref<Viewport>({ x: 0, y: 0, scale: 1 })
@@ -117,6 +149,7 @@ let themeObserver: MutationObserver | null = null
 let media: MediaQueryList | null = null
 let isFitted = true
 let paused = false
+
 function palette(): PlanPalette {
   const style = getComputedStyle(document.documentElement)
   const token = (name: string) => style.getPropertyValue(`--${name}`).trim()
@@ -132,90 +165,149 @@ function palette(): PlanPalette {
     annotation: token('muted')
   }
 }
+
 function setView(next: Viewport): void {
   view.value = next;
   canvas?.setViewport(next)
 }
+
 function fit(): void {
   isFitted = true;
   setView(fittedView.value)
 }
+
 function reset(): void {
   selectedKey.value = '';
   fit()
 }
+
 function zoom(factor: number): void {
   isFitted = false
   setView(zoomViewport(view.value, factor, { x: size.width / 2, y: size.height / 2 }, fittedView.value.scale / 8, fittedView.value.scale * 32))
 }
+
 function pan(x: number, y: number): void {
   isFitted = false;
   setView(panViewport(view.value, { x, y }))
 }
+
 function keyboard(event: KeyboardEvent): void {
-  if (canvas === null) return
+  if (canvas === null) {
+    return
+  }
   switch (event.key) {
-    case 'ArrowLeft': pan(40, 0); break
-    case 'ArrowRight': pan(-40, 0); break
-    case 'ArrowUp': pan(0, 40); break
-    case 'ArrowDown': pan(0, -40); break
-    case '+': case '=': zoom(1.25); break
-    case '-': zoom(0.8); break
-    case '0': fit(); break
-    case 'Escape': selectedKey.value = ''; break
-    default: return
+    case 'ArrowLeft':
+      pan(40, 0);
+      break
+    case 'ArrowRight':
+      pan(-40, 0);
+      break
+    case 'ArrowUp':
+      pan(0, 40);
+      break
+    case 'ArrowDown':
+      pan(0, -40);
+      break
+    case '+': case '=':
+      zoom(1.25);
+      break
+    case '-':
+      zoom(0.8);
+      break
+    case '0':
+      fit();
+      break
+    case 'Escape':
+      selectedKey.value = '';
+      break
+    default:
+      return
   }
   event.preventDefault()
 }
+
 function sizeToViewport(): void {
-  if (paused || host.value === null) return
+  if (paused || host.value === null) {
+    return
+  }
   const top = host.value.getBoundingClientRect().top
   host.value.style.height = `${String(Math.max(240, window.innerHeight - top - 24))}px`
 }
+
 function windowResized(): void {
   sizeToViewport();
   resize()
 }
-watch(() => props.plan, () => { isFitted = true })
+
+watch(() => props.plan, () => {
+  isFitted = true
+})
 watch(() => props.fitRequest, () => {
   isFitted = true;
-  if (canvas) fit()
+  if (canvas) {
+    fit()
+  }
 })
+
 function resize(): void {
-  if (paused || host.value === null || projection.value.status !== 'valid') return
+  if (paused || host.value === null || projection.value.status !== 'valid') {
+    return
+  }
   const next = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
-  if (next.width === size.width && next.height === size.height) return
+  if (next.width === size.width && next.height === size.height) {
+    return
+  }
   size = next
   fittedView.value = fitDimensionedViewport(projection.value.scene.panel, size)
   canvas?.resize(size)
-  if (isFitted) fit()
+  if (isFitted) {
+    fit()
+  }
 }
-function themeChanged(): void { canvas?.setPalette(palette()) }
+
+function themeChanged(): void {
+  canvas?.setPalette(palette())
+}
+
 function render(): void {
   resizeObserver?.disconnect()
   canvas?.destroy();
   canvas = null
   canvasReady.value = false
   canvasError.value = ''
-  if (projection.value.status !== 'valid' || !projection.value.scene.parts.some(part => part.key === selectedKey.value)) selectedKey.value = ''
-  if (paused || projection.value.status !== 'valid' || host.value === null) return
+  if (
+    projection.value.status !== 'valid'
+    || !projection.value.scene.parts.some(part => part.key === selectedKey.value)
+  ) {
+    selectedKey.value = ''
+  }
+  if (paused || projection.value.status !== 'valid' || host.value === null) {
+    return
+  }
   try {
     sizeToViewport()
     size = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 400 }
     fittedView.value = fitDimensionedViewport(projection.value.scene.panel, size)
-    canvas = createPlanCanvas(host.value, projection.value.scene, size, palette(), key => { selectedKey.value = key }, next => {
+    canvas = createPlanCanvas(host.value, projection.value.scene, size, palette(), key => {
+      selectedKey.value = key
+    }, next => {
       isFitted = false;
       view.value = next
     })
     canvasReady.value = true
-    if (isFitted) fit()
-    else canvas.setViewport(view.value)
+    if (isFitted) {
+      fit()
+    } else {
+      canvas.setViewport(view.value)
+    }
     canvas.setSelection(selectedKey.value)
     canvas.setDimensions?.(detailedDimensions.value)
     resizeObserver?.disconnect()
     resizeObserver?.observe(host.value)
     const toolbar = host.value.closest('section')?.querySelector('.canvas-toolbar')
-    if (toolbar) resizeObserver?.observe(toolbar)
+    if (toolbar) {
+      resizeObserver?.observe(toolbar)
+    }
   } catch {
     canvas?.destroy();
     canvas = null
@@ -223,13 +315,16 @@ function render(): void {
     canvasError.value = 'The graphical viewer is unavailable. The textual cutting summary remains available.'
   }
 }
+
 watch(projection, render, { flush: 'post' })
 watch(selectedKey, key => {
   canvas?.setSelection(key);
   emit('select-copy', key)
 })
 onMounted(() => {
-  if (typeof ResizeObserver !== 'undefined') resizeObserver = new ResizeObserver(windowResized)
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(windowResized)
+  }
   window.addEventListener('resize', windowResized)
   sizeToViewport()
   themeObserver = new MutationObserver(themeChanged)

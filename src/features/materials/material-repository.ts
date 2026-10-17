@@ -7,6 +7,8 @@ export const materialRepositoryKey: InjectionKey<Repository<Material>> = Symbol(
 
 export function useMaterialRepository(): Repository<Material> {
   const repository = inject(materialRepositoryKey)
-  if (repository === undefined) throw new Error('Material repository was not provided')
+  if (repository === undefined) {
+    throw new Error('Material repository was not provided')
+  }
   return repository
 }

@@ -17,7 +17,9 @@ export async function loadPdfPreview(bytes: Uint8Array<ArrayBuffer>, signal: Abo
     destruction ??= loading.destroy();
     return destruction
   }
-  const abort = () => { void destroy().catch(() => { /* obsolete load */ }) }
+  const abort = () => {
+    void destroy().catch(() => { /* obsolete load */ })
+  }
   signal.addEventListener('abort', abort, { once: true })
   try {
     const document = await loading.promise
@@ -35,7 +37,9 @@ export async function loadPdfPreview(bytes: Uint8Array<ArrayBuffer>, signal: Abo
         canvas.style.width = `${String(viewport.width)}px`;
         canvas.style.height = `${String(viewport.height)}px`
         const task = page.render({ canvas, viewport, transform: [ratio, 0, 0, ratio, 0, 0] })
-        const cancel = () => { task.cancel() }
+        const cancel = () => {
+          task.cancel()
+        }
         renderSignal.addEventListener('abort', cancel, { once: true })
         try {
           await task.promise;

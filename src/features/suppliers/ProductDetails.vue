@@ -17,6 +17,7 @@ const props = defineProps<{
 const material = computed(() => props.materials.find(item => item.id === props.product?.materialId))
 const materialName = computed(() => material.value?.name ?? 'Missing material')
 const ownedQuantity = computed(() => props.stock.reduce((quantity, item) => quantity + item.quantity, 0))
+
 function grain(product: SupplierProduct): string {
   return product.grainDirection === 'none' ? 'None' : product.grainDirection === 'length' ? 'Along length' : 'Along width'
 }

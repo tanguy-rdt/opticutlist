@@ -13,15 +13,21 @@ export interface DimensionAnnotation {
   readonly label: string
 }
 
-
 /** Fixed screen-space annotation lanes, independent of physical millimeter geometry. */
 const insets = { left: 96, top: 90, right: 72, bottom: 60 }
+
 export function fitDimensionedViewport(panel: CuttingPlanScene['panel'], size: CanvasSize): Viewport {
   const fitted = fitViewport(panel, { width: size.width - insets.left - insets.right, height: size.height - insets.top - insets.bottom }, 0)
   return { ...fitted, x: fitted.x + insets.left, y: fitted.y + insets.top }
 }
+
 /** Values come from validated millimeters; only annotation placement uses screen coordinates. */
-export function dimensionAnnotations(scene: CuttingPlanScene, view: Viewport, selected: string, detailed: boolean): readonly DimensionAnnotation[] {
+export function dimensionAnnotations(
+  scene: CuttingPlanScene,
+  view: Viewport,
+  selected: string,
+  detailed: boolean
+): readonly DimensionAnnotation[] {
   const panel = rectToCanvas(scene.panel, view)
   const annotations: DimensionAnnotation[] = [
     {
@@ -44,7 +50,9 @@ export function dimensionAnnotations(scene: CuttingPlanScene, view: Viewport, se
     },
   ]
   const part = detailed ? scene.parts.find(item => item.key === selected) : undefined
-  if (!part) return annotations
+  if (!part) {
+    return annotations
+  }
   const rect = rectToCanvas(part.region, view)
   annotations.push(
     {
@@ -66,24 +74,28 @@ export function dimensionAnnotations(scene: CuttingPlanScene, view: Viewport, se
       label: `${String(part.dimensions.widthMm)} mm`
     },
   )
-  if (toNonNegativeUm(part.region.xMm) > 0) annotations.push({
-    id: 'position-x',
-    axis: 'horizontal',
-    start: panel.x,
-    end: rect.x,
-    edge: rect.y,
-    lane: panel.y - 62,
-    label: `X ${String(part.region.xMm)} mm`
-  })
-  if (toNonNegativeUm(part.region.yMm) > 0) annotations.push({
-    id: 'position-y',
-    axis: 'vertical',
-    start: panel.y,
-    end: rect.y,
-    edge: rect.x,
-    lane: panel.x - 62,
-    label: `Y ${String(part.region.yMm)} mm`
-  })
+  if (toNonNegativeUm(part.region.xMm) > 0) {
+    annotations.push({
+      id: 'position-x',
+      axis: 'horizontal',
+      start: panel.x,
+      end: rect.x,
+      edge: rect.y,
+      lane: panel.y - 62,
+      label: `X ${String(part.region.xMm)} mm`
+    })
+  }
+  if (toNonNegativeUm(part.region.yMm) > 0) {
+    annotations.push({
+      id: 'position-y',
+      axis: 'vertical',
+      start: panel.y,
+      end: rect.y,
+      edge: rect.x,
+      lane: panel.x - 62,
+      label: `Y ${String(part.region.yMm)} mm`
+    })
+  }
   return annotations
 }
 
@@ -101,9 +113,13 @@ export function createDimensionOverlay(layer: Konva.Layer) {
     group.setAttrs({ x: -view.x / view.scale, y: -view.y / view.scale, scaleX: 1 / view.scale, scaleY: 1 / view.scale })
     slots.forEach(({ lines, text }, index) => {
       const item = annotations[index]
-      for (const line of lines) line.setAttrs({ visible: item !== undefined })
+      for (const line of lines) {
+        line.setAttrs({ visible: item !== undefined })
+      }
       text.setAttrs({ visible: item !== undefined })
-      if (!item) return
+      if (!item) {
+        return
+      }
       const { start, end, lane, edge } = item
       const direction = Math.sign(lane - edge)
       const paths: [number, number, number, number][] = [
@@ -115,7 +131,9 @@ export function createDimensionOverlay(layer: Konva.Layer) {
       ]
       lines.forEach((line, lineIndex) => {
         const points = paths[lineIndex]
-        if (!points) return
+        if (!points) {
+          return
+        }
         line.setAttrs({ stroke: color, points: item.axis === 'horizontal' ? points : [points[1], points[0], points[3], points[2]] })
       })
       const width = Math.max(90, item.label.length * 7)

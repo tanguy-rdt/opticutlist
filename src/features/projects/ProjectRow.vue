@@ -12,17 +12,31 @@ const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 const trigger = ref<{ focus(): void } | null>(null)
 const menu = ref<HTMLElement | null>(null)
+
 function close(restoreFocus = false): void {
   open.value = false;
-  if (restoreFocus) trigger.value?.focus()
+  if (restoreFocus) {
+    trigger.value?.focus()
+  }
 }
+
 async function show(): Promise<void> {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   open.value = true;
   await nextTick();
   menu.value?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
 }
-async function toggle(): Promise<void> { if (open.value) close(); else await show() }
+
+async function toggle(): Promise<void> {
+  if (open.value) {
+    close();
+  } else {
+    await show()
+  }
+}
+
 function keyboard(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -35,23 +49,44 @@ function keyboard(event: KeyboardEvent): void {
   if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
     event.preventDefault()
     let position: number
-    if (event.key === 'Home') position = 0
-    else if (event.key === 'End') position = items.length - 1
-    else position = (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    if (event.key === 'Home') {
+      position = 0
+    } else if (event.key === 'End') {
+      position = items.length - 1
+    } else {
+      position = (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    }
     items[position]?.focus()
   }
 }
+
 function focusOut(event: FocusEvent): void {
-  if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) close()
+  if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) {
+    close()
+  }
 }
+
 function outside(event: PointerEvent): void {
-  if (event.target instanceof Node && !root.value?.contains(event.target)) close()
+  if (event.target instanceof Node && !root.value?.contains(event.target)) {
+    close()
+  }
 }
+
 watch(open, value => {
-  if (value) document.addEventListener('pointerdown', outside); else document.removeEventListener('pointerdown', outside)
+  if (value) {
+    document.addEventListener('pointerdown', outside);
+  } else {
+    document.removeEventListener('pointerdown', outside)
+  }
 })
-watch(() => props.disabled, value => { if (value) close() })
-onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
+watch(() => props.disabled, value => {
+  if (value) {
+    close()
+  }
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', outside)
+})
 </script>
 <template>
   <li class="relative flex items-center gap-3 rounded-lg px-4 py-5 transition-colors hover:bg-hover sm:gap-5 sm:px-5 motion-reduce:transition-none">

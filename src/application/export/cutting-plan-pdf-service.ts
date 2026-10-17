@@ -60,9 +60,13 @@ export type CuttingPlanPdfResult =
 
 /** Reuse the same scene, validation and metric projection for both internal panel and whole-result exports. */
 function panelDocument(snapshot: CuttingPlanPdfRequest): CuttingPlanPdfDocument {
-  if (snapshot.pricing) supplierProductSchema.pick({ price: true, currency: true }).required({ price: true }).parse(snapshot.pricing)
+  if (snapshot.pricing) {
+    supplierProductSchema.pick({ price: true, currency: true }).required({ price: true }).parse(snapshot.pricing)
+  }
   const projection = createCuttingPlanScene(snapshot.plan, snapshot)
-  if (projection.status !== 'valid') throw new Error(projection.status === 'invalid' ? projection.message : 'No cutting plan to export.')
+  if (projection.status !== 'valid') {
+    throw new Error(projection.status === 'invalid' ? projection.message : 'No cutting plan to export.')
+  }
   const { plan, ...metadata } = snapshot
   const placements = projection.scene.parts.map(part => ({
     partId: part.part.id,
@@ -73,6 +77,7 @@ function panelDocument(snapshot: CuttingPlanPdfRequest): CuttingPlanPdfDocument 
   }))
   return { ...metadata, scene: projection.scene, metrics: computeAreaMetrics(snapshot.panel, placements), unplaced: plan.unplaced }
 }
+
 export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { ok: true; document: ProjectCuttingPdfDocument } | { ok: false; error: { kind: 'invalidPlan'; message: string } } {
   try {
     const snapshot = structuredClone(request)
@@ -81,19 +86,29 @@ export function prepareProjectPdfDocument(request: ProjectCuttingPdfRequest): { 
         ...(snapshot.cover.title === undefined ? {} : { titleOverride: snapshot.cover.title }),
         ...(snapshot.cover.description === undefined ? {} : { description: snapshot.cover.description }),
       })
-      if (snapshot.cover.image) coverImageSchema.parse(snapshot.cover.image)
+      if (snapshot.cover.image) {
+        coverImageSchema.parse(snapshot.cover.image)
+      }
     }
     const validation = validateProjectPlan(snapshot.plan, savedPlanContext(snapshot))
-    if (!validation.valid) throw new Error(validation.issues.map(issue => issue.message).join('; '))
+    if (!validation.valid) {
+      throw new Error(validation.issues.map(issue => issue.message).join('; '))
+    }
     const prices = new Map(snapshot.panelPrices?.map(price => {
       const valid = supplierProductSchema.pick({ price: true, currency: true }).required({ price: true }).extend({ id: panelSnapshotSchema.shape.id }).parse(price)
-      if (!snapshot.sources.some(source => source.product.id === valid.id)) throw new Error('Unknown panel pricing reference.')
+      if (!snapshot.sources.some(source => source.product.id === valid.id)) {
+        throw new Error('Unknown panel pricing reference.')
+      }
       return [valid.id, valid] as const
     }))
-    if (prices.size !== (snapshot.panelPrices?.length ?? 0)) throw new Error('Duplicate pricing reference.')
+    if (prices.size !== (snapshot.panelPrices?.length ?? 0)) {
+      throw new Error('Duplicate pricing reference.')
+    }
     const panels = snapshot.plan.panels.map((allocation, index) => {
       const source = snapshot.sources.find(source => source.product.id === allocation.supplierProductId)
-      if (!source) throw new Error('Missing historical panel reference.')
+      if (!source) {
+        throw new Error('Missing historical panel reference.')
+      }
       const pricing = prices.get(source.product.id)
       return panelDocument({
         ...(pricing ? { pricing: { price: pricing.price, currency: pricing.currency } } : {}),
@@ -133,9 +148,13 @@ export function createCuttingPlanPdfService(port: CuttingPlanPdfPort, pricingRep
   return {
     async exportProject(request: ProjectCuttingPdfRequest): Promise<CuttingPlanPdfResult> {
       const prepared = prepareProjectPdfDocument(request)
-      if (!prepared.ok) return prepared
+      if (!prepared.ok) {
+        return prepared
+      }
       try {
-        if (!port.generateProject) throw new Error('Complete cutting-result PDF export is unavailable.')
+        if (!port.generateProject) {
+          throw new Error('Complete cutting-result PDF export is unavailable.')
+        }
         const document = pricingRepositories ? await resolveProjectPdfPricing(prepared.document, pricingRepositories) : prepared.document
         return { ok: true, bytes: await port.generateProject(document) }
       } catch (cause) {
@@ -149,8 +168,9 @@ export function createCuttingPlanPdfService(port: CuttingPlanPdfPort, pricingRep
       try {
         const snapshot = structuredClone(request)
         let document: CuttingPlanPdfDocument
-        try { document = panelDocument(snapshot) }
-        catch (cause) {
+        try {
+          document = panelDocument(snapshot)
+        } catch (cause) {
           return { ok: false, error: { kind: 'invalidPlan', message: cause instanceof Error ? cause.message : 'Invalid cutting plan.' } }
         }
         const bytes = await port.generate(document)
@@ -164,4 +184,5 @@ export function createCuttingPlanPdfService(port: CuttingPlanPdfPort, pricingRep
     },
   }
 }
+
 export type CuttingPlanPdfService = ReturnType<typeof createCuttingPlanPdfService>

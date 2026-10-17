@@ -51,14 +51,18 @@ app.provide(cuttingConfirmationServiceKey, createCuttingConfirmationService(pers
 app.provide(projectServiceKey, createProjectService(persistence))
 app.provide(partsTransferServiceKey, createPartsTransferService(persistence, projectJson))
 app.provide(optimizationServiceFactoryKey, () => createOptimizationService(createOptimizationWorker))
-app.provide(cuttingPlanPdfServiceKey, createCuttingPlanPdfService({ generate: async document => {
-  const { generateCuttingPlanPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
-  return generateCuttingPlanPdf(document)
-}, generateProject: async document => {
-  const { generateProjectCuttingPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
-  return generateProjectCuttingPdf(document)
-} }, persistence))
-app.onUnmount(() => { persistence.close() })
+app.provide(cuttingPlanPdfServiceKey, createCuttingPlanPdfService({
+  generate: async document => {
+    const { generateCuttingPlanPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
+    return generateCuttingPlanPdf(document)
+  }, generateProject: async document => {
+    const { generateProjectCuttingPdf } = await import('./infrastructure/pdf/cutting-plan-pdf')
+    return generateProjectCuttingPdf(document)
+  }
+}, persistence))
+app.onUnmount(() => {
+  persistence.close()
+})
 
 app.use(createAppPinia())
 app.use(createAppRouter())

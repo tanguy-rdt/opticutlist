@@ -37,12 +37,18 @@ const navigation = [
 ]
 watch(() => route.fullPath, () => {
   expanded.value = false
-  if (route.name === 'projects') projectNavigation.destination = 'overview'
+  if (route.name === 'projects') {
+    projectNavigation.destination = 'overview'
+  }
 })
 
 function active(destination: string): boolean {
-  if (destination === '/') return route.path === '/'
-  if (destination === '/catalog') return route.name === 'suppliers'
+  if (destination === '/') {
+    return route.path === '/'
+  }
+  if (destination === '/catalog') {
+    return route.name === 'suppliers'
+  }
   if (destination === '/projects') {
     return route.path.startsWith('/projects') || route.path === '/import'
   }
@@ -50,13 +56,24 @@ function active(destination: string): boolean {
 }
 
 async function resume(event: MouseEvent, destination: string): Promise<void> {
-  if (destination !== '/projects' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
+  if (
+    destination !== '/projects'
+    || event.ctrlKey
+    || event.metaKey
+    || event.shiftKey
+    || event.altKey
+    || event.button !== 0
+  ) {
+    return
+  }
   event.preventDefault()
 
   const projectId = projectNavigation.destination === 'workspace' ? projectNavigation.activeId : null
   if (projectId) {
     const project = await projects.projects.get(projectId)
-    if (projectNavigation.activeId !== projectId || projectNavigation.destination !== 'workspace') return
+    if (projectNavigation.activeId !== projectId || projectNavigation.destination !== 'workspace') {
+      return
+    }
     if (project.ok) {
       await router.push(projectDestination.value)
       return
@@ -71,7 +88,9 @@ async function resume(event: MouseEvent, destination: string): Promise<void> {
 }
 
 function closeNavigation(): void {
-  if (!expanded.value) return
+  if (!expanded.value) {
+    return
+  }
   expanded.value = false
   toggle.value?.focus()
 }

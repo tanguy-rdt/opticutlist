@@ -7,6 +7,7 @@ export const materialPresets = builtInMaterialPresets.map(preset => ({
   thumbnail: `${import.meta.env.BASE_URL}materials/${preset.preview}`,
 }))
 export type MaterialPreset = typeof materialPresets[number]
+
 export function materialThumbnail(presetId: string | undefined): string | undefined {
   return materialPresets.find(preset => preset.id === presetId)?.thumbnail
 }

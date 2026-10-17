@@ -12,9 +12,17 @@ const stockBusy = ref(false)
 const busy = computed(() => catalogBusy.value || stockBusy.value)
 const pendingCatalogImport = ref(false)
 const pendingStockImport = ref(false)
+
 function close(): void {
-  if (busy.value) return
-  if ((pendingCatalogImport.value || pendingStockImport.value) && !window.confirm('Discard pending import previews? Nothing has been imported.')) return
+  if (busy.value) {
+    return
+  }
+  if (
+    (pendingCatalogImport.value || pendingStockImport.value)
+    && !window.confirm('Discard pending import previews? Nothing has been imported.')
+  ) {
+    return
+  }
   pendingCatalogImport.value = false
   pendingStockImport.value = false
   emit('close')

@@ -23,7 +23,9 @@ function focusName(): void {
 defineExpose({ focusName })
 
 async function submit(): Promise<void> {
-  if (props.disabled) return
+  if (props.disabled) {
+    return
+  }
   const result = supplierInputSchema.safeParse({
     id: props.supplier?.id ?? crypto.randomUUID(),
     name: name.value,
@@ -32,8 +34,9 @@ async function submit(): Promise<void> {
   errors.value = new Map(
     result.success ? [] : result.error.issues.map(issue => [String(issue.path[0]), issue.message]),
   )
-  if (result.success) emit('save', result.data)
-  else {
+  if (result.success) {
+    emit('save', result.data)
+  } else {
     await nextTick()
     form.value?.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus()
   }

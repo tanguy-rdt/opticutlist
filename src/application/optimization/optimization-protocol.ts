@@ -48,7 +48,9 @@ export function isRequestId(value: unknown): value is number {
 
 /** Check the optimizer's required fields without stripping catalog or stock metadata. */
 function isPanelSpec(value: unknown): boolean {
-  if (!isRecord(value)) return false
+  if (!isRecord(value)) {
+    return false
+  }
   const fields = partSchema.shape
   return fields.materialId.safeParse(value.materialId).success &&
     fields.lengthMm.safeParse(value.lengthMm).success &&
@@ -69,7 +71,9 @@ export function isOptimizeRequest(data: unknown): data is OptimizeRequest {
 }
 
 export function isOptimizeProjectRequest(data: unknown): data is OptimizeProjectRequest {
-  if (!isRecord(data) || data.type !== 'optimizeProject' || !isRequestId(data.requestId) || !isRecord(data.input)) return false
+  if (!isRecord(data) || data.type !== 'optimizeProject' || !isRequestId(data.requestId) || !isRecord(data.input)) {
+    return false
+  }
   return Array.isArray(data.input.panels)
     && data.input.panels.every((source: unknown) => isRecord(source) && optimizationPanelSchema.safeParse(source.product).success && panelQuantitySchema.safeParse(source.quantity).success) &&
     Array.isArray(data.input.parts) && data.input.parts.every((part: unknown) => partSchema.safeParse(part).success) && cuttingSettingsSchema.safeParse(data.input.settings).success
@@ -81,18 +85,38 @@ export function hasTreeStructure(root: unknown): boolean {
   const visited = new Set<unknown>()
   while (remaining.length > 0) {
     const node = remaining.pop()
-    if (visited.has(node)) continue
+    if (visited.has(node)) {
+      continue
+    }
     visited.add(node)
-    if (!isRecord(node) || !isRecord(node.region)) return false
+    if (!isRecord(node) || !isRecord(node.region)) {
+      return false
+    }
     const region = node.region
-    if (!['xMm', 'yMm', 'lengthMm', 'widthMm'].every((key) => typeof region[key] === 'number')) return false
+    if (!['xMm', 'yMm', 'lengthMm', 'widthMm'].every((key) => typeof region[key] === 'number')) {
+      return false
+    }
     if (node.kind === 'cut') {
-      if (!isRecord(node.cut) || (node.cut.axis !== 'length' && node.cut.axis !== 'width') || typeof node.cut.offsetMm !== 'number') return false
+      if (
+        !isRecord(node.cut)
+        || (node.cut.axis !== 'length' && node.cut.axis !== 'width')
+        || typeof node.cut.offsetMm !== 'number'
+      ) {
+        return false
+      }
       remaining.push(node.first, node.second)
     } else if (node.kind === 'part') {
-      if (!partSchema.shape.id.safeParse(node.partId).success || typeof node.copyIndex !== 'number' ||
-        (node.orientation !== 'normal' && node.orientation !== 'rotated')) return false
-    } else if (node.kind !== 'waste') return false
+      if (
+        !partSchema.shape.id.safeParse(node.partId).success
+        || typeof node.copyIndex !== 'number'
+        ||
+        (node.orientation !== 'normal' && node.orientation !== 'rotated')
+      ) {
+        return false
+      }
+    } else if (node.kind !== 'waste') {
+      return false
+    }
   }
   return true
 }
@@ -103,14 +127,20 @@ export function isOptimizationResponse(data: unknown): data is OptimizationRespo
     return false
   }
   if (data.type === 'projectResult') {
-    if (!isRequestId(data.requestId) || !isRecord(data.selection)) return false
+    if (!isRequestId(data.requestId) || !isRecord(data.selection)) {
+      return false
+    }
     const selection = data.selection
-    if (selection.ok === false) return isRecord(selection.error) && (selection.error.kind === 'invalidInput' || selection.error.kind === 'invalidPlan')
-      && typeof selection.error.message === 'string'
-      && Array.isArray(selection.error.issues) && selection.error.issues.every((issue: unknown) => isRecord(issue) &&
-        typeof issue.kind === 'string' && ['invalidTree', 'invalidPanel', 'panelLimit', 'emptyPanel', 'invalidAccounting', 'invalidMetrics'].includes(issue.kind) && typeof issue.message === 'string' &&
-        (issue.panelIndex === undefined || typeof issue.panelIndex === 'number' && Number.isSafeInteger(issue.panelIndex) && issue.panelIndex >= 0))
-    if (selection.ok !== true || !isRecord(selection.plan)) return false
+    if (selection.ok === false) {
+      return isRecord(selection.error) && (selection.error.kind === 'invalidInput' || selection.error.kind === 'invalidPlan')
+        && typeof selection.error.message === 'string'
+        && Array.isArray(selection.error.issues) && selection.error.issues.every((issue: unknown) => isRecord(issue) &&
+          typeof issue.kind === 'string' && ['invalidTree', 'invalidPanel', 'panelLimit', 'emptyPanel', 'invalidAccounting', 'invalidMetrics'].includes(issue.kind) && typeof issue.message === 'string' &&
+          (issue.panelIndex === undefined || typeof issue.panelIndex === 'number' && Number.isSafeInteger(issue.panelIndex) && issue.panelIndex >= 0))
+    }
+    if (selection.ok !== true || !isRecord(selection.plan)) {
+      return false
+    }
     const plan = selection.plan
     return Array.isArray(plan.panels) && plan.panels.every((panel: unknown) => isRecord(panel) && panelSnapshotSchema.shape.id.safeParse(panel.supplierProductId).success &&
       typeof panel.panelCopyIndex === 'number' && PLACEMENT_STRATEGIES.some(strategy => strategy === panel.strategy) && isRecord(panel.plan) && hasTreeStructure(panel.plan.tree) &&
@@ -119,7 +149,9 @@ export function isOptimizationResponse(data: unknown): data is OptimizationRespo
         (item.reason === 'noCompatiblePanel' || item.reason === 'constraintsPreventPlacement' || item.reason === 'panelLimitReached')) && isRecord(plan.metrics)
   }
   if (data.type === 'result') {
-    if (!isRequestId(data.requestId) || !isRecord(data.selection)) return false
+    if (!isRequestId(data.requestId) || !isRecord(data.selection)) {
+      return false
+    }
     const selection = data.selection
     if (selection.ok === false) {
       return isRecord(selection.error) && (selection.error.kind === 'noUsableArea' ||

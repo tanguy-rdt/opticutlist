@@ -34,7 +34,15 @@ export interface WasteInspection {
 }
 
 /** Read-only Konva adapter. Only the stage is draggable, which pans the viewport. */
-export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanScene, size: CanvasSize, palette: PlanPalette, onSelect: (key: string) => void, onPan: (view: Viewport) => void, inspection?: WasteInspection): PlanCanvas {
+export function createPlanCanvas(
+  container: HTMLDivElement,
+  scene: CuttingPlanScene,
+  size: CanvasSize,
+  palette: PlanPalette,
+  onSelect: (key: string) => void,
+  onPan: (view: Viewport) => void,
+  inspection?: WasteInspection
+): PlanCanvas {
   const stage = new Konva.Stage({ container, ...size, draggable: true })
   try {
     const layer = new Konva.Layer()
@@ -54,13 +62,21 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
         strokeScaleEnabled: false
       })
       if (interactive) {
-        rect.on('click tap', () => { inspection?.onSelect(index) })
-        rect.on('mouseenter', () => { inspection?.onHover(index) })
-        rect.on('mouseleave', () => { inspection?.onHover(null) })
+        rect.on('click tap', () => {
+          inspection?.onSelect(index)
+        })
+        rect.on('mouseenter', () => {
+          inspection?.onHover(index)
+        })
+        rect.on('mouseleave', () => {
+          inspection?.onHover(null)
+        })
       }
       return rect
     })
-    for (const rect of waste) layer.add(rect)
+    for (const rect of waste) {
+      layer.add(rect)
+    }
     let viewport: Viewport = base
     const hatching = scene.waste.map(region => {
       const rect = rectToCanvas(region, base)
@@ -89,7 +105,9 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
       }))
       return group
     })
-    for (const hatch of hatching) layer.add(hatch)
+    for (const hatch of hatching) {
+      layer.add(hatch)
+    }
     const kerfs = scene.kerfs.map(region => {
       const rect = rectToCanvas(region, base)
       return new Konva.Rect({
@@ -100,7 +118,9 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
         strokeScaleEnabled: false
       })
     })
-    for (const rect of kerfs) layer.add(rect)
+    for (const rect of kerfs) {
+      layer.add(rect)
+    }
     const shapes = new Map<string, Konva.Rect>()
     const labels: { text: Konva.Text; rect: ReturnType<typeof rectToCanvas> }[] = []
     const offcutLabels: { text: Konva.Text; rect: ReturnType<typeof rectToCanvas>; width: number }[] = []
@@ -108,7 +128,9 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
     for (const item of scene.parts) {
       const rect = rectToCanvas(item.region, base)
       const shape = new Konva.Rect({ ...rect, draggable: false, strokeWidth: 1, strokeScaleEnabled: false })
-      shape.on('click tap', () => { onSelect(item.key) })
+      shape.on('click tap', () => {
+        onSelect(item.key)
+      })
       shapes.set(item.key, shape)
       layer.add(shape)
       if (!inspection?.labels) {
@@ -130,7 +152,9 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
     }
     for (const [index, value] of inspection?.labels ?? []) {
       const region = scene.waste[index]
-      if (!region) continue
+      if (!region) {
+        continue
+      }
       const text = new Konva.Text({
         name: 'offcut-label',
         text: value,
@@ -154,17 +178,22 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
       strokeScaleEnabled: false
     })
     const panelLines: Konva.Line[] = panelArrow === null ? [] : [0, 1, 2].map(() => new Konva.Line({ name: 'panel-grain-line', listening: false, strokeWidth: 0.65, strokeScaleEnabled: false }))
-    if (panelArrow !== null) layer.add(...panelLines, panelArrow)
+    if (panelArrow !== null) {
+      layer.add(...panelLines, panelArrow)
+    }
     let dimensionOverlay: ReturnType<typeof createDimensionOverlay> | undefined
     let detailedDimensions = false
+
     function updateDimensions(): void {
       dimensionOverlay?.(dimensionAnnotations(scene, viewport, selected, detailedDimensions), viewport, colors.annotation ?? colors.ink)
     }
+
     let selected = ''
     let colors = palette
     let keptWaste: readonly number[] = []
     let selectedWaste: number | null = null
     let hoveredWaste: number | null = null
+
     function applyPalette(): void {
       panel.fill(colors.margin);
       panel.stroke(colors.ink)
@@ -186,18 +215,25 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
         shape.stroke(key === selected ? colors.selected : colors.partBorder);
         shape.opacity(inspection?.labels ? 0.5 : 1)
       }
-      for (const { text } of [...labels, ...offcutLabels]) text.fill(colors.ink)
+      for (const { text } of [...labels, ...offcutLabels]) {
+        text.fill(colors.ink)
+      }
       for (const { arrow, lines } of grains) {
         arrow.stroke(colors.partBorder);
         arrow.fill(colors.partBorder);
-        for (const line of lines) line.stroke(colors.partBorder)
+        for (const line of lines) {
+          line.stroke(colors.partBorder)
+        }
       }
-      for (const line of panelLines) line.stroke(colors.muted)
+      for (const line of panelLines) {
+        line.stroke(colors.muted)
+      }
       panelArrow?.stroke(colors.ink);
       panelArrow?.fill(colors.ink)
       updateDimensions()
       layer.batchDraw()
     }
+
     stage.on('dragmove', () => {
       viewport = { x: stage.x(), y: stage.y(), scale: stage.scaleX() };
       updateDimensions();
@@ -228,15 +264,19 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
         viewport = view
         stage.position({ x: view.x, y: view.y });
         stage.scale({ x: view.scale, y: view.scale })
-        for (const { text, rect } of labels) text.setAttrs(labelLayout(rect, view.scale))
-        for (const { text, rect, width } of offcutLabels) text.setAttrs({
-          x: rect.x + 6 / view.scale,
-          y: rect.y + 6 / view.scale,
-          width: Math.max(0, rect.width - 12 / view.scale),
-          height: Math.max(0, rect.height - 12 / view.scale),
-          fontSize: 13 / view.scale,
-          visible: rect.width * view.scale >= width + 12 && rect.height * view.scale >= 25
-        })
+        for (const { text, rect } of labels) {
+          text.setAttrs(labelLayout(rect, view.scale))
+        }
+        for (const { text, rect, width } of offcutLabels) {
+          text.setAttrs({
+            x: rect.x + 6 / view.scale,
+            y: rect.y + 6 / view.scale,
+            width: Math.max(0, rect.width - 12 / view.scale),
+            height: Math.max(0, rect.height - 12 / view.scale),
+            fontSize: 13 / view.scale,
+            visible: rect.width * view.scale >= width + 12 && rect.height * view.scale >= 25
+          })
+        }
         for (const { arrow, lines, rect, direction } of grains) {
           const marker = grainMarker(rect, direction, view.scale)
           arrow.setAttrs({ visible: marker !== null, points: marker?.arrow ?? [], pointerLength: 3 / view.scale, pointerWidth: 3 / view.scale })
@@ -258,7 +298,9 @@ export function createPlanCanvas(container: HTMLDivElement, scene: CuttingPlanSc
         layer.batchDraw()
       },
       setSelection(key) {
-        if (key === selected) return
+        if (key === selected) {
+          return
+        }
         const previous = shapes.get(selected)
         previous?.stroke(colors.partBorder);
         previous?.strokeWidth(1)

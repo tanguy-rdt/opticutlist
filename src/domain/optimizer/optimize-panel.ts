@@ -26,12 +26,12 @@ export type StrategyCandidate =
 
 export type OptimizePanelSelection =
   | {
-      readonly ok: true
-      readonly strategy: PlacementStrategy
-      readonly plan: PanelCuttingPlan
-      /** Every strategy, in `PLACEMENT_STRATEGIES` order. */
-      readonly comparison: readonly StrategyCandidate[]
-    }
+    readonly ok: true
+    readonly strategy: PlacementStrategy
+    readonly plan: PanelCuttingPlan
+    /** Every strategy, in `PLACEMENT_STRATEGIES` order. */
+    readonly comparison: readonly StrategyCandidate[]
+  }
   | { readonly ok: false; readonly error: { readonly kind: 'noUsableArea' } }
   | { readonly ok: false; readonly error: { readonly kind: 'noValidCandidate'; readonly comparison: readonly StrategyCandidate[] } }
 
@@ -42,7 +42,6 @@ interface RankedCandidate {
   readonly usedUm2: number
   readonly largestWasteUm2: number
 }
-
 
 function largestWasteUm2(node: CuttingTreeNode): number {
   switch (node.kind) {

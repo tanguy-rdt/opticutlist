@@ -11,7 +11,16 @@ import { wrapPdfText } from './pdf-text'
 const gridRule = rgb(0.8, 0.8, 0.8)
 
 /** One cell per nominal definition; independent physical scales, one shared title block per page. */
-export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFont, parts: readonly Part[], paper: PdfPageSize, orientation: PdfOrientation, frame: (page: PDFPage, numbering: SheetNumberPosition) => void, projectName = ''): void {
+export function appendPartDrawings(
+  pdf: PDFDocument,
+  font: PDFFont,
+  bold: PDFFont,
+  parts: readonly Part[],
+  paper: PdfPageSize,
+  orientation: PdfOrientation,
+  frame: (page: PDFPage, numbering: SheetNumberPosition) => void,
+  projectName = ''
+): void {
   const size = pdfPageSize(paper, orientation)
   const footer = layoutPartTitleBlock(size.width - 56)
   const cellWidth = (size.width - 56) / 2
@@ -32,9 +41,13 @@ export function appendPartDrawings(pdf: PDFDocument, font: PDFFont, bold: PDFFon
     page.drawLine({ start: { x: middle, y: gridBottom }, end: { x: middle, y: size.height - 16 }, thickness: 0.2, color: gridRule })
     for (const [index, cell] of cells.entries()) {
       const record = records[offset + index]
-      if (!record) break
+      if (!record) {
+        break
+      }
       const { part, name, metadata, headerHeight } = record
-      if (index % 2 === 0 && cell.y > footer.top) page.drawLine({ start: { x: 28, y: cell.y }, end: { x: size.width - 28, y: cell.y }, thickness: 0.2, color: gridRule })
+      if (index % 2 === 0 && cell.y > footer.top) {
+        page.drawLine({ start: { x: 28, y: cell.y }, end: { x: size.width - 28, y: cell.y }, thickness: 0.2, color: gridRule })
+      }
       const rect = { xMm: 0, yMm: 0, lengthMm: part.lengthMm, widthMm: part.widthMm }
       const { box } = partDrawingGeometry(rect, cell, headerHeight, 0)
       page.drawRectangle({ ...box, borderColor: ink, borderWidth: 0.5 })

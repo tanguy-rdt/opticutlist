@@ -138,24 +138,37 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
     receive: (data: OptimizationResponse) => Selection | null,
     validate: (selection: Selection, snapshot: Input) => { valid: true } | { valid: false; issues: readonly (CuttingTreeIssue | ProjectPlanIssue)[] },
   ): Promise<RunOutcome<Selection>> {
-    if (disposed) throw new Error('Optimization service has been disposed')
+    if (disposed) {
+      throw new Error('Optimization service has been disposed')
+    }
     cancelPending('superseded')
     const requestId = nextRequestId++
     return new Promise(resolve => {
       function settle(outcome: RunOutcome<Selection>): void {
-        if (pending?.requestId !== requestId) return
+        if (pending?.requestId !== requestId) {
+          return
+        }
         pending = null;
         resolve(outcome)
       }
-      const fail = (error: OptimizationFailure) => { settle({ status: 'failed', requestId, error }) }
-      pending = { requestId, fail, cancel: reason => { settle({ status: 'cancelled', requestId, reason }) }, complete: () => { } }
+
+      const fail = (error: OptimizationFailure) => {
+        settle({ status: 'failed', requestId, error })
+      }
+      pending = {
+        requestId, fail, cancel: reason => {
+          settle({ status: 'cancelled', requestId, reason })
+        }, complete: () => { }
+      }
       try {
         const snapshot = structuredClone(input)
         pending = {
           ...pending, complete: data => {
             const selection = receive(data)
             if (selection === null) {
-              if (worker) failWorker(worker, { kind: 'invalidResponse', message: 'Worker returned the wrong result type' });
+              if (worker) {
+                failWorker(worker, { kind: 'invalidResponse', message: 'Worker returned the wrong result type' });
+              }
               return
             }
             try {
@@ -166,7 +179,9 @@ export function createOptimizationService(createWorker: () => OptimizationWorker
               }
               settle({ status: 'completed', requestId, selection })
             } catch (cause) {
-              if (worker) failWorker(worker, { kind: 'invalidResponse', message: cause instanceof Error ? cause.message : String(cause) })
+              if (worker) {
+                failWorker(worker, { kind: 'invalidResponse', message: cause instanceof Error ? cause.message : String(cause) })
+              }
             }
           }
         }

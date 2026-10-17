@@ -54,7 +54,6 @@ interface Expectation {
   readonly bounds: Rect
 }
 
-
 function toUmRect(rect: Rect): UmRect | null {
   const x = tryToMicrometres(rect.xMm, 0)
   const y = tryToMicrometres(rect.yMm, 0)
@@ -181,7 +180,10 @@ export function validateCuttingTree(root: CuttingTreeNode, context: CuttingTreeC
     }
 
     const oriented = getOrientedDimensions(part, leaf.orientation)
-    if (region !== null && (toPositiveUm(oriented.lengthMm) !== region.length || toPositiveUm(oriented.widthMm) !== region.width)) {
+    if (
+      region !== null
+      && (toPositiveUm(oriented.lengthMm) !== region.length || toPositiveUm(oriented.widthMm) !== region.width)
+    ) {
       report(path, {
         kind: 'partSizeMismatch',
         expected: { lengthMm: oriented.lengthMm, widthMm: oriented.widthMm },
@@ -210,11 +212,12 @@ export function validateCuttingTree(root: CuttingTreeNode, context: CuttingTreeC
       case 'part':
         checkPartLeaf(path, node, region)
         return
-      case 'cut': {
-        const slots = region === null ? null : checkCut(path, node, region)
-        visit(node.first, [...path, 'first'], slots && { slot: slots.first, bounds: node.region })
-        visit(node.second, [...path, 'second'], slots && { slot: slots.second, bounds: node.region })
-      }
+      case 'cut':
+        {
+          const slots = region === null ? null : checkCut(path, node, region)
+          visit(node.first, [...path, 'first'], slots && { slot: slots.first, bounds: node.region })
+          visit(node.second, [...path, 'second'], slots && { slot: slots.second, bounds: node.region })
+        }
     }
   }
 

@@ -13,48 +13,84 @@ const imported = shallowRef<CuttingProject | null>(null)
 const busy = ref(false)
 const error = ref('')
 let generation = 0
-onBeforeUnmount(() => { generation += 1 })
+onBeforeUnmount(() => {
+  generation += 1
+})
+
 async function select(event: Event): Promise<void> {
   const target = event.target
-  if (!(target instanceof HTMLInputElement)) return
+  if (!(target instanceof HTMLInputElement)) {
+    return
+  }
   const file = target.files?.[0]
   const current = ++generation
   preview.value = null;
   imported.value = null;
   error.value = '';
   busy.value = false
-  if (!file || !service) return
+  if (!file || !service) {
+    return
+  }
   busy.value = true
   try {
     const text = await file.text()
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     const result = await service.preview(text)
-    if (current !== generation) return
-    if (result.ok) preview.value = result.value
-    else error.value = persistenceErrorMessage(result.error, 'Project') + (result.error.kind === 'invalidRecord' ? ` ${result.error.issues.map(issue => issue.message).join('; ')}` : '')
+    if (current !== generation) {
+      return
+    }
+    if (result.ok) {
+      preview.value = result.value
+    } else {
+      error.value = persistenceErrorMessage(result.error, 'Project') + (result.error.kind === 'invalidRecord' ? ` ${result.error.issues.map(issue => issue.message).join('; ')}` : '')
+    }
   } catch (cause) {
-    if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not read this project file.'
+    if (current === generation) {
+      error.value = cause instanceof Error ? cause.message : 'Could not read this project file.'
+    }
   }
-  finally { if (current === generation) busy.value = false }
+  finally {
+    if (current === generation) {
+      busy.value = false
+    }
+  }
 }
+
 async function importProject(): Promise<void> {
-  if (!service || !preview.value || busy.value
-    || !window.confirm(`Import “${preview.value.file.project.name}” as a new project? Existing records will not be overwritten. Inventory and cutting confirmations are not imported.`)) return
+  if (
+    !service
+    || !preview.value
+    || busy.value
+    || !window.confirm(`Import “${preview.value.file.project.name}” as a new project? Existing records will not be overwritten. Inventory and cutting confirmations are not imported.`)
+  ) {
+    return
+  }
   const current = generation
   busy.value = true;
   error.value = ''
   try {
     const result = await service.import(toRaw(preview.value.file), true)
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     if (result.ok) {
       imported.value = result.value;
       preview.value = null
+    } else {
+      error.value = persistenceErrorMessage(result.error, 'Project') + (result.error.kind === 'invalidRecord' ? ` ${result.error.issues.map(issue => issue.message).join('; ')}` : '')
     }
-    else error.value = persistenceErrorMessage(result.error, 'Project') + (result.error.kind === 'invalidRecord' ? ` ${result.error.issues.map(issue => issue.message).join('; ')}` : '')
   } catch (cause) {
-    if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not import this project.'
+    if (current === generation) {
+      error.value = cause instanceof Error ? cause.message : 'Could not import this project.'
+    }
   }
-  finally { if (current === generation) busy.value = false }
+  finally {
+    if (current === generation) {
+      busy.value = false
+    }
+  }
 }
 </script>
 <template>

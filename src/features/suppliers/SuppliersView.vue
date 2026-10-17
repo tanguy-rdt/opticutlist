@@ -26,12 +26,14 @@ const repositories = useCatalogRepositories()
 const stockRepository = useCatalogStockRepository()
 const stockWriter = useStockRepository()
 const stockProduct = shallowRef<SupplierProduct | null>(null)
+
 function stockAdded(panels: readonly StockItem[]): void {
   const addedIds = new Set(panels.map(panel => panel.id))
   stock.value = [...stock.value.filter(item => !addedIds.has(item.id)), ...panels]
   stockProduct.value = null
   toasts.success(`Added ${String(panels.length)} ${panels.length === 1 ? 'panel' : 'panels'} to stock`)
 }
+
 const stock = shallowRef<readonly StockItem[]>([])
 const stockError = ref('')
 const selectedSupplierId = ref('')
@@ -39,16 +41,24 @@ const selectedProductId = ref('')
 const detailsOpen = ref(false)
 const compactDetails = ref(false)
 const viewport = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null
+
 function updateViewport(): void {
   compactDetails.value = viewport?.matches ?? false;
-  if (!compactDetails.value) detailsOpen.value = false
+  if (!compactDetails.value) {
+    detailsOpen.value = false
+  }
 }
+
 updateViewport()
 onMounted(() => {
-  if (typeof viewport?.addEventListener === 'function') viewport.addEventListener('change', updateViewport)
+  if (typeof viewport?.addEventListener === 'function') {
+    viewport.addEventListener('change', updateViewport)
+  }
 })
 onBeforeUnmount(() => {
-  if (typeof viewport?.removeEventListener === 'function') viewport.removeEventListener('change', updateViewport)
+  if (typeof viewport?.removeEventListener === 'function') {
+    viewport.removeEventListener('change', updateViewport)
+  }
 })
 const search = ref('')
 const supplierSearch = ref('')
@@ -57,7 +67,9 @@ const materialFilter = ref('')
 const formMode = ref<'supplier' | 'product' | null>(null)
 const addSupplierButton = ref<HTMLButtonElement | null>(null)
 let generation = 0
-onBeforeUnmount(() => { generation++ })
+onBeforeUnmount(() => {
+  generation++
+})
 const materialRepository = useMaterialRepository()
 const suppliers = shallowRef<readonly Supplier[]>([])
 const orders = shallowRef<readonly CatalogOrder[]>([])
@@ -75,7 +87,9 @@ const productVersion = ref(0)
 const initialSupplierId = ref('')
 const supplierForm = ref<InstanceType<typeof SupplierForm> | null>(null)
 const productForm = ref<InstanceType<typeof ProductForm> | null>(null)
-useDataImportRefresh(() => { void load() }, () => !loading.value && !busy.value && formMode.value === null && stockProduct.value === null)
+useDataImportRefresh(() => {
+  void load()
+}, () => !loading.value && !busy.value && formMode.value === null && stockProduct.value === null)
 const disabled = computed(() => loading.value || busy.value || Boolean(loadError.value))
 const supplierNavigation = computed(() => [...new Set([...suppliers.value.map(item => item.id), ...products.value.map(item => item.supplierId)])].map(id => ({
   id,
@@ -91,10 +105,19 @@ const sections = computed(() => {
   const grouped = new Map<string, SupplierProduct[]>()
   for (const product of products.value) {
     const material = materials.value.find(item => item.id === product.materialId)
-    if (product.supplierId !== selectedSupplierId.value || (categoryFilter.value && material?.category !== categoryFilter.value)
-      || (materialFilter.value && product.materialId !== materialFilter.value)) continue
-    if (search.value
-      && !`${product.name} ${material?.name ?? ''} ${material?.category ?? ''}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase().trim())) continue
+    if (
+      product.supplierId !== selectedSupplierId.value
+      || (categoryFilter.value && material?.category !== categoryFilter.value)
+      || (materialFilter.value && product.materialId !== materialFilter.value)
+    ) {
+      continue
+    }
+    if (
+      search.value
+      && !`${product.name} ${material?.name ?? ''} ${material?.category ?? ''}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase().trim())
+    ) {
+      continue
+    }
     const group = grouped.get(product.materialId) ?? [];
     group.push(product);
     grouped.set(product.materialId, group)
@@ -119,19 +142,26 @@ function selectSupplier(id: string): void {
   categoryFilter.value = ''
   selectedProductId.value = sections.value[0]?.items[0]?.id ?? ''
 }
+
 async function inspectProduct(id: string): Promise<void> {
   selectedProductId.value = id
-  if (compactDetails.value) detailsOpen.value = true
+  if (compactDetails.value) {
+    detailsOpen.value = true
+  }
   await nextTick()
-  if (compactDetails.value) document.getElementById('product-details-title')?.focus()
+  if (compactDetails.value) {
+    document.getElementById('product-details-title')?.focus()
+  }
 }
 
 function linkedStock(product: SupplierProduct): readonly StockItem[] {
   return stock.value.filter(item => item.provenance.source === 'purchase' && item.provenance.supplierProductId === product.id)
 }
+
 function stockLabel(product: SupplierProduct): string {
   return !stockRepository ? 'Not available' : stockError.value ? 'Read error' : `${String(linkedStock(product).reduce((quantity, item) => quantity + item.quantity, 0))} owned`
 }
+
 function closeForm(): void {
   if (!busy.value) {
     formMode.value = null;
@@ -143,52 +173,82 @@ async function load(): Promise<void> {
   const current = ++generation
   loading.value = true
   const [supplierResult, productResult, materialResult, ordering] = await Promise.all([repositories.suppliers.list(), repositories.supplierProducts.list(), materialRepository.list(), repositories.supplierProducts.ordering()])
-  if (current !== generation) return
+  if (current !== generation) {
+    return
+  }
   const errors: string[] = []
-  if (supplierResult.ok) suppliers.value = supplierResult.value
-  else errors.push(persistenceErrorMessage(supplierResult.error, 'Supplier'))
-  if (productResult.ok) products.value = productResult.value
-  else errors.push(persistenceErrorMessage(productResult.error, 'Product'))
-  if (materialResult.ok) materials.value = materialResult.value
-  else errors.push(persistenceErrorMessage(materialResult.error, 'Material'))
-  if (ordering.ok) orders.value = ordering.value
-  else errors.push(persistenceErrorMessage(ordering.error, 'Product'))
+  if (supplierResult.ok) {
+    suppliers.value = supplierResult.value
+  } else {
+    errors.push(persistenceErrorMessage(supplierResult.error, 'Supplier'))
+  }
+  if (productResult.ok) {
+    products.value = productResult.value
+  } else {
+    errors.push(persistenceErrorMessage(productResult.error, 'Product'))
+  }
+  if (materialResult.ok) {
+    materials.value = materialResult.value
+  } else {
+    errors.push(persistenceErrorMessage(materialResult.error, 'Material'))
+  }
+  if (ordering.ok) {
+    orders.value = ordering.value
+  } else {
+    errors.push(persistenceErrorMessage(ordering.error, 'Product'))
+  }
   loadError.value = errors.join(' ')
-  if (!supplierNavigation.value.some(item => item.id === selectedSupplierId.value)) selectedSupplierId.value = supplierNavigation.value[0]?.id ?? ''
-  if (!products.value.some(item => item.id === selectedProductId.value)) selectedProductId.value = ''
+  if (!supplierNavigation.value.some(item => item.id === selectedSupplierId.value)) {
+    selectedSupplierId.value = supplierNavigation.value[0]?.id ?? ''
+  }
+  if (!products.value.some(item => item.id === selectedProductId.value)) {
+    selectedProductId.value = ''
+  }
   stockError.value = ''
   if (stockRepository) {
     const result = await stockRepository.list()
-    if (current !== generation) return
-    if (result.ok) stock.value = result.value
-    else {
+    if (current !== generation) {
+      return
+    }
+    if (result.ok) {
+      stock.value = result.value
+    } else {
       stock.value = [];
       stockError.value = persistenceErrorMessage(result.error, 'Product')
     }
   }
   loading.value = false
 }
+
 const canReorder = computed(() => !disabled.value && !formMode.value && !search.value.trim() && !categoryFilter.value && !materialFilter.value)
 const dragged = shallowRef<SupplierProduct | null>(null)
 const dropTarget = shallowRef<{ id: string; position: 'before' | 'after' } | null>(null)
+
 function clearDrag(): void {
   dragged.value = null;
   dropTarget.value = null
 }
+
 async function moveRow(product: SupplierProduct, target: SupplierProduct, position: 'before' | 'after'): Promise<void> {
-  if (!canReorder.value || product.supplierId !== target.supplierId || product.materialId !== target.materialId) return
+  if (!canReorder.value || product.supplierId !== target.supplierId || product.materialId !== target.materialId) {
+    return
+  }
   busy.value = true;
   operationError.value = ''
   const current = generation
   const result = await repositories.supplierProducts.move(product.id, target.id, position)
-  if (current !== generation) return
+  if (current !== generation) {
+    return
+  }
   busy.value = false
-  if (!result.ok) operationError.value = 'Product order could not be saved. ' + persistenceErrorMessage(result.error, 'Product')
-  else {
+  if (!result.ok) {
+    operationError.value = 'Product order could not be saved. ' + persistenceErrorMessage(result.error, 'Product')
+  } else {
     orders.value = [...orders.value.filter(order => order.id !== result.value.id), result.value]
     toasts.success('Product order updated')
   }
 }
+
 async function moveBy(product: SupplierProduct, direction: number, event: KeyboardEvent): Promise<void> {
   const handle = event.currentTarget
   const group = orderCatalogProducts(products.value.filter(item => item.supplierId === product.supplierId && item.materialId === product.materialId), orders.value)
@@ -196,9 +256,12 @@ async function moveBy(product: SupplierProduct, direction: number, event: Keyboa
   if (target) {
     await moveRow(product, target, direction < 0 ? 'before' : 'after')
     await nextTick()
-    if (handle instanceof HTMLButtonElement && handle.isConnected) handle.focus()
+    if (handle instanceof HTMLButtonElement && handle.isConnected) {
+      handle.focus()
+    }
   }
 }
+
 function dragStart(event: DragEvent, product: SupplierProduct): void {
   if (!canReorder.value) {
     event.preventDefault();
@@ -210,26 +273,40 @@ function dragStart(event: DragEvent, product: SupplierProduct): void {
     event.dataTransfer.setData('text/plain', product.id)
   }
 }
+
 function dragOver(event: DragEvent, product: SupplierProduct): void {
-  if (!canReorder.value || !dragged.value || dragged.value.id === product.id || dragged.value.supplierId !== product.supplierId
-    || dragged.value.materialId !== product.materialId) {
+  if (
+    !canReorder.value
+    || !dragged.value
+    || dragged.value.id === product.id
+    || dragged.value.supplierId !== product.supplierId
+    || dragged.value.materialId !== product.materialId
+  ) {
     dropTarget.value = null;
     return
   }
   event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
   const bounds = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
   dropTarget.value = { id: product.id, position: bounds && event.clientY >= bounds.top + bounds.height / 2 ? 'after' : 'before' }
 }
+
 async function drop(event: DragEvent, target: SupplierProduct): Promise<void> {
   event.preventDefault()
   const source = dragged.value;
   const position = dropTarget.value?.id === target.id ? dropTarget.value.position : null
   clearDrag()
-  if (source && position) await moveRow(source, target, position)
+  if (source && position) {
+    await moveRow(source, target, position)
+  }
 }
+
 async function editSupplier(supplier: Supplier | null): Promise<void> {
-  if (disabled.value) return
+  if (disabled.value) {
+    return
+  }
   detailsOpen.value = false
   formMode.value = 'supplier'
   editingSupplier.value = supplier
@@ -238,8 +315,11 @@ async function editSupplier(supplier: Supplier | null): Promise<void> {
   await nextTick()
   supplierForm.value?.focusName()
 }
+
 async function editProduct(product: SupplierProduct | null, supplierId = ''): Promise<void> {
-  if (disabled.value) return
+  if (disabled.value) {
+    return
+  }
   detailsOpen.value = false
   formMode.value = 'product'
   editingProduct.value = product
@@ -249,8 +329,11 @@ async function editProduct(product: SupplierProduct | null, supplierId = ''): Pr
   await nextTick()
   productForm.value?.focusName()
 }
+
 async function saveSupplier(supplier: Supplier): Promise<void> {
-  if (disabled.value) return
+  if (disabled.value) {
+    return
+  }
   busy.value = true
   operationError.value = ''
   const result = editingSupplier.value ? await repositories.suppliers.update(supplier.id, supplier) : await repositories.suppliers.create(supplier)
@@ -261,14 +344,22 @@ async function saveSupplier(supplier: Supplier): Promise<void> {
     formMode.value = null
     supplierVersion.value++
     await load()
-  } else operationError.value = persistenceErrorMessage(result.error, 'Supplier')
+  } else {
+    operationError.value = persistenceErrorMessage(result.error, 'Supplier')
+  }
   busy.value = false
   await nextTick()
-  if (formMode.value) supplierForm.value?.focusName()
-  else addSupplierButton.value?.focus()
+  if (formMode.value) {
+    supplierForm.value?.focusName()
+  } else {
+    addSupplierButton.value?.focus()
+  }
 }
+
 async function saveProduct(product: SupplierProduct, presetId?: string): Promise<void> {
-  if (disabled.value) return
+  if (disabled.value) {
+    return
+  }
   busy.value = true
   operationError.value = ''
   const result = presetId !== undefined
@@ -282,15 +373,20 @@ async function saveProduct(product: SupplierProduct, presetId?: string): Promise
     formMode.value = null
     productVersion.value++
     await load()
-  } else operationError.value = result.error.kind === 'notFound'
-    ? 'The product, selected supplier, or material no longer exists. Check the supplier and material selections before trying again.'
-    : persistenceErrorMessage(result.error, 'Product')
+  } else {
+    operationError.value = result.error.kind === 'notFound'
+      ? 'The product, selected supplier, or material no longer exists. Check the supplier and material selections before trying again.'
+      : persistenceErrorMessage(result.error, 'Product')
+  }
   busy.value = false
   await nextTick()
   productForm.value?.focusName()
 }
+
 async function removeSupplier(supplier: Supplier): Promise<void> {
-  if (disabled.value || !window.confirm(`Delete supplier “${supplier.name}”? This cannot be undone.`)) return
+  if (disabled.value || !window.confirm(`Delete supplier “${supplier.name}”? This cannot be undone.`)) {
+    return
+  }
   busy.value = true
   operationError.value = ''
   const result = await repositories.suppliers.delete(supplier.id)
@@ -302,13 +398,18 @@ async function removeSupplier(supplier: Supplier): Promise<void> {
     }
     toasts.success('Supplier deleted')
     await load()
-  } else operationError.value = persistenceErrorMessage(result.error, 'Supplier')
+  } else {
+    operationError.value = persistenceErrorMessage(result.error, 'Supplier')
+  }
   busy.value = false
   await nextTick()
   addSupplierButton.value?.focus()
 }
+
 async function removeProduct(product: SupplierProduct): Promise<void> {
-  if (disabled.value || !window.confirm(`Delete catalog product “${product.name}”? This cannot be undone.`)) return
+  if (disabled.value || !window.confirm(`Delete catalog product “${product.name}”? This cannot be undone.`)) {
+    return
+  }
   busy.value = true
   operationError.value = ''
   const result = await repositories.supplierProducts.delete(product.id)
@@ -320,11 +421,14 @@ async function removeProduct(product: SupplierProduct): Promise<void> {
     }
     toasts.success('Product deleted')
     await load()
-  } else operationError.value = persistenceErrorMessage(result.error, 'Product')
+  } else {
+    operationError.value = persistenceErrorMessage(result.error, 'Product')
+  }
   busy.value = false
   await nextTick()
   productForm.value?.focusName()
 }
+
 onMounted(load)
 </script>
 <template>

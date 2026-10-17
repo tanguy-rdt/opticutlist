@@ -6,4 +6,7 @@ export interface CuttingWorkspaceState {
   invalidated: Ref<boolean>
 }
 export const cuttingWorkspaceStateKey: InjectionKey<CuttingWorkspaceState> = Symbol('cuttingWorkspaceState')
-export function useCuttingWorkspaceState(): CuttingWorkspaceState | undefined { return inject(cuttingWorkspaceStateKey, undefined) }
+
+export function useCuttingWorkspaceState(): CuttingWorkspaceState | undefined {
+  return inject(cuttingWorkspaceStateKey, undefined)
+}

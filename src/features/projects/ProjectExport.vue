@@ -9,15 +9,22 @@ const busy = ref(false)
 const error = ref('')
 const feedback = ref('')
 let active = true
-onBeforeUnmount(() => { active = false })
+onBeforeUnmount(() => {
+  active = false
+})
+
 async function exportProject(): Promise<void> {
-  if (!service || busy.value) return
+  if (!service || busy.value) {
+    return
+  }
   busy.value = true;
   error.value = '';
   feedback.value = ''
   try {
     const result = await service.export(props.projectId)
-    if (!active) return
+    if (!active) {
+      return
+    }
     if (!result.ok) {
       error.value = persistenceErrorMessage(result.error, 'Project') + (result.error.kind === 'invalidRecord' ? ` ${result.error.issues.map(issue => issue.message).join('; ')}` : '');
       return
@@ -25,9 +32,15 @@ async function exportProject(): Promise<void> {
     downloadProject(result.value.text, result.value.name)
     feedback.value = 'Project JSON download started. Includes saved plans; inventory and unsaved edits are excluded.'
   } catch (cause) {
-    if (active) error.value = cause instanceof Error ? cause.message : 'Could not export this project.'
+    if (active) {
+      error.value = cause instanceof Error ? cause.message : 'Could not export this project.'
+    }
   }
-  finally { if (active) busy.value = false }
+  finally {
+    if (active) {
+      busy.value = false
+    }
+  }
 }
 </script>
 <template>

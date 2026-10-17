@@ -6,6 +6,7 @@ import ProjectStartTiles from '../../features/projects/ProjectStartTiles.vue'
 const route = useRoute()
 const router = useRouter()
 const creating = computed(() => route.query.create === '1')
+
 async function closeCreation(): Promise<void> {
   const query = { ...route.query }
   delete query.create

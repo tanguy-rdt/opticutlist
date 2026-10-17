@@ -3,6 +3,12 @@ import { drawTechnicalTitleBlock, technicalTitleBlockLayout } from './technical-
 
 export const layoutPartTitleBlock = technicalTitleBlockLayout
 
-export function drawPartTitleBlock(page: PDFPage, font: PDFFont, bold: PDFFont, block: ReturnType<typeof layoutPartTitleBlock>, projectName: string) {
+export function drawPartTitleBlock(
+  page: PDFPage,
+  font: PDFFont,
+  bold: PDFFont,
+  block: ReturnType<typeof layoutPartTitleBlock>,
+  projectName: string
+) {
   return drawTechnicalTitleBlock(page, font, bold, block, { projectName, context: { label: 'UNITS', lines: ['Millimeters (mm)'] }, scale: 'N/A' })
 }

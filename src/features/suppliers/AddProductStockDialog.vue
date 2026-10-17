@@ -16,8 +16,11 @@ const quantity = ref<number | string>(1)
 const quantityError = ref('')
 const error = ref('')
 const busy = ref(false)
+
 async function submit(): Promise<void> {
-  if (busy.value) return
+  if (busy.value) {
+    return
+  }
   quantityError.value = '';
   error.value = ''
   const parsed = quantitySchema.safeParse(quantity.value)
@@ -40,7 +43,9 @@ async function submit(): Promise<void> {
   } catch {
     error.value = 'Could not add panels to stock. Nothing was added. Try again.'
   }
-  finally { busy.value = false }
+  finally {
+    busy.value = false
+  }
 }
 </script>
 <template>

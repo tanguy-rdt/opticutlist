@@ -6,9 +6,10 @@ const props = withDefaults(defineProps<{ lengthMm: number; widthMm: number; grai
 const drawing = computed(() => {
   try {
     return fitPanelDimensionPreview(props.lengthMm, props.widthMm, props.size)
-  }
-  catch (cause) {
-    if (cause instanceof RangeError) return null;
+  } catch (cause) {
+    if (cause instanceof RangeError) {
+      return null;
+    }
     throw cause
   }
 })

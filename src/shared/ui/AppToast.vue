@@ -15,14 +15,18 @@ let startedAt = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 
 function stop(): void {
-  if (timer === undefined) return
+  if (timer === undefined) {
+    return
+  }
   clearTimeout(timer)
   timer = undefined
   remaining = Math.max(0, remaining - (Date.now() - startedAt))
 }
 
 function resume(): void {
-  if (props.notification.duration <= 0 || paused.value || timer !== undefined) return
+  if (props.notification.duration <= 0 || paused.value || timer !== undefined) {
+    return
+  }
   startedAt = Date.now()
   timer = setTimeout(() => {
     timer = undefined
@@ -32,8 +36,11 @@ function resume(): void {
 
 function hover(isHovered: boolean): void {
   hovered.value = isHovered
-  if (isHovered) stop()
-  else resume()
+  if (isHovered) {
+    stop()
+  } else {
+    resume()
+  }
 }
 
 function focus(event: FocusEvent): void {
@@ -42,8 +49,11 @@ function focus(event: FocusEvent): void {
     && event.currentTarget instanceof Node
     && event.currentTarget.contains(event.relatedTarget)
   )
-  if (focused.value) stop()
-  else resume()
+  if (focused.value) {
+    stop()
+  } else {
+    resume()
+  }
 }
 
 onMounted(resume)

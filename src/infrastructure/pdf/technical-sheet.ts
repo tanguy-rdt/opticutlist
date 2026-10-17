@@ -2,7 +2,6 @@ import { rgb, type PDFPage } from 'pdf-lib'
 
 export type SheetNumberPosition = { x: number; y: number; width: number; fontSize: number; bold?: boolean }
 
-
 export const technicalInk = rgb(0.14, 0.14, 0.14)
 export const technicalRule = rgb(0.5, 0.5, 0.5)
 export const technicalTextSize = 8

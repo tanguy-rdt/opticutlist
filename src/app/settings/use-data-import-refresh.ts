@@ -3,11 +3,15 @@ import { dataImportRevisionKey } from './data-import-revision'
 
 export function useDataImportRefresh(refresh: () => void, ready: () => boolean): void {
   const revision = inject(dataImportRevisionKey, undefined)
-  if (!revision) return
+  if (!revision) {
+    return
+  }
   let handledRevision = revision.value
 
   watch(() => ({ revision: revision.value, ready: ready() }), current => {
-    if (!current.ready || current.revision === handledRevision) return
+    if (!current.ready || current.revision === handledRevision) {
+      return
+    }
     handledRevision = current.revision
     refresh()
   })

@@ -18,8 +18,12 @@ const compactTreeShape = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('cut'),
     cut: z.strictObject({ axis: z.enum(['length', 'width']), offsetMm: z.number().positive() }),
-    get first() { return compactTreeShape },
-    get second() { return compactTreeShape },
+    get first() {
+      return compactTreeShape
+    },
+    get second() {
+      return compactTreeShape
+    },
   }),
   z.strictObject({
     kind: z.literal('part'),
@@ -35,15 +39,21 @@ export const compactTreeSchema = z.unknown().superRefine((root, context) => {
   const pending: unknown[] = [root]
   while (pending.length) {
     const node = pending.pop()
-    if (typeof node !== 'object' || node === null) continue
+    if (typeof node !== 'object' || node === null) {
+      continue
+    }
     if (visited.has(node)) {
       context.addIssue({ code: 'custom', message: 'A saved cutting tree contains a cyclic or reused node.' });
       return
     }
     visited.add(node)
     if ('kind' in node && node.kind === 'cut') {
-      if ('first' in node) pending.push(node.first)
-      if ('second' in node) pending.push(node.second)
+      if ('first' in node) {
+        pending.push(node.first)
+      }
+      if ('second' in node) {
+        pending.push(node.second)
+      }
     }
   }
 }).pipe(compactTreeShape)

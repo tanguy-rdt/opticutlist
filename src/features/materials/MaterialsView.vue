@@ -45,16 +45,22 @@ const dirty = computed(() => selectedIds.value.length !== savedMaterialIds.value
 const availableStock = computed(() => stock.value.filter(item => item.quantity > 0 && isStockEligibleForProject(item, projectId)))
 const availableMaterials = computed(() => materials.value.filter(material => products.value.some(product => product.materialId === material.id) || availableStock.value.some(item => item.materialId === material.id)))
 const activeStock = computed(() => activeMaterial.value ? materialStock(activeMaterial.value) : [])
+
 function materialStock(material: Material): readonly StockItem[] {
   return availableStock.value.filter(item => item.materialId === material.id)
 }
+
 function summaryStock(material: Material): readonly StockItem[] {
   return stock.value.filter(item => item.materialId === material.id && selectedStockIds.value.includes(item.id))
 }
+
 function toggleStock(item: StockItem): void {
-  if (!selectedStockIds.value.includes(item.id) && !isStockEligibleForProject(item, projectId)) return;
+  if (!selectedStockIds.value.includes(item.id) && !isStockEligibleForProject(item, projectId)) {
+    return;
+  }
   selectedStockIds.value = selectedStockIds.value.includes(item.id) ? selectedStockIds.value.filter(id => id !== item.id) : [...selectedStockIds.value, item.id]
 }
+
 const categories = computed(() => [...new Set(availableMaterials.value.map(material => material.category))])
 const visibleMaterials = computed(() => availableMaterials.value.filter(material =>
   material.name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())
@@ -71,66 +77,103 @@ const supplierGroups = computed(() => [...new Set(activeProducts.value.map(produ
   return { id, name: suppliers.value.find(supplier => supplier.id === id)?.name ?? 'Missing supplier', products: references, eligible }
 }))
 const catalogCount = computed(() => activeProducts.value.filter(selectable).length)
+
 function groupState<T extends string>(ids: readonly T[], selected: readonly T[]): { checked: boolean; indeterminate: boolean } {
   const count = ids.filter(id => selected.includes(id)).length
   return { checked: ids.length > 0 && count === ids.length, indeterminate: count > 0 && count < ids.length }
 }
+
 const stockState = computed(() => groupState(activeStock.value.map(item => item.id), selectedStockIds.value))
+
 function supplierState(eligible: readonly SupplierProduct[]): { checked: boolean; indeterminate: boolean } {
   return groupState(eligible.map(product => product.id), selectedProductIds.value)
 }
+
 function toggleAllStock(): void {
   const remove = stockState.value.checked
   for (const item of activeStock.value) {
-    if (selectedStockIds.value.includes(item.id) === remove) toggleStock(item)
+    if (selectedStockIds.value.includes(item.id) === remove) {
+      toggleStock(item)
+    }
   }
 }
+
 function toggleSupplier(eligible: readonly SupplierProduct[]): void {
   const remove = supplierState(eligible).checked
   for (const product of eligible) {
-    if (selectedProductIds.value.includes(product.id) === remove) toggleProduct(product)
+    if (selectedProductIds.value.includes(product.id) === remove) {
+      toggleProduct(product)
+    }
   }
 }
+
 function toggleSupplierExpansion(id: Supplier['id']): void {
   const next = new Set(expandedSuppliers.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
   expandedSuppliers.value = next
 }
+
 const orphanProducts = computed(() => products.value.filter(product => selectedProductIds.value.includes(product.id) && !materials.value.some(material => material.id === product.materialId)))
 const summaryMaterials = computed(() => materials.value.filter(material => selectedIds.value.includes(material.id)
   || products.value.some(product => product.materialId === material.id && selectedProductIds.value.includes(product.id))
   || stock.value.some(item => item.materialId === material.id && selectedStockIds.value.includes(item.id))))
+
 function materialProducts(material: Material): readonly SupplierProduct[] {
   return products.value.filter(product => product.materialId === material.id)
 }
+
 function availablePanelCount(material: Material): number {
   return materialProducts(material).filter(selectable).length + materialStock(material).reduce((total, item) => total + item.quantity, 0)
 }
+
 function summaryProducts(material: Material): readonly SupplierProduct[] {
   return materialProducts(material).filter(product => selectedProductIds.value.includes(product.id))
 }
+
 function supplierName(product: SupplierProduct): string {
   return suppliers.value.find(supplier => supplier.id === product.supplierId)?.name ?? 'Missing supplier'
 }
+
 function removeProduct(product: SupplierProduct): void {
   selectedProductIds.value = selectedProductIds.value.filter(id => id !== product.id)
 }
+
 function removeMissing(): void {
   selectedStockIds.value = selectedStockIds.value.filter(id => stock.value.some(item => item.id === id))
   selectedIds.value = selectedIds.value.filter(id => materials.value.some(material => material.id === id))
   selectedProductIds.value = selectedProductIds.value.filter(id => products.value.some(product => product.id === id))
 }
+
 let discardDraft = false
+
 async function canDiscard(): Promise<boolean> {
   await save()
-  if (!dirty.value) return true
+  if (!dirty.value) {
+    return true
+  }
   const confirmed = window.confirm('Selections could not be saved. Discard unsaved project material selections?')
-  if (confirmed) discardDraft = true
+  if (confirmed) {
+    discardDraft = true
+  }
   return confirmed
 }
-function refreshSources(): void { if (active && !loading.value && !busy.value) void load() }
-function beforeUnload(event: BeforeUnloadEvent): void { if (dirty.value || busy.value) { event.preventDefault() } }
+
+function refreshSources(): void {
+  if (active && !loading.value && !busy.value) {
+    void load()
+  }
+}
+
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (dirty.value || busy.value) {
+    event.preventDefault()
+  }
+}
+
 if (inject(matchedRouteKey, undefined)) {
   onBeforeRouteLeave(canDiscard);
   onBeforeRouteUpdate(canDiscard)
@@ -155,6 +198,7 @@ let loadRevision = 0
 let active = true
 useDataImportRefresh(refreshSources, () => active && !loading.value && !busy.value)
 let wasDeactivated = false
+
 async function load(): Promise<void> {
   const revision = ++loadRevision
   const preserveDraft = dirty.value && !discardDraft
@@ -163,7 +207,9 @@ async function load(): Promise<void> {
   const [result, project, productResult, supplierResult, stockResult] = await Promise.all([
     repository.list(), service.projects.get(projectId), catalog.supplierProducts.list(), catalog.suppliers.list(), stockRepository?.selectionStock(projectId) ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
-  if (disposed || !active || revision !== loadRevision) return
+  if (disposed || !active || revision !== loadRevision) {
+    return
+  }
   if (result.ok && project.ok && productResult.ok && supplierResult.ok && stockResult.ok) {
     stock.value = stockResult.value
     materials.value = result.value
@@ -181,7 +227,9 @@ async function load(): Promise<void> {
     suppliers.value = supplierResult.value
   } else {
     const failure = [result, project, productResult, supplierResult, stockResult].find(record => !record.ok)
-    if (failure) loadError.value = persistenceErrorMessage(failure.error, failure === result ? 'Material' : failure === stockResult ? 'Stock item' : 'Project')
+    if (failure) {
+      loadError.value = persistenceErrorMessage(failure.error, failure === result ? 'Material' : failure === stockResult ? 'Stock item' : 'Project')
+    }
     materials.value = [];
     products.value = [];
     suppliers.value = [];
@@ -189,26 +237,36 @@ async function load(): Promise<void> {
   }
   loading.value = false
 }
+
 function toggle(material: Material): void {
   selectedIds.value = selectedIds.value.includes(material.id)
     ? selectedIds.value.filter(id => id !== material.id)
     : [...selectedIds.value, material.id]
 }
+
 function selectable(product: SupplierProduct): boolean {
   return product.availability !== 'unavailable' && materials.value.some(material => material.id === product.materialId)
     && suppliers.value.some(supplier => supplier.id === product.supplierId)
 }
+
 function toggleProduct(product: SupplierProduct): void {
-  if (selectedProductIds.value.includes(product.id)) removeProduct(product)
-  else if (selectable(product)) {
+  if (selectedProductIds.value.includes(product.id)) {
+    removeProduct(product)
+  } else if (selectable(product)) {
     selectedProductIds.value = [...selectedProductIds.value, product.id]
   }
 }
+
 let pendingSave: Promise<void> | undefined
 let disposed = false
+
 function save(): Promise<void> {
-  if (pendingSave) return pendingSave
-  if (disposed || loading.value || loadError.value) return Promise.resolve()
+  if (pendingSave) {
+    return pendingSave
+  }
+  if (disposed || loading.value || loadError.value) {
+    return Promise.resolve()
+  }
   if (!dirty.value) {
     saveError.value = '';
     return Promise.resolve()
@@ -218,10 +276,13 @@ function save(): Promise<void> {
   pendingSave = persistSelections().finally(() => {
     busy.value = false;
     pendingSave = undefined;
-    if (!dirty.value) saveError.value = ''
+    if (!dirty.value) {
+      saveError.value = ''
+    }
   })
   return pendingSave
 }
+
 async function persistSelections(): Promise<void> {
   try {
     while (dirty.value && !disposed) {
@@ -232,7 +293,9 @@ async function persistSelections(): Promise<void> {
       // Reread ownership so a concurrent Part write cannot be overwritten.
       const project = await service.projects.get(projectId)
       const result = project.ok ? await service.projects.update(projectId, {
-        ...project.value, materialIds, supplierProductIds,
+        ...project.value,
+        materialIds,
+        supplierProductIds,
         ...(project.value.stockItemIds !== undefined || stockItemIds.length ? { stockItemIds } : {}),
         ...(project.value.panelQuantities === undefined ? {} : { panelQuantities: project.value.panelQuantities.filter(item => supplierProductIds.includes(item.supplierProductId)) }),
       }) : project
@@ -248,7 +311,12 @@ async function persistSelections(): Promise<void> {
     saveError.value = 'Could not save project selections to local storage.'
   }
 }
-watch([selectedIds, selectedProductIds, selectedStockIds], () => { if (!loading.value) void save() })
+
+watch([selectedIds, selectedProductIds, selectedStockIds], () => {
+  if (!loading.value) {
+    void save()
+  }
+})
 onMounted(() => {
   window.addEventListener('beforeunload', beforeUnload);
   window.addEventListener('focus', refreshSources);
@@ -262,7 +330,9 @@ onDeactivated(() => {
   window.removeEventListener('beforeunload', beforeUnload)
 })
 onActivated(() => {
-  if (!wasDeactivated) return
+  if (!wasDeactivated) {
+    return
+  }
   active = true;
   wasDeactivated = false
   window.addEventListener('beforeunload', beforeUnload);

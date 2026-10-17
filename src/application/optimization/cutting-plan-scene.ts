@@ -33,13 +33,21 @@ export type CuttingPlanSceneResult =
 
 /** Read-only projection from the independently validated tree, never the redundant placements array. */
 export function createCuttingPlanScene(plan: PanelCuttingPlan | null, input: Omit<OptimizePanelInput, 'parts'> & { readonly parts: readonly Part[] }): CuttingPlanSceneResult {
-  if (plan === null) return { status: 'unavailable' }
-  if (!hasTreeStructure(plan.tree)) return { status: 'invalid', message: 'The cutting tree structure is invalid.' }
+  if (plan === null) {
+    return { status: 'unavailable' }
+  }
+  if (!hasTreeStructure(plan.tree)) {
+    return { status: 'invalid', message: 'The cutting tree structure is invalid.' }
+  }
   try {
     const validation = validateCuttingTree(plan.tree, input)
-    if (!validation.valid) return { status: 'invalid', message: `Independent validation failed: ${validation.issues.map(issue => issue.kind).join(', ')}.` }
+    if (!validation.valid) {
+      return { status: 'invalid', message: `Independent validation failed: ${validation.issues.map(issue => issue.kind).join(', ')}.` }
+    }
     const usableArea = getUsableArea(input.panel, input.settings)
-    if (usableArea === null) return { status: 'invalid', message: 'No usable panel area.' }
+    if (usableArea === null) {
+      return { status: 'invalid', message: 'No usable panel area.' }
+    }
     const parts: ScenePart[] = []
     const waste: Rect[] = []
     const kerfs: Rect[] = []
@@ -47,27 +55,34 @@ export function createCuttingPlanScene(plan: PanelCuttingPlan | null, input: Omi
     const pending: CuttingTreeNode[] = [plan.tree]
     while (pending.length > 0) {
       const node = pending.pop()
-      if (node === undefined) break
+      if (node === undefined) {
+        break
+      }
       switch (node.kind) {
         case 'cut':
           kerfs.push(getKerfRegion(node.region, node.cut, input.settings))
           pending.push(node.second, node.first)
           break
-        case 'waste': waste.push({ ...node.region }); break
-        case 'part': {
-          const part = byId.get(node.partId)
-          if (part === undefined) return { status: 'invalid', message: 'A placed part is unavailable.' }
-          parts.push({
-            key: JSON.stringify([part.id, node.copyIndex]),
-            part,
-            copyIndex: node.copyIndex,
-            orientation: node.orientation,
-            region: { ...node.region },
-            dimensions: getOrientedDimensions(part, node.orientation),
-            grain: grainInPanelAxes(part.grainDirection, node.orientation)
-          })
+        case 'waste':
+          waste.push({ ...node.region });
           break
-        }
+        case 'part':
+          {
+            const part = byId.get(node.partId)
+            if (part === undefined) {
+              return { status: 'invalid', message: 'A placed part is unavailable.' }
+            }
+            parts.push({
+              key: JSON.stringify([part.id, node.copyIndex]),
+              part,
+              copyIndex: node.copyIndex,
+              orientation: node.orientation,
+              region: { ...node.region },
+              dimensions: getOrientedDimensions(part, node.orientation),
+              grain: grainInPanelAxes(part.grainDirection, node.orientation)
+            })
+            break
+          }
       }
     }
     return {

@@ -18,7 +18,6 @@ import { supplierProductSchema } from '../../domain/model/supplier-product'
 
 type Execute = <T>(mode: 'r' | 'rw', table: Table<unknown, string>, work: () => Promise<T>) => Promise<PersistenceResult<T>>
 
-
 export const DATABASE_NAME = 'opticutlist'
 export const DATABASE_VERSION = 8
 export const DATABASE_V1_STORES = {
@@ -63,9 +62,12 @@ function createRepository<Entity extends { id: string }>(
   async function requireRecord(id: Entity['id']): Promise<Entity> {
     parse(idSchema, id)
     const stored = await table.get(id)
-    if (stored === undefined) throw new PersistenceFailure({ kind: 'notFound', id })
+    if (stored === undefined) {
+      throw new PersistenceFailure({ kind: 'notFound', id })
+    }
     return parse(schema, stored)
   }
+
   return {
     create(record) {
       return execute('rw', table, async () => {
@@ -231,8 +233,12 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
           let active = true
           const safeExecute: Execute = async (_mode, _table, operation) => {
             try {
-              if (!active) throw new Error('Transaction repositories are no longer active')
-              if (firstFailure !== undefined) throw new PersistenceFailure(firstFailure)
+              if (!active) {
+                throw new Error('Transaction repositories are no longer active')
+              }
+              if (firstFailure !== undefined) {
+                throw new PersistenceFailure(firstFailure)
+              }
               return { ok: true, value: await operation() }
             } catch (error) {
               const detail = failure(error)
@@ -242,8 +248,12 @@ export function createLocalPersistence(name = DATABASE_NAME, options?: DexieOpti
           }
           try {
             const result = await work(repositories((tableName) => transaction.table<unknown, string>(tableName), safeExecute))
-            if (firstFailure !== undefined) throw new PersistenceFailure(firstFailure)
-            if (!result.ok) throw new PersistenceFailure(result.error)
+            if (firstFailure !== undefined) {
+              throw new PersistenceFailure(firstFailure)
+            }
+            if (!result.ok) {
+              throw new PersistenceFailure(result.error)
+            }
             return result.value
           } finally {
             active = false

@@ -31,7 +31,6 @@ export interface SplitResult {
   readonly second: Rect | null
 }
 
-
 /**
  * Area left after trimming `edgeMarginMm` from all four edges.
  * Returns `null` when the margins leave no strictly positive area.

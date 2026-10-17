@@ -6,6 +6,8 @@ export const optimizationServiceFactoryKey: InjectionKey<() => OptimizationServi
 
 export function useOptimizationService(): OptimizationService {
   const factory = inject(optimizationServiceFactoryKey)
-  if (factory === undefined) throw new Error('Optimization service was not provided')
+  if (factory === undefined) {
+    throw new Error('Optimization service was not provided')
+  }
   return factory()
 }

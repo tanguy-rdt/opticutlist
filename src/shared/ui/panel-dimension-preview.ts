@@ -16,6 +16,7 @@ const spacing = {
   arrowHalfWidth: 2,
   outsideTail: 10
 } as const
+
 function arrow(tip: Point, axis: 'length' | 'width', direction: number): string {
   const base = axis === 'length' ? { x: tip.x + direction * spacing.arrowLength, y: tip.y } : { x: tip.x, y: tip.y + direction * spacing.arrowLength }
   const points = axis === 'length'
@@ -23,6 +24,7 @@ function arrow(tip: Point, axis: 'length' | 'width', direction: number): string 
     : [tip, { x: base.x - spacing.arrowHalfWidth, y: base.y }, { x: base.x + spacing.arrowHalfWidth, y: base.y }]
   return `M ${points.map(point => `${String(point.x)} ${String(point.y)}`).join(' L ')} Z`
 }
+
 function drawing(width: number, height: number, lengthLabel: string, widthLabel: string) {
   const left = -width / 2;
   const right = width / 2;
@@ -83,20 +85,36 @@ export function fitPanelDimensionPreview(lengthMm: number, widthMm: number, size
   const availableWidth = box.width - spacing.padding * 2;
   const availableHeight = box.height - spacing.padding * 2
   const empty = drawing(0, 0, lengthLabel, widthLabel)
-  if (empty.bounds.right - empty.bounds.left > availableWidth || empty.bounds.bottom - empty.bounds.top > availableHeight) throw new RangeError('Dimensions cannot be annotated legibly in this preview size')
+  if (
+    empty.bounds.right - empty.bounds.left > availableWidth
+    || empty.bounds.bottom - empty.bounds.top > availableHeight
+  ) {
+    throw new RangeError('Dimensions cannot be annotated legibly in this preview size')
+  }
   let low = 0;
   let high = Math.min(availableWidth / length, availableHeight / width)
   // Fit the complete annotation envelope, not merely the rectangle. Fixed iterations are deterministic.
   for (let iteration = 0; iteration < 40; iteration++) {
     const scale = (low + high) / 2
     const candidate = drawing(length * scale, width * scale, lengthLabel, widthLabel)
-    if (candidate.bounds.right - candidate.bounds.left <= availableWidth && candidate.bounds.bottom - candidate.bounds.top <= availableHeight) low = scale
-    else high = scale
+    if (
+      candidate.bounds.right - candidate.bounds.left <= availableWidth
+      && candidate.bounds.bottom - candidate.bounds.top <= availableHeight
+    ) {
+      low = scale
+    } else {
+      high = scale
+    }
   }
   const layout = drawing(length * low, width * low, lengthLabel, widthLabel)
   const translation = { x: (box.width - layout.bounds.left - layout.bounds.right) / 2, y: (box.height - layout.bounds.top - layout.bounds.bottom) / 2 }
   return {
-    ...layout, ...box, translation, lengthLabel, widthLabel, fontSize: spacing.fontSize,
+    ...layout,
+    ...box,
+    translation,
+    lengthLabel,
+    widthLabel,
+    fontSize: spacing.fontSize,
     horizontalArrows: [arrow({ x: layout.panel.x, y: layout.horizontal.start.y }, 'length', layout.horizontalOutside ? -1 : 1), arrow({ x: layout.panel.x + layout.panel.width, y: layout.horizontal.end.y }, 'length', layout.horizontalOutside ? 1 : -1)],
     verticalArrows: [arrow({ x: layout.vertical.start.x, y: layout.panel.y }, 'width', layout.verticalOutside ? -1 : 1), arrow({ x: layout.vertical.end.x, y: layout.panel.y + layout.panel.height }, 'width', layout.verticalOutside ? 1 : -1)],
   }
@@ -118,8 +136,11 @@ const grainKnots = [
   'M 225 108 C 238 80 302 79 324 105 C 309 135 246 139 225 108 Z',
   'M 249 109 C 260 94 286 94 299 108 C 287 122 260 124 249 109 Z',
 ] as const
+
 export function previewGrainIllustration(panel: { width: number; height: number }, direction: GrainDirection) {
-  if (direction === 'none' || Math.min(panel.width, panel.height) < 16) return null
+  if (direction === 'none' || Math.min(panel.width, panel.height) < 16) {
+    return null
+  }
   return {
     transform: direction === 'length'
       ? `scale(${String(panel.width / 1000)} ${String(panel.height / 400)})`

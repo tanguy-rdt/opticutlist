@@ -5,11 +5,14 @@ import { materialPresets, materialPresetGroups, type MaterialPreset } from './ma
 defineProps<{ selectedId: string | undefined }>()
 const emit = defineEmits<{ select: [preset: MaterialPreset | undefined] }>()
 const search = ref('')
+
 function normalize(value: string): string {
   return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase()
 }
+
 const groups = computed(() => materialPresetGroups.map(category => ({
-  category, presets: materialPresets.filter(preset => preset.category === category && normalize(preset.name).includes(normalize(search.value.trim()))),
+  category,
+  presets: materialPresets.filter(preset => preset.category === category && normalize(preset.name).includes(normalize(search.value.trim()))),
 })).filter(group => group.presets.length > 0))
 </script>
 <template>

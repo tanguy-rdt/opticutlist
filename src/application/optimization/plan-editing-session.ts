@@ -48,7 +48,9 @@ export function currentEditingPlan(session: PlanEditingSession): PanelCuttingPla
 export function applyPlanEdit(session: PlanEditingSession, edit: CuttingTreeEdit): PlanEditingResult {
   const currentPlan = currentEditingPlan(session)
   const editResult = editCuttingTree(currentPlan.tree, session.input, edit)
-  if (!editResult.ok) return editResult
+  if (!editResult.ok) {
+    return editResult
+  }
   const sceneResult = createCuttingPlanScene({ ...currentPlan, tree: editResult.tree }, session.input)
   if (sceneResult.status !== 'valid') {
     return {

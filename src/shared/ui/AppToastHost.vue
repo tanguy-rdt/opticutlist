@@ -3,7 +3,11 @@ import { onBeforeUnmount } from 'vue'
 import AppToast from './AppToast.vue'
 import { useToastStore } from './toast-store'
 const toasts = useToastStore()
-onBeforeUnmount(() => { for (const item of toasts.notifications) toasts.dismiss(item.id) })
+onBeforeUnmount(() => {
+  for (const item of toasts.notifications) {
+    toasts.dismiss(item.id)
+  }
+})
 </script>
 <template>
   <TransitionGroup

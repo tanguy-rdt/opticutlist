@@ -7,14 +7,22 @@ export function purchasingSchedule(sources: readonly { panel: CuttingPlanPdfDocu
   const rows = sources.map(({ panel, count }) => {
     const pricing = panel.pricing
     const total = pricing ? pricing.price * count : undefined
-    if (total !== undefined && !Number.isFinite(total)) throw new RangeError('Panel price total exceeds the supported range.')
-    if (pricing && total !== undefined) totals.set(pricing.currency, (totals.get(pricing.currency) ?? 0) + total)
+    if (total !== undefined && !Number.isFinite(total)) {
+      throw new RangeError('Panel price total exceeds the supported range.')
+    }
+    if (pricing && total !== undefined) {
+      totals.set(pricing.currency, (totals.get(pricing.currency) ?? 0) + total)
+    }
     return [panel.panel.name, panel.materialName, `${String(panel.panel.lengthMm)} × ${String(panel.panel.widthMm)} × ${String(panel.panel.thicknessMm)} mm`, String(count), panel.panel.stockItemId ? 'Owned stock' : panel.supplierName ?? 'N/A', pricing ? `${pricing.price.toFixed(2)} ${pricing.currency}` : 'N/A', pricing && total !== undefined ? `${total.toFixed(2)} ${pricing.currency}` : 'N/A']
   })
   for (const [currency, total] of totals) {
-    if (!Number.isFinite(total)) throw new RangeError('Purchasing subtotal exceeds the supported range.')
+    if (!Number.isFinite(total)) {
+      throw new RangeError('Purchasing subtotal exceeds the supported range.')
+    }
     rows.push([unknown ? 'Subtotal (partial):' : 'Total:', '', '', '', '', '', `${total.toFixed(2)} ${currency}`])
   }
-  if (!totals.size) rows.push(['Total:', '', '', '', '', '', 'N/A'])
+  if (!totals.size) {
+    rows.push(['Total:', '', '', '', '', '', 'N/A'])
+  }
   return rows
 }

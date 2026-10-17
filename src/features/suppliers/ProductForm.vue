@@ -32,6 +32,7 @@ const materialBusy = ref(false)
 const materialName = ref('')
 const materialCategory = ref('')
 const selectedPreset = shallowRef<MaterialPreset>()
+
 function selectPreset(preset: MaterialPreset | undefined): void {
   selectedPreset.value = preset
   materialName.value = preset?.name ?? ''
@@ -39,25 +40,35 @@ function selectPreset(preset: MaterialPreset | undefined): void {
   materialNameError.value = ''
   materialCategoryError.value = ''
 }
+
 const materialNameError = ref('')
 const materialCategoryError = ref('')
 const materialStorageError = ref('')
 const materialNotice = ref('')
 const materialNameInput = ref<HTMLInputElement | null>(null)
+
 async function showMaterialForm(): Promise<void> {
-  if (props.disabled || materialBusy.value) return
+  if (props.disabled || materialBusy.value) {
+    return
+  }
   creatingMaterial.value = true
   await nextTick()
   materialNameInput.value?.focus()
 }
+
 async function closeMaterialForm(): Promise<void> {
-  if (props.disabled || materialBusy.value) return
+  if (props.disabled || materialBusy.value) {
+    return
+  }
   creatingMaterial.value = false
   await nextTick()
   form.value?.querySelector<HTMLButtonElement>('#product-material')?.focus()
 }
+
 async function createMaterial(): Promise<void> {
-  if (props.disabled || materialBusy.value) return
+  if (props.disabled || materialBusy.value) {
+    return
+  }
   materialStorageError.value = ''
   materialNotice.value = ''
   const parsed = materialSchema.safeParse({
@@ -80,7 +91,9 @@ async function createMaterial(): Promise<void> {
   materialBusy.value = false
   emit('materialBusy', false)
   if (result.ok) {
-    if (!existing) emit('materialCreated', result.value)
+    if (!existing) {
+      emit('materialCreated', result.value)
+    }
     materialId.value = result.value.id
     creatingMaterial.value = false
     materialName.value = ''
@@ -89,19 +102,26 @@ async function createMaterial(): Promise<void> {
     materialNotice.value = existing ? 'Existing material selected; no duplicate created.' : 'Material created and selected.'
     await nextTick()
     form.value?.querySelector<HTMLButtonElement>('#product-material')?.focus()
-  } else materialStorageError.value = persistenceErrorMessage(result.error, 'Material')
+  } else {
+    materialStorageError.value = persistenceErrorMessage(result.error, 'Material')
+  }
 }
+
 const form = ref<HTMLFormElement | null>(null)
 const name = ref(props.product?.name ?? '')
 const supplierId = ref<string>(props.product?.supplierId ?? props.initialSupplierId)
 const effectiveSupplierId = computed(() => props.fixedSupplier ? props.product?.supplierId ?? props.initialSupplierId : supplierId.value)
 const supplierName = computed(() => props.suppliers.find(supplier => supplier.id === effectiveSupplierId.value)?.name)
 const materialId = ref<string>(props.product?.materialId ?? '')
+
 function presetValue(id: string): string {
   let value = `preset:${id}`
-  while (props.materials.some(material => material.id === value)) value += ':'
+  while (props.materials.some(material => material.id === value)) {
+    value += ':'
+  }
   return value
 }
+
 const productPreset = computed(() => materialPresets.find(preset => presetValue(preset.id) === materialId.value))
 const materialOptions = computed(() => [
   ...materialPresets.map(preset => ({ value: presetValue(preset.id), name: preset.name, group: preset.category, presetId: preset.id })),
@@ -121,29 +141,50 @@ const dimensionFields = [
   { key: 'lengthMm', label: 'Length (mm)' }, { key: 'widthMm', label: 'Width (mm)' },
   { key: 'thicknessMm', label: 'Thickness (mm)' },
 ] as const
+
 function numberInput(value: number | string): number | undefined {
   return typeof value === 'string' && value.trim() === '' ? undefined : Number(value)
 }
-function focusName(): void { form.value?.querySelector<HTMLInputElement>('input')?.focus() }
+
+function focusName(): void {
+  form.value?.querySelector<HTMLInputElement>('input')?.focus()
+}
+
 defineExpose({ focusName })
+
 async function submit(): Promise<void> {
-  if (props.disabled || materialBusy.value || creatingMaterial.value) return
+  if (props.disabled || materialBusy.value || creatingMaterial.value) {
+    return
+  }
   const price = form.value?.querySelector<HTMLInputElement>('#product-price')?.validity.badInput ? NaN : numberInput(numbers.price)
   const result = supplierProductSchema.safeParse({
-    id: props.product?.id ?? crypto.randomUUID(), name: name.value, supplierId: effectiveSupplierId.value, materialId: productPreset.value ? crypto.randomUUID() : materialId.value,
-    lengthMm: numberInput(numbers.lengthMm), widthMm: numberInput(numbers.widthMm), thicknessMm: numberInput(numbers.thicknessMm),
+    id: props.product?.id ?? crypto.randomUUID(),
+    name: name.value,
+    supplierId: effectiveSupplierId.value,
+    materialId: productPreset.value ? crypto.randomUUID() : materialId.value,
+    lengthMm: numberInput(numbers.lengthMm),
+    widthMm: numberInput(numbers.widthMm),
+    thicknessMm: numberInput(numbers.thicknessMm),
     ...(price !== undefined ? { price } : {}),
-    currency: currency.value.trim(), grainDirection: grainDirection.value, availability: props.product?.availability ?? 'unknown',
+    currency: currency.value.trim(),
+    grainDirection: grainDirection.value,
+    availability: props.product?.availability ?? 'unknown',
     ...(productUrl.value.trim() ? { productUrl: productUrl.value.trim() } : {}),
   })
   const issues = new Map(result.success ? [] : result.error.issues.map((issue) => [String(issue.path[0]), issue.message]))
-  if (!props.suppliers.some((supplier) => supplier.id === effectiveSupplierId.value)) issues.set('supplierId', 'Choose an existing supplier.')
-  if (!productPreset.value && !props.materials.some((material) => material.id === materialId.value)) issues.set('materialId', 'Choose an existing material.')
+  if (!props.suppliers.some((supplier) => supplier.id === effectiveSupplierId.value)) {
+    issues.set('supplierId', 'Choose an existing supplier.')
+  }
+  if (!productPreset.value && !props.materials.some((material) => material.id === materialId.value)) {
+    issues.set('materialId', 'Choose an existing material.')
+  }
   errors.value = issues
   if (issues.size > 0) {
     await nextTick()
     form.value?.querySelector<HTMLInputElement | HTMLSelectElement>('[aria-invalid="true"]')?.focus()
-  } else if (result.success) emit('save', result.data, productPreset.value?.id)
+  } else if (result.success) {
+    emit('save', result.data, productPreset.value?.id)
+  }
 }
 </script>
 <template>

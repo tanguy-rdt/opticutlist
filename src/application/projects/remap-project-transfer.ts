@@ -15,6 +15,7 @@ interface ExistingIds {
   suppliers: readonly ProjectTransfer['catalog']['suppliers'][number][]
   products: readonly ProjectTransfer['catalog']['products'][number][]
 }
+
 export function remapProjectTransfer(file: ProjectTransfer, existing: ExistingIds): ProjectTransfer {
   const projectId = mapped(ids<CuttingProjectId>([file.project.id], existing.projects, value => cuttingProjectIdSchema.parse(value)), file.project.id)
   const { catalog, materialIds, productIds } = remapCatalog(file.catalog, existing, {
@@ -23,13 +24,18 @@ export function remapProjectTransfer(file: ProjectTransfer, existing: ExistingId
   })
   const partIds = ids<PartId>([...file.parts.map(part => part.id), ...file.savedPlans.flatMap(plan => plan.contents.parts.map(part => part.id))], existing.parts, value => partIdSchema.parse(value))
   const planIds = ids<SavedCuttingPlanId>(file.savedPlans.map(plan => plan.summary.id), existing.plans, value => savedCuttingPlanIdSchema.parse(value))
+
   function tree(node: CompactTree): CompactTree {
-    if (node.kind === 'cut') return { ...node, first: tree(node.first), second: tree(node.second) }
+    if (node.kind === 'cut') {
+      return { ...node, first: tree(node.first), second: tree(node.second) }
+    }
     return node.kind === 'part' ? { ...node, partId: mapped(partIds, node.partId) } : { ...node }
   }
+
   const part = (item: ProjectTransfer['parts'][number]) => ({ ...item, id: mapped(partIds, item.id), materialId: mapped(materialIds, item.materialId) })
   return {
-    ...file, project: {
+    ...file,
+    project: {
       ...file.project,
       id: projectId,
       partIds: file.project.partIds.map(id => mapped(partIds, id)),
@@ -38,11 +44,16 @@ export function remapProjectTransfer(file: ProjectTransfer, existing: ExistingId
       ...(file.project.panelQuantities === undefined ? {} : { panelQuantities: file.project.panelQuantities.map(item => ({ ...item, supplierProductId: mapped(productIds, item.supplierProductId) })) })
     },
     ...(file.currentResultId === undefined ? {} : { currentResultId: mapped(planIds, file.currentResultId) }),
-    parts: file.parts.map(part), catalog,
+    parts: file.parts.map(part),
+    catalog,
     savedPlans: file.savedPlans.map(plan => ({
-      summary: { ...plan.summary, id: mapped(planIds, plan.summary.id), projectId }, contents: {
-        ...plan.contents, id: mapped(planIds, plan.contents.id), projectId,
-        parts: plan.contents.parts.map(part), sources: plan.contents.sources.map(source => ({
+      summary: { ...plan.summary, id: mapped(planIds, plan.summary.id), projectId },
+      contents: {
+        ...plan.contents,
+        id: mapped(planIds, plan.contents.id),
+        projectId,
+        parts: plan.contents.parts.map(part),
+        sources: plan.contents.sources.map(source => ({
           ...source,
           product: {
             ...source.product,
@@ -55,7 +66,8 @@ export function remapProjectTransfer(file: ProjectTransfer, existing: ExistingId
           supplierProductId: plan.contents.sources.some(source => source.product.id === panel.supplierProductId && source.product.stockItemId !== undefined) ? panel.supplierProductId : mapped(productIds, panel.supplierProductId),
           tree: tree(panel.tree),
           ...(panel.unplacedReasons === undefined ? {} : { unplacedReasons: panel.unplacedReasons.map(item => ({ ...item, partId: mapped(partIds, item.partId) })) })
-        })), unplaced: plan.contents.unplaced.map(item => ({ ...item, partId: mapped(partIds, item.partId) })),
+        })),
+        unplaced: plan.contents.unplaced.map(item => ({ ...item, partId: mapped(partIds, item.partId) })),
       }
     })),
   }

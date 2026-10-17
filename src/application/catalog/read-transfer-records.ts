@@ -1,17 +1,30 @@
 import type { Repositories } from '../persistence/repositories'
+
 export async function readCatalogTransferRecords(repositories: Repositories) {
   const projects = await repositories.projects.list();
-  if (!projects.ok) return projects
+  if (!projects.ok) {
+    return projects
+  }
   const parts = await repositories.parts.list();
-  if (!parts.ok) return parts
+  if (!parts.ok) {
+    return parts
+  }
   const materials = await repositories.materials.list();
-  if (!materials.ok) return materials
+  if (!materials.ok) {
+    return materials
+  }
   const suppliers = await repositories.suppliers.list();
-  if (!suppliers.ok) return suppliers
+  if (!suppliers.ok) {
+    return suppliers
+  }
   const products = await repositories.supplierProducts.list();
-  if (!products.ok) return products
+  if (!products.ok) {
+    return products
+  }
   const stock = await repositories.stockItems.list();
-  if (!stock.ok) return stock
+  if (!stock.ok) {
+    return stock
+  }
   return {
     ok: true,
     value: {
@@ -26,13 +39,20 @@ export async function readCatalogTransferRecords(repositories: Repositories) {
     }
   } as const
 }
+
 export async function readTransferRecords(repositories: Repositories) {
   const records = await readCatalogTransferRecords(repositories);
-  if (!records.ok) return records
+  if (!records.ok) {
+    return records
+  }
   const plans = await repositories.savedPlanSummaries.list();
-  if (!plans.ok) return plans
+  if (!plans.ok) {
+    return plans
+  }
   const confirmations = await repositories.cuttingConfirmations.list();
-  if (!confirmations.ok) return confirmations
+  if (!confirmations.ok) {
+    return confirmations
+  }
   return {
     ok: true,
     value: { ...records.value, plans: [...plans.value.map(plan => plan.id), ...confirmations.value.map(receipt => receipt.id)] }

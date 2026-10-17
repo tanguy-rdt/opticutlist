@@ -19,6 +19,7 @@ const imageBusy = ref(false)
 const imageInput = ref<HTMLInputElement | null>(null)
 let imageRevision = 0
 const coverImageUrl = computed(() => configuration.value.coverImage ? `data:${configuration.value.coverImage.mimeType};base64,${configuration.value.coverImage.data}` : undefined)
+
 function updateSettings(next: PdfSettings): void {
   const parsed = pdfSettingsSchema.safeParse(next)
   if (!parsed.success) {
@@ -29,34 +30,57 @@ function updateSettings(next: PdfSettings): void {
   configuration.value = parsed.data;
   emit('settingsChange', parsed.data)
 }
+
 function updateText(event: Event, field: 'titleOverride' | 'description'): void {
-  if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return
+  if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) {
+    return
+  }
   const next = { ...configuration.value }
   const value = event.target.value.trim()
   if (!value || (field === 'titleOverride' && value === props.title)) {
-    if (field === 'titleOverride') delete next.titleOverride
-    else delete next.description
+    if (field === 'titleOverride') {
+      delete next.titleOverride
+    } else {
+      delete next.description
+    }
+  } else {
+    next[field] = value
   }
-  else next[field] = value
   updateSettings(next)
-  if (field === 'titleOverride' && !next.titleOverride) event.target.value = props.title
+  if (field === 'titleOverride' && !next.titleOverride) {
+    event.target.value = props.title
+  }
 }
+
 async function selectImage(event: Event): Promise<void> {
-  if (!(event.target instanceof HTMLInputElement)) return
+  if (!(event.target instanceof HTMLInputElement)) {
+    return
+  }
   const file = event.target.files?.[0]
   event.target.value = ''
-  if (!file) return
+  if (!file) {
+    return
+  }
   const current = ++imageRevision
   imageBusy.value = true;
   imageError.value = ''
   try {
     const image = await readCoverImage(file)
-    if (!disposed && current === imageRevision) updateSettings({ ...configuration.value, coverImage: image })
+    if (!disposed && current === imageRevision) {
+      updateSettings({ ...configuration.value, coverImage: image })
+    }
   } catch (cause) {
-    if (!disposed && current === imageRevision) imageError.value = cause instanceof Error ? cause.message : 'Could not read this image.'
+    if (!disposed && current === imageRevision) {
+      imageError.value = cause instanceof Error ? cause.message : 'Could not read this image.'
+    }
   }
-  finally { if (current === imageRevision) imageBusy.value = false }
+  finally {
+    if (current === imageRevision) {
+      imageBusy.value = false
+    }
+  }
 }
+
 function removeImage(): void {
   imageRevision++;
   imageBusy.value = false
@@ -64,8 +88,11 @@ function removeImage(): void {
   delete next.coverImage
   updateSettings(next)
 }
+
 watch(() => props.settings, settings => {
-  if (JSON.stringify(settings ?? {}) !== JSON.stringify(configuration.value)) configuration.value = pdfSettingsSchema.parse(settings ?? {})
+  if (JSON.stringify(settings ?? {}) !== JSON.stringify(configuration.value)) {
+    configuration.value = pdfSettingsSchema.parse(settings ?? {})
+  }
 })
 
 const service = useCuttingPlanPdfService()
@@ -91,9 +118,19 @@ let loading = new AbortController()
 let renderController = new AbortController()
 let observer: ResizeObserver | null = null
 let disposed = false
-function canRender(): boolean { return paper.value !== null && !disposed }
-function canContinueRendering(signal: AbortSignal): boolean { return !signal.aborted && !disposed }
-function isCurrent(current: number): boolean { return current === generation && !disposed }
+
+function canRender(): boolean {
+  return paper.value !== null && !disposed
+}
+
+function canContinueRendering(signal: AbortSignal): boolean {
+  return !signal.aborted && !disposed
+}
+
+function isCurrent(current: number): boolean {
+  return current === generation && !disposed
+}
+
 function clearRender(): void {
   renderVersion += 1;
   renderController.abort();
@@ -101,31 +138,44 @@ function clearRender(): void {
   paper.value?.replaceChildren();
   rendering.value = false
 }
+
 function clearDocument(): void {
   loading.abort();
   loading = new AbortController();
   clearRender()
   const previous = pdf;
   pdf = null
-  if (previous) void previous.destroy().catch(() => { /* already cancelled */ })
+  if (previous) {
+    void previous.destroy().catch(() => { /* already cancelled */ })
+  }
   bytes.value = null;
   pageCount.value = 0
-  if (viewport.value) viewport.value.scrollTop = 0
+  if (viewport.value) {
+    viewport.value.scrollTop = 0
+  }
 }
+
 function updateCurrentPage(): void {
   const root = viewport.value
-  if (!root || !root.clientHeight) return
+  if (!root || !root.clientHeight) {
+    return
+  }
   const marker = root.getBoundingClientRect().top + Math.min(root.clientHeight / 4, 160)
   const pages = paper.value?.querySelectorAll<HTMLElement>('[data-pdf-page]')
-  if (!pages) return
+  if (!pages) {
+    return
+  }
   for (const element of pages) {
     if (element.getBoundingClientRect().bottom > marker) {
       page.value = Number(element.dataset.pdfPage)
       return
     }
   }
-  if (pages.length) page.value = pages.length
+  if (pages.length) {
+    page.value = pages.length
+  }
 }
+
 async function renderPages(): Promise<void> {
   const anchor = page.value
   const oldPage = paper.value?.querySelector<HTMLElement>(`[data-pdf-page="${String(anchor)}"]`)
@@ -136,7 +186,9 @@ async function renderPages(): Promise<void> {
   renderVersion += 1;
   renderController.abort();
   renderController = new AbortController()
-  if (!pdf || !canRender()) return
+  if (!pdf || !canRender()) {
+    return
+  }
   const current = renderVersion
   const document = pdf
   const signal = renderController.signal
@@ -146,12 +198,16 @@ async function renderPages(): Promise<void> {
   rendering.value = true
   try {
     for (let index = 1; index <= document.pageCount; index += 1) {
-      if (!canContinueRendering(signal)) return
+      if (!canContinueRendering(signal)) {
+        return
+      }
       const canvas = window.document.createElement('canvas')
       canvas.setAttribute('role', 'img');
       canvas.setAttribute('aria-label', `Cutting document page ${String(index)}`)
       await document.render(index, canvas, width, scale, signal)
-      if (!canContinueRendering(signal)) return
+      if (!canContinueRendering(signal)) {
+        return
+      }
       const sheet = window.document.createElement('div')
       sheet.className = 'pdf-page';
       sheet.dataset.pdfPage = String(index)
@@ -167,9 +223,16 @@ async function renderPages(): Promise<void> {
       updateCurrentPage()
     }
   } catch (cause) {
-    if (current === renderVersion && !disposed) error.value = cause instanceof Error ? cause.message : 'PDF preview failed.'
-  } finally { if (current === renderVersion) rendering.value = false }
+    if (current === renderVersion && !disposed) {
+      error.value = cause instanceof Error ? cause.message : 'PDF preview failed.'
+    }
+  } finally {
+    if (current === renderVersion) {
+      rendering.value = false
+    }
+  }
 }
+
 async function regenerate(): Promise<Uint8Array<ArrayBuffer> | null> {
   const current = ++generation
   clearDocument();
@@ -190,7 +253,9 @@ async function regenerate(): Promise<Uint8Array<ArrayBuffer> | null> {
         ...(configuration.value.coverImage ? { image: toRaw(configuration.value.coverImage) } : {}),
       }, pageSize: pageSize.value, orientation: orientation.value
     })
-    if (!isCurrent(current)) return null
+    if (!isCurrent(current)) {
+      return null
+    }
     if (!result.ok) {
       error.value = result.error.message;
       return null
@@ -207,12 +272,21 @@ async function regenerate(): Promise<Uint8Array<ArrayBuffer> | null> {
     await nextTick();
     await renderPages()
   } catch (cause) {
-    if (isCurrent(current)) error.value = cause instanceof Error ? cause.message : 'Could not prepare the cutting document.'
-  } finally { if (current === generation) generating.value = false }
+    if (isCurrent(current)) {
+      error.value = cause instanceof Error ? cause.message : 'Could not prepare the cutting document.'
+    }
+  } finally {
+    if (current === generation) {
+      generating.value = false
+    }
+  }
   return isCurrent(current) ? bytes.value : null
 }
+
 async function exportPdf(kind: 'download' | 'print'): Promise<void> {
-  if (action.value || generating.value || !service) return
+  if (action.value || generating.value || !service) {
+    return
+  }
   action.value = kind
   let viewer: PdfPrintView | null = null
   try {
@@ -221,29 +295,49 @@ async function exportPdf(kind: 'download' | 'print'): Promise<void> {
       pendingPrint = viewer
     }
     const document = await regenerate()
-    if (disposed) return
-    if (!document) throw new Error(error.value || 'The document changed while preparing it. Try again.')
-    if (viewer) viewer.show(document)
-    else downloadCuttingPlanPdf(document)
+    if (disposed) {
+      return
+    }
+    if (!document) {
+      throw new Error(error.value || 'The document changed while preparing it. Try again.')
+    }
+    if (viewer) {
+      viewer.show(document)
+    } else {
+      downloadCuttingPlanPdf(document)
+    }
     pendingPrint = null
   } catch (cause) {
     viewer?.close()
-    if (!disposed) toasts.error(kind === 'print' ? 'Could not prepare PDF for printing' : 'Could not download PDF', cause instanceof Error ? cause.message : 'Try again. If the problem continues, reload the document.')
+    if (!disposed) {
+      toasts.error(kind === 'print' ? 'Could not prepare PDF for printing' : 'Could not download PDF', cause instanceof Error ? cause.message : 'Try again. If the problem continues, reload the document.')
+    }
   } finally {
-    if (disposed) viewer?.close()
+    if (disposed) {
+      viewer?.close()
+    }
     pendingPrint = null;
     action.value = null
   }
 }
-watch([() => props.input, () => props.title, configuration], () => { void regenerate() }, { immediate: true, deep: true })
-watch(zoom, () => { void renderPages() })
+
+watch([() => props.input, () => props.title, configuration], () => {
+  void regenerate()
+}, { immediate: true, deep: true })
+watch(zoom, () => {
+  void renderPages()
+})
+
 function sizeWorkspace(): void {
   const root = workspace.value
-  if (!root || disposed) return
+  if (!root || disposed) {
+    return
+  }
   const main = root.closest('main')
   const bottomPadding = main ? Number.parseFloat(getComputedStyle(main).paddingBottom) || 20 : 20
   root.style.height = `${String(Math.max(0, window.innerHeight - root.getBoundingClientRect().top - bottomPadding))}px`
 }
+
 onMounted(() => {
   sizeWorkspace()
   window.addEventListener('resize', sizeWorkspace)
@@ -258,7 +352,9 @@ onMounted(() => {
       }
     })
     observer.observe(viewport.value)
-    if (workspace.value) observer.observe(workspace.value)
+    if (workspace.value) {
+      observer.observe(workspace.value)
+    }
   }
 })
 onBeforeUnmount(() => {

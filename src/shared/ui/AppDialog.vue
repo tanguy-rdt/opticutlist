@@ -16,25 +16,42 @@ const generatedId = `dialog-${useId()}`
 const headingId = computed(() => props.titleId || generatedId)
 const dialog = ref<HTMLDialogElement | null>(null)
 let previousFocus: HTMLElement | null = null
-function close(): void { if (!props.busy) emit('close') }
+
+function close(): void {
+  if (!props.busy) {
+    emit('close')
+  }
+}
+
 function syncOpen(): void {
-  if (!dialog.value) return
+  if (!dialog.value) {
+    return
+  }
   if (props.open) {
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     if (!dialog.value.open) {
-      if (typeof dialog.value.showModal === 'function') dialog.value.showModal()
-      else dialog.value.open = true
+      if (typeof dialog.value.showModal === 'function') {
+        dialog.value.showModal()
+      } else {
+        dialog.value.open = true
+      }
     }
   } else {
-    if (typeof dialog.value.close === 'function') dialog.value.close()
-    else dialog.value.open = false
+    if (typeof dialog.value.close === 'function') {
+      dialog.value.close()
+    } else {
+      dialog.value.open = false
+    }
     previousFocus?.focus()
   }
 }
+
 onMounted(syncOpen)
 watch(() => props.open, syncOpen)
 onBeforeUnmount(() => {
-  if (typeof dialog.value?.close === 'function') dialog.value.close();
+  if (typeof dialog.value?.close === 'function') {
+    dialog.value.close();
+  }
   previousFocus?.focus()
 })
 </script>

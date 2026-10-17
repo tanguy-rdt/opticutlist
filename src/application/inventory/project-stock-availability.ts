@@ -10,14 +10,20 @@ import type { PersistenceResult, Repositories } from '../persistence/repositorie
  */
 export async function readProjectStockAvailability(repositories: Repositories, projectId: CuttingProjectId): Promise<PersistenceResult<readonly StockItem[]>> {
   const records = await repositories.stockItems.list()
-  if (!records.ok) return records
+  if (!records.ok) {
+    return records
+  }
   const state = await repositories.projectStock.find(projectId)
-  if (!state.ok) return state
+  if (!state.ok) {
+    return state
+  }
   const items = new Map(records.value.map(item => [item.id, item]))
   for (const allocation of state.value?.consumed ?? []) {
     const current = items.get(allocation.stock.id)
     const quantity = (current?.quantity ?? 0) + allocation.quantity
-    if (!Number.isSafeInteger(quantity)) return { ok: false, error: { kind: 'referenceConflict', message: 'Project planning quantity exceeds the supported range.' } }
+    if (!Number.isSafeInteger(quantity)) {
+      return { ok: false, error: { kind: 'referenceConflict', message: 'Project planning quantity exceeds the supported range.' } }
+    }
     items.set(allocation.stock.id, { ...(current ?? allocation.stock), quantity })
   }
   return { ok: true, value: [...items.values()] }

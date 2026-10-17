@@ -26,6 +26,7 @@ const error = ref('')
 let canvas: PlanCanvas | null = null
 let resize: ResizeObserver | null = null
 let theme: MutationObserver | null = null
+
 function palette(): PlanPalette {
   const styles = getComputedStyle(document.documentElement)
   const token = (name: string) => styles.getPropertyValue(`--${name}`).trim()
@@ -40,39 +41,60 @@ function palette(): PlanPalette {
     kerf: token('cutting-kerf')
   }
 }
+
 function fit(): void {
-  if (!host.value || projection.value.status !== 'valid') return
+  if (!host.value || projection.value.status !== 'valid') {
+    return
+  }
   const size = { width: host.value.clientWidth || 640, height: host.value.clientHeight || 440 }
   canvas?.resize(size);
   canvas?.setViewport(fitViewport(projection.value.scene.panel, size))
 }
+
 function render(): void {
   canvas?.destroy();
   canvas = null;
   error.value = ''
-  if (!host.value || projection.value.status !== 'valid') return
+  if (!host.value || projection.value.status !== 'valid') {
+    return
+  }
   try {
     canvas = createPlanCanvas(host.value, projection.value.scene, { width: host.value.clientWidth || 640, height: host.value.clientHeight || 440 }, palette(), () => { }, () => { }, {
       indices: props.offcuts.map(offcut => offcut.index),
       labels: new Map(props.offcuts.map(offcut => [offcut.index, offcut.label])),
-      onSelect: index => { emit('selectWaste', index) },
-      onHover: index => { emit('hoverWaste', index) }
+      onSelect: index => {
+        emit('selectWaste', index)
+      },
+      onHover: index => {
+        emit('hoverWaste', index)
+      }
     })
     canvas.setKeptWaste?.(props.kept);
     canvas.setWasteInspection?.(props.selectedWaste, props.hoveredWaste);
     fit()
-  } catch { error.value = 'Cutting preview unavailable on this device.' }
+  } catch {
+    error.value = 'Cutting preview unavailable on this device.'
+  }
 }
+
 watch(() => JSON.stringify([props.panelKey, props.offcuts, props.plan.tree, props.panel, props.parts, props.settings]), render, { flush: 'post' })
-watch(() => props.kept, kept => { canvas?.setKeptWaste?.(kept) })
-watch(() => [props.selectedWaste, props.hoveredWaste] as const, ([selected, hovered]) => { canvas?.setWasteInspection?.(selected, hovered) })
+watch(() => props.kept, kept => {
+  canvas?.setKeptWaste?.(kept)
+})
+watch(() => [props.selectedWaste, props.hoveredWaste] as const, ([selected, hovered]) => {
+  canvas?.setWasteInspection?.(selected, hovered)
+})
 onMounted(() => {
   render()
   if (typeof ResizeObserver !== 'undefined') {
     resize = new ResizeObserver(fit);
-    if (host.value) resize.observe(host.value)
+    if (host.value) {
+      resize.observe(host.value)
+    }
   }
-  theme = new MutationObserver(() => { canvas?.setPalette(palette()) });
+  theme = new MutationObserver(() => {
+    canvas?.setPalette(palette())
+  });
   theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
 })
 onBeforeUnmount(() => {

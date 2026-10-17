@@ -18,7 +18,9 @@ export const useToastStore = defineStore('toasts', () => {
     const existing = notifications.value.find(notification =>
       notification.kind !== 'error' && notification.title === title && notification.description === description,
     )
-    if (existing) return existing.id
+    if (existing) {
+      return existing.id
+    }
     const id = ++nextId
     notifications.value.push({ id, title, ...(description ? { description } : {}), duration })
     return id
@@ -28,7 +30,9 @@ export const useToastStore = defineStore('toasts', () => {
     const existing = notifications.value.find(notification =>
       notification.kind === 'error' && notification.title === title && notification.description === description,
     )
-    if (existing) return existing.id
+    if (existing) {
+      return existing.id
+    }
     const id = ++nextId
     notifications.value.push({ id, title, ...(description ? { description } : {}), duration: 0, kind: 'error' })
     return id

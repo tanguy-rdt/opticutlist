@@ -46,7 +46,6 @@ interface RunResult {
   savedBaseline: boolean
 }
 
-
 const { cuttingPlansStep } = defineProps<{ cuttingPlansStep?: boolean }>()
 const cuttingState = useCuttingWorkspaceState()
 const selectedCopies = ref<Record<number, string>>({})
@@ -55,6 +54,7 @@ const projectName = ref('')
 const pdfSettings = shallowRef<PdfSettings>({})
 const pdfSettingsError = ref('')
 let pdfSettingsWrite = Promise.resolve()
+
 function savePdfSettings(settings: PdfSettings): void {
   const snapshot = pdfSettingsSchema.parse(settings)
   pdfSettings.value = snapshot
@@ -62,9 +62,14 @@ function savePdfSettings(settings: PdfSettings): void {
     pdfSettingsError.value = ''
     const project = await projects.projects.get(projectId)
     const saved = project.ok ? await projects.projects.update(projectId, { ...project.value, pdfSettings: snapshot }) : project
-    if (!saved.ok) pdfSettingsError.value = persistenceErrorMessage(saved.error, 'Project')
-  }).catch(() => { pdfSettingsError.value = 'Could not save PDF settings. Try again.' })
+    if (!saved.ok) {
+      pdfSettingsError.value = persistenceErrorMessage(saved.error, 'Project')
+    }
+  }).catch(() => {
+    pdfSettingsError.value = 'Could not save PDF settings. Try again.'
+  })
 }
+
 const projects = useProjectService()
 const catalogs = useCatalogRepositories()
 const materials = useMaterialRepository()
@@ -101,10 +106,14 @@ const unplacedReasons = {
   constraintsPreventPlacement: 'Panel constraints prevent placement.',
   panelLimitReached: 'Available panel supply is insufficient. Review selected sources in Materials.',
 } as const
-watch(result, () => { inspectedUnplaced.value = null })
+watch(result, () => {
+  inspectedUnplaced.value = null
+})
 const panelIndex = ref(0)
 const panelFitRequest = ref(0)
-watch(panelIndex, () => { panelFitRequest.value += 1 })
+watch(panelIndex, () => {
+  panelFitRequest.value += 1
+})
 const activePanel = computed(() => result.value?.selection.plan.panels[panelIndex.value])
 const activeChoice = computed(() => result.value?.choices.find(choice => choice.product.id === activePanel.value?.supplierProductId))
 let generation = 0
@@ -117,35 +126,54 @@ const displayedInput = computed<SavePlanInput | null>(() => result.value === nul
     ...result.value.selection.plan,
     panels: result.value.selection.plan.panels.map((panel, index) => ({ ...panel, plan: editedPlans.value.get(index) ?? panel.plan }))
   },
-  parts: [...result.value.parts], settings: result.value.settings, sources: result.value.sources,
+  parts: [...result.value.parts],
+  settings: result.value.settings,
+  sources: result.value.sources,
   editedPanelIndices: result.value.selection.plan.panels.flatMap((_, index) => editedPlans.value.has(index) || result.value?.savedEdited.includes(index) ? [index] : []),
 })
 
 const unsavedManualChanges = computed(() => result.value !== null && (savedFingerprint.value === null ? editedPlans.value.size > 0 : fingerprint.value !== savedFingerprint.value))
+
 function canDiscard(): boolean {
   return !unsavedManualChanges.value || window.confirm('Discard unsaved manual cutting-plan changes? Automatic persistence has not completed.')
 }
+
 function planChanged(index: number, plan: PanelCuttingPlan, modified: boolean): void {
   const previous = fingerprint.value
   const next = new Map(editedPlans.value)
-  if (modified) next.set(index, plan)
-  else next.delete(index)
+  if (modified) {
+    next.set(index, plan)
+  } else {
+    next.delete(index)
+  }
   editedPlans.value = next
-  if (fingerprint.value !== previous) persistCurrent()
+  if (fingerprint.value !== previous) {
+    persistCurrent()
+  }
 }
+
 function panelPlan(index: number): PanelCuttingPlan | undefined {
   return editedPlans.value.get(index) ?? result.value?.selection.plan.panels[index]?.plan
 }
+
 function selectCopy(index: number, key: string): void {
   panelIndex.value = index;
   selectedCopies.value[index] = key
 }
+
 const cuttingPlansAvailable = computed(() => !!result.value && !planBusy.value && !planError.value && fingerprint.value === savedFingerprint.value)
-watch(cuttingPlansAvailable, available => { if (cuttingState) cuttingState.available.value = available }, { flush: 'sync' })
+watch(cuttingPlansAvailable, available => {
+  if (cuttingState) {
+    cuttingState.available.value = available
+  }
+}, { flush: 'sync' })
 let discardedOnLeave = false
+
 async function leaveWorkspace(to: { name?: unknown }): Promise<boolean> {
   if (to.name === 'project-cutting-plans') {
-    if (!result.value) return true
+    if (!result.value) {
+      return true
+    }
     await persistenceQueue
     if (!cuttingPlansAvailable.value) {
       planError.value ||= 'The current result is not ready for Cutting Plans. Optimize again or resolve the persistence error.';
@@ -164,7 +192,9 @@ async function leaveWorkspace(to: { name?: unknown }): Promise<boolean> {
 function invalidate(markStale = true): void {
   generation += 1
   if (cuttingState) {
-    if (markStale) cuttingState.invalidated.value = true;
+    if (markStale) {
+      cuttingState.invalidated.value = true;
+    }
     cuttingState.available.value = false
   }
   selectedCopies.value = {}
@@ -179,6 +209,7 @@ function invalidate(markStale = true): void {
   planNotice.value = ''
   error.value = ''
 }
+
 function openSettings(): void {
   kerf.value = savedSettings.value.kerfMm;
   margin.value = savedSettings.value.edgeMarginMm;
@@ -187,25 +218,36 @@ function openSettings(): void {
   settingsError.value = '';
   settingsOpen.value = true
 }
+
 async function saveSettings(): Promise<void> {
-  if (busy.value) return
+  if (busy.value) {
+    return
+  }
   const parsed = cuttingSettingsSchema.safeParse({ kerfMm: kerf.value, edgeMarginMm: margin.value, preferStockPanels: preferStockPanels.value })
   fieldErrors.value = {};
   settingsError.value = ''
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
-      if (issue.path[0] === 'kerfMm') fieldErrors.value.kerfMm = issue.message
-      if (issue.path[0] === 'edgeMarginMm') fieldErrors.value.edgeMarginMm = issue.message
+      if (issue.path[0] === 'kerfMm') {
+        fieldErrors.value.kerfMm = issue.message
+      }
+      if (issue.path[0] === 'edgeMarginMm') {
+        fieldErrors.value.edgeMarginMm = issue.message
+      }
     }
     return
   }
-  if (!canDiscard()) return
+  if (!canDiscard()) {
+    return
+  }
   const current = generation
   settingsSaving.value = true
   try {
     const project = await projects.projects.get(projectId)
     const saved = project.ok ? await projects.projects.update(projectId, { ...project.value, cuttingSettings: parsed.data }) : project
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     if (!saved.ok) {
       settingsError.value = persistenceErrorMessage(saved.error, 'Project');
       return
@@ -219,9 +261,13 @@ async function saveSettings(): Promise<void> {
     settingsOpen.value = false
     toasts.success('Cutting settings saved')
   } catch {
-    if (current === generation) settingsError.value = 'Could not save cutting settings. Try again.'
+    if (current === generation) {
+      settingsError.value = 'Could not save cutting settings. Try again.'
+    }
   }
-  finally { settingsSaving.value = false }
+  finally {
+    settingsSaving.value = false
+  }
 }
 
 async function readInputs() {
@@ -229,14 +275,26 @@ async function readInputs() {
     projects.projects.get(projectId), projects.parts(projectId).list(),
     catalogs.supplierProducts.list(), catalogs.suppliers.list(), materials.list(), stockRepository?.planningStock(projectId) ?? Promise.resolve({ ok: true as const, value: [] }),
   ])
-  if (!project.ok) throw new Error(persistenceErrorMessage(project.error, 'Project'))
+  if (!project.ok) {
+    throw new Error(persistenceErrorMessage(project.error, 'Project'))
+  }
   projectName.value = project.value.name
   pdfSettings.value = project.value.pdfSettings ?? {}
-  if (!scopedParts.ok) throw new Error(persistenceErrorMessage(scopedParts.error, 'Part'))
-  if (!products.ok) throw new Error(persistenceErrorMessage(products.error, 'Product'))
-  if (!supplierRecords.ok) throw new Error(persistenceErrorMessage(supplierRecords.error, 'Supplier'))
-  if (!materialRecords.ok) throw new Error(persistenceErrorMessage(materialRecords.error, 'Material'))
-  if (!stockRecords.ok) throw new Error(persistenceErrorMessage(stockRecords.error, 'Stock item'))
+  if (!scopedParts.ok) {
+    throw new Error(persistenceErrorMessage(scopedParts.error, 'Part'))
+  }
+  if (!products.ok) {
+    throw new Error(persistenceErrorMessage(products.error, 'Product'))
+  }
+  if (!supplierRecords.ok) {
+    throw new Error(persistenceErrorMessage(supplierRecords.error, 'Supplier'))
+  }
+  if (!materialRecords.ok) {
+    throw new Error(persistenceErrorMessage(materialRecords.error, 'Material'))
+  }
+  if (!stockRecords.ok) {
+    throw new Error(persistenceErrorMessage(stockRecords.error, 'Stock item'))
+  }
   const selected = new Set(project.value.supplierProductIds)
   const choices: PanelChoice[] = products.value.filter(product => selected.has(product.id)).map(product => {
     const supplier = supplierRecords.value.find(record => record.id === product.supplierId)
@@ -259,7 +317,9 @@ async function readInputs() {
     .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
   for (const item of selectedStock) {
     const product = stockPanel(item)
-    if (products.value.some(catalogProduct => catalogProduct.id === product.id)) throw new Error('A catalog ID conflicts with a stock allocation key. No optimization was started.')
+    if (products.value.some(catalogProduct => catalogProduct.id === product.id)) {
+      throw new Error('A catalog ID conflicts with a stock allocation key. No optimization was started.')
+    }
     const material = materialRecords.value.find(record => record.id === item.materialId)
     choices.push({
       product,
@@ -271,24 +331,33 @@ async function readInputs() {
     })
   }
   return {
-    catalogProducts: products.value, project: project.value, parts: scopedParts.value, panels: choices,
+    catalogProducts: products.value,
+    project: project.value,
+    parts: scopedParts.value,
+    panels: choices,
     missingIds: [...project.value.supplierProductIds.filter(id => !products.value.some(product => product.id === id)), ...(project.value.stockItemIds ?? []).filter(id => !stockRecords.value.some(item => item.id === id)).map(id => `Stock ${id}`)],
   }
 }
+
 function applyInputs(inputs: Awaited<ReturnType<typeof readInputs>>): void {
   parts.value = inputs.parts
   panels.value = inputs.panels
   missingIds.value = inputs.missingIds
 }
+
 async function load(): Promise<void> {
-  if (!canDiscard()) return
+  if (!canDiscard()) {
+    return
+  }
   invalidate(false)
   const current = generation
   state.value = 'loading'
   inputError.value = ''
   try {
     const inputs = await readInputs()
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     applyInputs(inputs)
     savedSettings.value = inputs.project.cuttingSettings ?? { kerfMm: 3, edgeMarginMm: 0 }
     kerf.value = savedSettings.value.kerfMm;
@@ -296,31 +365,48 @@ async function load(): Promise<void> {
     preferStockPanels.value = savedSettings.value.preferStockPanels ?? true
     state.value = 'ready'
   } catch (cause) {
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     inputError.value = cause instanceof Error ? cause.message : 'Could not load optimization inputs.'
     state.value = 'failure'
   }
-  if (current === generation) await restoreCurrent(current)
+  if (current === generation) {
+    await restoreCurrent(current)
+  }
 }
+
 async function start(): Promise<void> {
-  if (busy.value || inputError.value || !canDiscard()) return
+  if (busy.value || inputError.value || !canDiscard()) {
+    return
+  }
   invalidate()
   const current = generation
   state.value = 'running'
   try {
     const inputs = await readInputs()
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     applyInputs(inputs)
     const configuredSettings = inputs.project.cuttingSettings ?? savedSettings.value
     const settings = { ...configuredSettings, preferStockPanels: configuredSettings.preferStockPanels ?? true }
     savedSettings.value = settings
-    if (inputs.missingIds.length) throw new Error('Some selected panel sources are missing. Review Materials before optimizing.')
-    if (inputs.parts.length === 0) throw new Error('Add project parts before optimizing.')
-    if (inputs.panels.length === 0) throw new Error('Select catalog or stock panels in this project’s Materials section.')
+    if (inputs.missingIds.length) {
+      throw new Error('Some selected panel sources are missing. Review Materials before optimizing.')
+    }
+    if (inputs.parts.length === 0) {
+      throw new Error('Add project parts before optimizing.')
+    }
+    if (inputs.panels.length === 0) {
+      throw new Error('Select catalog or stock panels in this project’s Materials section.')
+    }
     const catalogSupply = catalogPanelSupply(inputs.parts)
     const available = inputs.panels.map(choice => {
       const product = choice.product.stockItemId === undefined ? inputs.catalogProducts.find(product => product.id === choice.product.id) : { ...choice.product, stockItemId: choice.product.stockItemId, availability: 'available' as const }
-      if (!product) throw new Error('Missing panel source. Review Materials before optimizing.')
+      if (!product) {
+        throw new Error('Missing panel source. Review Materials before optimizing.')
+      }
       return { product, quantity: choice.stockQuantity ?? catalogSupply }
     })
     const outcome = await optimizer.optimizeProject({
@@ -328,9 +414,12 @@ async function start(): Promise<void> {
       parts: inputs.parts,
       settings
     })
-    if (current !== generation) return
-    if (outcome.status === 'cancelled') state.value = 'cancelled'
-    else if (outcome.status === 'failed') {
+    if (current !== generation) {
+      return
+    }
+    if (outcome.status === 'cancelled') {
+      state.value = 'cancelled'
+    } else if (outcome.status === 'failed') {
       error.value = outcome.error.kind === 'invalidPlan' ? 'The cutting plan failed independent validation. No plan is displayed.' : `Optimization failed: ${outcome.error.message}`
       state.value = 'failure'
     } else if (!outcome.selection.ok) {
@@ -339,7 +428,12 @@ async function start(): Promise<void> {
     } else {
       panelIndex.value = 0
       result.value = {
-        requestId: outcome.requestId, selection: outcome.selection, choices: inputs.panels, parts: inputs.parts, settings, sources: available.filter(source => outcome.selection.ok && outcome.selection.plan.panels.some(panel => panel.supplierProductId === source.product.id)).map(source => {
+        requestId: outcome.requestId,
+        selection: outcome.selection,
+        choices: inputs.panels,
+        parts: inputs.parts,
+        settings,
+        sources: available.filter(source => outcome.selection.ok && outcome.selection.plan.panels.some(panel => panel.supplierProductId === source.product.id)).map(source => {
           const choice = inputs.panels.find(choice => choice.product.id === source.product.id)
           const { id, name, materialId, lengthMm, widthMm, thicknessMm, grainDirection } = source.product
           return {
@@ -357,59 +451,87 @@ async function start(): Promise<void> {
             materialName: choice?.materialName ?? materialId,
             supplierName: choice?.supplierName ?? 'Missing supplier'
           }
-        }), savedEdited: [], savedBaseline: false
+        }),
+        savedEdited: [],
+        savedBaseline: false
       }
       state.value = 'success'
       persistCurrent()
     }
   } catch (cause) {
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     error.value = cause instanceof Error ? cause.message : 'Optimization could not start.'
     state.value = 'failure'
   }
 }
+
 function cancel(): void {
   invalidate();
   state.value = 'cancelled'
 }
+
 function partName(id: string): string {
   return result.value?.parts.find(part => part.id === id)?.name ?? id
 }
+
 function persistCurrent(): void {
   const currentResult = result.value
-  if (!currentResults || !currentResult) return
+  if (!currentResults || !currentResult) {
+    return
+  }
   const current = generation
   const currentFingerprint = fingerprint.value
   const signal = persistenceController.signal
   const input = structuredClone(displayedInput.value)
-  if (!input) return
+  if (!input) {
+    return
+  }
   // Serialize accepted edits, including undo/reset and edits on inactive layouts.
   planBusy.value = true
   persistenceQueue = persistenceQueue.then(async () => {
-    if (signal.aborted) return
+    if (signal.aborted) {
+      return
+    }
     try {
       const saved = await currentResults.replace(input, signal)
-      if (current !== generation) return
+      if (current !== generation) {
+        return
+      }
       if (!saved.ok) {
         planError.value = persistenceErrorMessage(saved.error, 'Current cutting result');
         return
       }
-      if (cuttingState) cuttingState.invalidated.value = false
+      if (cuttingState) {
+        cuttingState.invalidated.value = false
+      }
       savedSummary.value = saved.value.summary
       savedFingerprint.value = currentFingerprint
       planError.value = ''
     } catch (cause) {
-      if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not persist the current cutting result.'
+      if (current === generation) {
+        planError.value = cause instanceof Error ? cause.message : 'Could not persist the current cutting result.'
+      }
     }
   })
   const queued = persistenceQueue
-  void queued.then(() => { if (queued === persistenceQueue) planBusy.value = false })
+  void queued.then(() => {
+    if (queued === persistenceQueue) {
+      planBusy.value = false
+    }
+  })
 }
+
 async function restoreCurrent(current: number): Promise<void> {
-  if (!currentResults || cuttingState?.invalidated.value) return
+  if (!currentResults || cuttingState?.invalidated.value) {
+    return
+  }
   try {
     const opened = await currentResults.load()
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     if (!opened.ok) {
       planError.value = persistenceErrorMessage(opened.error, 'Current cutting result');
       return
@@ -417,14 +539,20 @@ async function restoreCurrent(current: number): Promise<void> {
     if (opened.value.ambiguousLegacyCount) {
       planNotice.value = `${String(opened.value.ambiguousLegacyCount)} legacy saved plans were preserved. No current result was chosen because the selection is ambiguous. A new optimization will establish the current result without deleting legacy data.`
     }
-    if (!opened.value.result) return
+    if (!opened.value.result) {
+      return
+    }
     const { contents, plan, summary } = opened.value.result
     editedPlans.value = new Map()
     panelIndex.value = 0
     const project = await projects.projects.get(projectId)
-    if (current !== generation || !project.ok) return
-    if (project.value.cuttingSettings
-      && JSON.stringify({ ...project.value.cuttingSettings, preferStockPanels: project.value.cuttingSettings.preferStockPanels ?? true }) !== JSON.stringify({ ...contents.settings, preferStockPanels: contents.settings.preferStockPanels ?? true })) {
+    if (current !== generation || !project.ok) {
+      return
+    }
+    if (
+      project.value.cuttingSettings
+      && JSON.stringify({ ...project.value.cuttingSettings, preferStockPanels: project.value.cuttingSettings.preferStockPanels ?? true }) !== JSON.stringify({ ...contents.settings, preferStockPanels: contents.settings.preferStockPanels ?? true })
+    ) {
       planNotice.value = 'Cutting settings changed. Optimize again to create a current layout.'
       return
     }
@@ -446,10 +574,18 @@ async function restoreCurrent(current: number): Promise<void> {
     savedFingerprint.value = fingerprint.value
     state.value = 'success'
   } catch (cause) {
-    if (current === generation) planError.value = cause instanceof Error ? cause.message : 'Could not restore the current cutting result.'
+    if (current === generation) {
+      planError.value = cause instanceof Error ? cause.message : 'Could not restore the current cutting result.'
+    }
   }
 }
-function beforeUnload(event: BeforeUnloadEvent): void { if (unsavedManualChanges.value) event.preventDefault() }
+
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (unsavedManualChanges.value) {
+    event.preventDefault()
+  }
+}
+
 if (inject(matchedRouteKey, undefined) !== undefined) {
   onBeforeRouteLeave(leaveWorkspace)
   onBeforeRouteUpdate(leaveWorkspace)
@@ -460,7 +596,9 @@ onMounted(() => {
 })
 onDeactivated(() => {
   window.removeEventListener('beforeunload', beforeUnload);
-  if (state.value === 'running') cancel()
+  if (state.value === 'running') {
+    cancel()
+  }
 })
 onActivated(() => {
   window.addEventListener('beforeunload', beforeUnload);

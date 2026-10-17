@@ -13,9 +13,14 @@ export type OptimizationPanel = z.infer<typeof optimizationPanelSchema>
 
 export function stockPanel(item: StockItem): z.infer<typeof stockPanelSchema> {
   return stockPanelSchema.parse({
-    id: `stock:${item.id}`, stockItemId: item.id,
+    id: `stock:${item.id}`,
+    stockItemId: item.id,
     name: item.kind === 'offcut' ? 'Stock offcut' : 'Stock panel',
-    materialId: item.materialId, lengthMm: item.lengthMm, widthMm: item.widthMm,
-    thicknessMm: item.thicknessMm, grainDirection: item.grainDirection, availability: 'available',
+    materialId: item.materialId,
+    lengthMm: item.lengthMm,
+    widthMm: item.widthMm,
+    thicknessMm: item.thicknessMm,
+    grainDirection: item.grainDirection,
+    availability: 'available',
   })
 }

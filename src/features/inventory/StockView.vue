@@ -46,9 +46,11 @@ onBeforeUnmount(() => {
   historyGeneration++;
   window.removeEventListener('focus', refreshOnFocus)
 })
+
 function materialName(id: string): string {
   return materials.value.find(material => material.id === id)?.name ?? 'Missing material'
 }
+
 const materialGroups = computed(() => [...new Set(stock.value.map(item => item.materialId))].map(id => ({
   id,
   material: materials.value.find(material => material.id === id),
@@ -79,25 +81,35 @@ const summaries = computed(() => [
   { label: 'Stock references', value: stock.value.length, icon: 'info' as const },
 ])
 watch(visible, items => {
-  if (!items.some(item => item.id === selectedId.value)) selectedId.value = items[0]?.id ?? ''
+  if (!items.some(item => item.id === selectedId.value)) {
+    selectedId.value = items[0]?.id ?? ''
+  }
 })
 watch(selected, async item => {
   const current = ++historyGeneration
   history.value = [];
   historyError.value = '';
   historyLoading.value = false
-  if (!item) return
+  if (!item) {
+    return
+  }
   if (!writer) {
     historyError.value = 'Movement history is unavailable.';
     return
   }
   historyLoading.value = true
   const result = await writer.history(item.id)
-  if (current !== historyGeneration) return
+  if (current !== historyGeneration) {
+    return
+  }
   historyLoading.value = false
-  if (result.ok) history.value = result.value
-  else historyError.value = persistenceErrorMessage(result.error, 'Cutting confirmation')
+  if (result.ok) {
+    history.value = result.value
+  } else {
+    historyError.value = persistenceErrorMessage(result.error, 'Cutting confirmation')
+  }
 })
+
 async function load(): Promise<void> {
   const current = ++generation;
   loading.value = true;
@@ -108,41 +120,57 @@ async function load(): Promise<void> {
     return
   }
   const [stockResult, materialResult, ordering] = await Promise.all([repository.list(), materialRepository.list(), writer ? writer.ordering() : Promise.resolve({ ok: true as const, value: [] })])
-  if (current !== generation) return
-  if (!stockResult.ok) error.value = persistenceErrorMessage(stockResult.error, 'Stock item')
-  else if (!materialResult.ok) error.value = persistenceErrorMessage(materialResult.error, 'Material')
-  else if (!ordering.ok) error.value = persistenceErrorMessage(ordering.error, 'Stock item')
-  else {
+  if (current !== generation) {
+    return
+  }
+  if (!stockResult.ok) {
+    error.value = persistenceErrorMessage(stockResult.error, 'Stock item')
+  } else if (!materialResult.ok) {
+    error.value = persistenceErrorMessage(materialResult.error, 'Material')
+  } else if (!ordering.ok) {
+    error.value = persistenceErrorMessage(ordering.error, 'Stock item')
+  } else {
     orders.value = ordering.value;
     stock.value = stockResult.value;
     materials.value = materialResult.value;
-    if (materialFilter.value && !stockResult.value.some(item => item.materialId === materialFilter.value)) materialFilter.value = ''
+    if (materialFilter.value && !stockResult.value.some(item => item.materialId === materialFilter.value)) {
+      materialFilter.value = ''
+    }
   }
   loading.value = false
 }
+
 const filtered = computed(() => Boolean(search.value.trim() || kindFilter.value || grainFilter.value))
 const canReorder = computed(() => Boolean(writer) && !loading.value && !busy.value && !error.value && !formOpen.value && !filtered.value)
 const dragged = shallowRef<StockItem | null>(null)
 const dropTarget = shallowRef<{ id: string; position: 'before' | 'after' } | null>(null)
+
 function clearDrag(): void {
   dragged.value = null;
   dropTarget.value = null
 }
+
 async function moveRow(item: StockItem, target: StockItem, position: 'before' | 'after'): Promise<void> {
-  if (!writer || !canReorder.value || item.materialId !== target.materialId) return
+  if (!writer || !canReorder.value || item.materialId !== target.materialId) {
+    return
+  }
   busy.value = true;
   writeError.value = '';
   notice.value = ''
   const current = generation
   const result = await writer.move(item.id, target.id, position)
-  if (current !== generation) return
+  if (current !== generation) {
+    return
+  }
   busy.value = false
-  if (!result.ok) writeError.value = 'Stock order could not be saved. ' + persistenceErrorMessage(result.error, 'Stock item')
-  else {
+  if (!result.ok) {
+    writeError.value = 'Stock order could not be saved. ' + persistenceErrorMessage(result.error, 'Stock item')
+  } else {
     orders.value = [...orders.value.filter(order => order.id !== result.value.id), result.value]
     notice.value = 'Stock order updated.'
   }
 }
+
 async function moveBy(item: StockItem, direction: number, event: KeyboardEvent): Promise<void> {
   const handle = event.currentTarget
   const group = orderStockItems(stock.value.filter(stock => stock.materialId === item.materialId), orders.value)
@@ -150,9 +178,12 @@ async function moveBy(item: StockItem, direction: number, event: KeyboardEvent):
   if (target) {
     await moveRow(item, target, direction < 0 ? 'before' : 'after')
     await nextTick()
-    if (handle instanceof HTMLButtonElement && handle.isConnected) handle.focus()
+    if (handle instanceof HTMLButtonElement && handle.isConnected) {
+      handle.focus()
+    }
   }
 }
+
 function dragStart(event: DragEvent, item: StockItem): void {
   if (!canReorder.value) {
     event.preventDefault();
@@ -164,25 +195,39 @@ function dragStart(event: DragEvent, item: StockItem): void {
     event.dataTransfer.setData('text/plain', item.id)
   }
 }
+
 function dragOver(event: DragEvent, item: StockItem): void {
-  if (!canReorder.value || !dragged.value || dragged.value.id === item.id || dragged.value.materialId !== item.materialId) {
+  if (
+    !canReorder.value
+    || !dragged.value
+    || dragged.value.id === item.id
+    || dragged.value.materialId !== item.materialId
+  ) {
     dropTarget.value = null;
     return
   }
   event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
   const bounds = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
   dropTarget.value = { id: item.id, position: bounds && event.clientY >= bounds.top + bounds.height / 2 ? 'after' : 'before' }
 }
+
 async function drop(event: DragEvent, target: StockItem): Promise<void> {
   event.preventDefault()
   const source = dragged.value;
   const position = dropTarget.value?.id === target.id ? dropTarget.value.position : null
   clearDrag()
-  if (source && position) await moveRow(source, target, position)
+  if (source && position) {
+    await moveRow(source, target, position)
+  }
 }
+
 async function openForm(item: StockItem | null = null): Promise<void> {
-  if (!writer || busy.value || loading.value || error.value) return
+  if (!writer || busy.value || loading.value || error.value) {
+    return
+  }
   detailsOpen.value = false;
   editing.value = item;
   writeError.value = '';
@@ -190,6 +235,7 @@ async function openForm(item: StockItem | null = null): Promise<void> {
   await nextTick();
   document.getElementById('stock-material')?.focus()
 }
+
 function closeForm(): void {
   if (!busy.value) {
     formOpen.value = false;
@@ -197,14 +243,19 @@ function closeForm(): void {
     writeError.value = ''
   }
 }
+
 async function save(item: StockItem, presetId?: string): Promise<void> {
-  if (!writer || busy.value) return
+  if (!writer || busy.value) {
+    return
+  }
   busy.value = true;
   writeError.value = '';
   notice.value = ''
   const current = generation
   const result = presetId !== undefined ? await writer.saveWithPreset(item, presetId, editing.value ?? undefined) : editing.value ? await writer.update(editing.value.id, item, editing.value) : await writer.create(item)
-  if (current !== generation) return
+  if (current !== generation) {
+    return
+  }
   busy.value = false
   if (result.ok) {
     notice.value = editing.value ? 'Stock item updated.' : 'Stock item added.'
@@ -216,26 +267,43 @@ async function save(item: StockItem, presetId?: string): Promise<void> {
     kindFilter.value = '';
     grainFilter.value = ''
     await load()
-  } else writeError.value = persistenceErrorMessage(result.error, 'Stock item')
+  } else {
+    writeError.value = persistenceErrorMessage(result.error, 'Stock item')
+  }
 }
+
 async function remove(item: StockItem): Promise<void> {
-  if (!writer || busy.value
-    || !window.confirm(`Delete this ${item.kind === 'offcut' ? 'offcut' : 'panel'} stock reference and all ${String(item.quantity)} owned items? Past cutting records will be preserved.`)) return
+  if (
+    !writer
+    || busy.value
+    || !window.confirm(`Delete this ${item.kind === 'offcut' ? 'offcut' : 'panel'} stock reference and all ${String(item.quantity)} owned items? Past cutting records will be preserved.`)
+  ) {
+    return
+  }
   busy.value = true;
   writeError.value = '';
   notice.value = ''
   const current = generation
   const result = await writer.delete(item.id, item)
-  if (current !== generation) return
+  if (current !== generation) {
+    return
+  }
   busy.value = false
   if (result.ok) {
     detailsOpen.value = false;
     notice.value = 'Stock item deleted.';
     await load()
+  } else {
+    writeError.value = persistenceErrorMessage(result.error, 'Stock item')
   }
-  else writeError.value = persistenceErrorMessage(result.error, 'Stock item')
 }
-function refreshOnFocus(): void { if (!loading.value && !busy.value && !formOpen.value) void load() }
+
+function refreshOnFocus(): void {
+  if (!loading.value && !busy.value && !formOpen.value) {
+    void load()
+  }
+}
+
 onMounted(() => {
   window.addEventListener('focus', refreshOnFocus);
   void load()

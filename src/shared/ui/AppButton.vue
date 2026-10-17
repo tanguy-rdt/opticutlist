@@ -9,7 +9,11 @@ type ButtonProps = {
 } & ({ iconOnly: true; label: string } | { iconOnly?: false; label?: string })
 const props = defineProps<ButtonProps>()
 const element = ref<HTMLButtonElement | null>(null)
-function focus(): void { element.value?.focus() }
+
+function focus(): void {
+  element.value?.focus()
+}
+
 defineExpose({ focus })
 const variants = { primary: 'button-primary', secondary: '', ghost: 'button-ghost', destructive: 'button-danger' } as const
 </script>

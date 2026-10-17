@@ -31,11 +31,17 @@ const materialOptions = computed(() => props.materials.map(material => ({ value:
 function numberInput(value: number | string): number | undefined {
   return typeof value === 'string' && value.trim() === '' ? undefined : Number(value)
 }
-function focusName(): void { nameInput.value?.focus() }
+
+function focusName(): void {
+  nameInput.value?.focus()
+}
+
 defineExpose({ focusName })
 
 async function submit(): Promise<void> {
-  if (props.disabled || props.busy || props.materials.length === 0) return
+  if (props.disabled || props.busy || props.materials.length === 0) {
+    return
+  }
   const result = partSchema.safeParse({
     id: props.part?.id ?? crypto.randomUUID(),
     name: name.value,
@@ -51,7 +57,9 @@ async function submit(): Promise<void> {
   if (!result.success) {
     for (const issue of result.error.issues) {
       const field = issue.path[0]
-      if (typeof field === 'string') issues.set(field, issue.message)
+      if (typeof field === 'string') {
+        issues.set(field, issue.message)
+      }
     }
   }
   if (!props.materials.some((material) => material.id === materialId.value)) {
@@ -63,7 +71,9 @@ async function submit(): Promise<void> {
     form.value?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
     return
   }
-  if (result.success) emit('save', result.data)
+  if (result.success) {
+    emit('save', result.data)
+  }
 }
 </script>
 

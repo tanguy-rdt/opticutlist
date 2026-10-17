@@ -3,7 +3,13 @@ import type { ProjectCuttingPdfDocument } from '../../application/export/cutting
 import { wrapPdfText } from './pdf-text'
 
 /** Measured vector text and contained image; title overrides affect only this cover. */
-export async function drawCoverPage(pdf: PDFDocument, page: PDFPage, descriptionFont: PDFFont, bold: PDFFont, document: ProjectCuttingPdfDocument): Promise<void> {
+export async function drawCoverPage(
+  pdf: PDFDocument,
+  page: PDFPage,
+  descriptionFont: PDFFont,
+  bold: PDFFont,
+  document: ProjectCuttingPdfDocument
+): Promise<void> {
   const margin = 36
   const width = Math.min(page.getWidth() - margin * 2, 680)
   const availableHeight = page.getHeight() - margin * 2
@@ -28,11 +34,17 @@ export async function drawCoverPage(pdf: PDFDocument, page: PDFPage, description
   let layout = measure()
   const minimumImageSpace = image ? imageGap + 90 : 0
   while (layout.textHeight + minimumImageSpace > availableHeight && (titleSize > 18 || bodySize > 9)) {
-    if (titleSize > 18) titleSize -= 1
-    if (bodySize > 9) bodySize -= 0.5
+    if (titleSize > 18) {
+      titleSize -= 1
+    }
+    if (bodySize > 9) {
+      bodySize -= 0.5
+    }
     layout = measure()
   }
-  if (layout.textHeight + minimumImageSpace > availableHeight) throw new Error('Cover text is too long for this paper size. Shorten the description or choose A3.')
+  if (layout.textHeight + minimumImageSpace > availableHeight) {
+    throw new Error('Cover text is too long for this paper size. Shorten the description or choose A3.')
+  }
   const imageSize = image?.scaleToFit(width, Math.min(page.getHeight() * 0.38, availableHeight - layout.textHeight - imageGap))
   const height = layout.textHeight + (imageSize ? imageGap + imageSize.height : 0)
   let y = (page.getHeight() + height) / 2

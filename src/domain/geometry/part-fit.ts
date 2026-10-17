@@ -21,16 +21,16 @@ export type PartFitIssue =
   | CompatibilityIssue
   | { readonly kind: 'noUsableArea'; readonly edgeMarginMm: number }
   | {
-      readonly kind: 'grainRequiresRotation'
-      readonly partGrain: GrainDirection
-      readonly panelGrain: GrainDirection
-      readonly rotation: RotationPolicy
-    }
+    readonly kind: 'grainRequiresRotation'
+    readonly partGrain: GrainDirection
+    readonly panelGrain: GrainDirection
+    readonly rotation: RotationPolicy
+  }
   | {
-      readonly kind: 'exceedsUsableArea'
-      readonly usableArea: Rect
-      readonly triedOrientations: readonly Orientation[]
-    }
+    readonly kind: 'exceedsUsableArea'
+    readonly usableArea: Rect
+    readonly triedOrientations: readonly Orientation[]
+  }
 
 export type PartFitResult =
   | { readonly fits: true; readonly usableArea: Rect; readonly orientations: readonly [Orientation, ...Orientation[]] }

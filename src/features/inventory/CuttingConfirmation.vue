@@ -17,30 +17,47 @@ const assignments = ref<Record<number, string>>({})
 const selected = ref<string[]>([])
 let active = true
 const panels = computed(() => preview.value?.saved.plan.panels.map((allocation, index) => ({ index, source: preview.value?.saved.contents.sources.find(source => source.product.id === allocation.supplierProductId) })) ?? [])
+
 function options(index: number) {
   const source = panels.value[index]?.source
   return preview.value?.stock.filter(stock => {
     try {
       return source !== undefined && stockMatchesPanel(stock, source.product)
-    } catch { return false }
+    } catch {
+      return false
+    }
   }) ?? []
 }
+
 const ready = computed(() => panels.value.length > 0 && panels.value.every(panel => !!assignments.value[panel.index])
   && Object.entries(assignments.value).every(([index, id]) => options(Number(index)).some(stock => stock.id === id))
   && preview.value?.stock.every(stock => Object.values(assignments.value).filter(id => id === stock.id).length <= stock.quantity))
 const kept = computed(() => preview.value?.offcuts.filter(item => selected.value.includes(`${String(item.panelIndex)}:${String(item.wasteIndex)}`)) ?? [])
+
 async function load(): Promise<void> {
   loading.value = true;
   error.value = ''
   const result = await props.service.preview(props.summary.id)
-  if (!active) return
-  if (result.ok) preview.value = result.value
-  else error.value = persistenceErrorMessage(result.error, 'Saved plan')
+  if (!active) {
+    return
+  }
+  if (result.ok) {
+    preview.value = result.value
+  } else {
+    error.value = persistenceErrorMessage(result.error, 'Saved plan')
+  }
   loading.value = false
 }
+
 async function confirm(): Promise<void> {
-  if (working.value || !ready.value || !review.value
-    || !window.confirm('Confirm physical cutting? Deduct the selected stock and keep only the checked offcuts. This cannot be undone.')) return
+  if (
+    working.value
+    || !ready.value
+    || !review.value
+    || !window.confirm('Confirm physical cutting? Deduct the selected stock and keep only the checked offcuts. This cannot be undone.')
+  ) {
+    return
+  }
   working.value = true;
   emit('working', true);
   error.value = ''
@@ -50,20 +67,26 @@ async function confirm(): Promise<void> {
     offcuts: kept.value.map(item => ({ panelIndex: item.panelIndex, wasteIndex: item.wasteIndex }))
   })
   const result = await props.service.confirm(props.summary.id, input)
-  if (!active) return
-  if (result.ok) {
-    if (preview.value) preview.value = { ...preview.value, confirmation: result.value };
-    emit('confirmed')
+  if (!active) {
+    return
   }
-  else {
+  if (result.ok) {
+    if (preview.value) {
+      preview.value = { ...preview.value, confirmation: result.value };
+    }
+    emit('confirmed')
+  } else {
     error.value = persistenceErrorMessage(result.error, 'Saved plan');
     review.value = false
   }
   working.value = false;
   emit('working', false)
 }
+
 onMounted(load)
-onBeforeUnmount(() => { active = false })
+onBeforeUnmount(() => {
+  active = false
+})
 </script>
 <template>
   <section

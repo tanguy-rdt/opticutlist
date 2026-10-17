@@ -30,57 +30,87 @@ const panels = computed(() => preview.value?.saved?.plan.panels.map((allocation,
 const panel = computed(() => panels.value[currentRows.value.find(row => row.key === hoveredKey.value)?.candidate.panelIndex ?? panelIndex.value])
 const kept = computed(() => preview.value?.rows.filter(row => row.candidate.panelIndex === panel.value?.index && row.status !== 'Outdated' && row.keep).map(row => row.candidate.wasteIndex) ?? [])
 const offcutLabels = computed(() => panel.value?.rows.map(row => ({ index: row.candidate.wasteIndex, label: row.label })) ?? [])
+
 function wasteIndex(key: string): number | null {
   return panel.value?.rows.find(row => row.key === key)?.candidate.wasteIndex ?? null
 }
+
 function showPanel(index: number): void {
   panelIndex.value = index
   expandedPanels.value = new Set(expandedPanels.value).add(index)
   hoveredKey.value = ''
 }
+
 function togglePanel(index: number): void {
   const expanded = new Set(expandedPanels.value)
-  if (expanded.has(index)) expanded.delete(index)
-  else expanded.add(index)
+  if (expanded.has(index)) {
+    expanded.delete(index)
+  } else {
+    expanded.add(index)
+  }
   expandedPanels.value = expanded
 }
+
 function inspectRow(key: string): void {
   const row = currentRows.value.find(row => row.key === key)
-  if (!row) return
-  if (panelIndex.value !== row.candidate.panelIndex) showPanel(row.candidate.panelIndex)
+  if (!row) {
+    return
+  }
+  if (panelIndex.value !== row.candidate.panelIndex) {
+    showPanel(row.candidate.panelIndex)
+  }
   selectedKey.value = key
 }
+
 function hoverWaste(index: number | null): void {
   hoveredKey.value = panel.value?.rows.find(row => row.candidate.wasteIndex === index)?.key ?? ''
 }
+
 async function selectWaste(index: number): Promise<void> {
   const row = panel.value?.rows.find(row => row.candidate.wasteIndex === index)
-  if (!row) return
+  if (!row) {
+    return
+  }
   expandedPanels.value = new Set(expandedPanels.value).add(row.candidate.panelIndex)
   panelIndex.value = row.candidate.panelIndex
   selectedKey.value = row.key
   await nextTick()
   const control = Array.from(workspace.value?.querySelectorAll<HTMLButtonElement>('[data-offcut-select]') ?? []).find(button => button.dataset.offcutSelect === row.key)
   control?.focus({ preventScroll: true })
-  if (control && typeof control.scrollIntoView === 'function') control.scrollIntoView({ block: 'nearest' })
+  if (control && typeof control.scrollIntoView === 'function') {
+    control.scrollIntoView({ block: 'nearest' })
+  }
 }
+
 async function load(): Promise<void> {
   const synced = await service.sync()
   const result = await service.preview()
-  if (!active) return
-  if (!synced.ok) error.value = persistenceErrorMessage(synced.error, 'Stock item')
-  if (result.ok) preview.value = result.value
-  else error.value = persistenceErrorMessage(result.error, 'Saved plan')
+  if (!active) {
+    return
+  }
+  if (!synced.ok) {
+    error.value = persistenceErrorMessage(synced.error, 'Stock item')
+  }
+  if (result.ok) {
+    preview.value = result.value
+  } else {
+    error.value = persistenceErrorMessage(result.error, 'Saved plan')
+  }
   loading.value = false
 }
+
 async function select(key: string, event: Event): Promise<void> {
-  if (!(event.target instanceof HTMLInputElement) || busy.value) return
+  if (!(event.target instanceof HTMLInputElement) || busy.value) {
+    return
+  }
   const control = event.target
   const checked = control.checked
   busy.value = true;
   error.value = ''
   const result = await service.setKeep(key, checked)
-  if (!active) return
+  if (!active) {
+    return
+  }
   if (!result.ok) {
     control.checked = !checked;
     error.value = persistenceErrorMessage(result.error, 'Stock item')
@@ -88,7 +118,13 @@ async function select(key: string, event: Event): Promise<void> {
   await load()
   busy.value = false
 }
-function beforeUnload(event: BeforeUnloadEvent): void { if (busy.value) event.preventDefault() }
+
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (busy.value) {
+    event.preventDefault()
+  }
+}
+
 onBeforeRouteLeave(() => !busy.value)
 onMounted(() => {
   window.addEventListener('beforeunload', beforeUnload);

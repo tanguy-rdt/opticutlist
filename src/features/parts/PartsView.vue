@@ -51,12 +51,19 @@ async function loadMaterials(): Promise<void> {
   materials.value = materialResult.ok ? materialResult.value : []
   availableIds.value = []
   materialError.value = ''
-  if (!materialResult.ok) materialError.value = persistenceErrorMessage(materialResult.error, 'Material')
-  else if (!project.ok) materialError.value = persistenceErrorMessage(project.error, 'Project')
-  else if (!products.ok) materialError.value = persistenceErrorMessage(products.error, 'Product')
-  else if (!stock.ok) materialError.value = persistenceErrorMessage(stock.error, 'Stock item')
-  else availableIds.value = projectPartMaterialIds(project.value, products.value, stock.value)
+  if (!materialResult.ok) {
+    materialError.value = persistenceErrorMessage(materialResult.error, 'Material')
+  } else if (!project.ok) {
+    materialError.value = persistenceErrorMessage(project.error, 'Project')
+  } else if (!products.ok) {
+    materialError.value = persistenceErrorMessage(products.error, 'Product')
+  } else if (!stock.ok) {
+    materialError.value = persistenceErrorMessage(stock.error, 'Stock item')
+  } else {
+    availableIds.value = projectPartMaterialIds(project.value, products.value, stock.value)
+  }
 }
+
 async function load(): Promise<void> {
   loading.value = true
   const [partResult] = await Promise.all([repository.list(), loadMaterials()])
@@ -64,6 +71,7 @@ async function load(): Promise<void> {
   parts.value = partResult.ok ? partResult.value : []
   loading.value = false
 }
+
 async function edit(part: Part | null): Promise<void> {
   editing.value = part
   formVersion.value++
@@ -72,14 +80,18 @@ async function edit(part: Part | null): Promise<void> {
   await nextTick()
   partForm.value?.focusName()
 }
+
 function closeForm(): void {
   if (!busy.value) {
     formOpen.value = false;
     operationError.value = ''
   }
 }
+
 async function save(part: Part): Promise<void> {
-  if (busy.value || loading.value || loadError.value || materialError.value) return
+  if (busy.value || loading.value || loadError.value || materialError.value) {
+    return
+  }
   busy.value = true
   operationError.value = ''
   // Reread both selection and catalog sources before committing a draft.
@@ -104,28 +116,42 @@ async function save(part: Part): Promise<void> {
     selectedId.value = result.value.id
     toasts.success(wasEditing ? 'Part updated' : 'Part created')
     await load()
-  } else operationError.value = persistenceErrorMessage(result.error, 'Part')
+  } else {
+    operationError.value = persistenceErrorMessage(result.error, 'Part')
+  }
   busy.value = false
 }
+
 async function remove(part: Part): Promise<void> {
-  if (busy.value || loading.value) return
-  if (!window.confirm(`Delete “${part.name}”? This cannot be undone.`)) return
+  if (busy.value || loading.value) {
+    return
+  }
+  if (!window.confirm(`Delete “${part.name}”? This cannot be undone.`)) {
+    return
+  }
   busy.value = true
   operationError.value = ''
   const result = await repository.delete(part.id)
   if (result.ok) {
-    if (editing.value?.id === part.id) formOpen.value = false
+    if (editing.value?.id === part.id) {
+      formOpen.value = false
+    }
     toasts.success('Part deleted')
     await load()
-  } else operationError.value = persistenceErrorMessage(result.error, 'Part')
+  } else {
+    operationError.value = persistenceErrorMessage(result.error, 'Part')
+  }
   busy.value = false
 }
+
 function materialFor(part: Part): Material | undefined {
   return materials.value.find(material => material.id === part.materialId)
 }
+
 function materialName(part: Part): string {
   return materialFor(part)?.name ?? (materialError.value ? 'Material unavailable' : 'Missing material')
 }
+
 function grain(part: Part): string {
   return part.grainDirection === 'none' ? 'None' : part.grainDirection === 'length' ? 'Along length' : 'Along width'
 }
@@ -136,9 +162,13 @@ onDeactivated(() => {
   active.value = false;
   refreshRequested.value = true
 })
-onActivated(() => { active.value = true })
+onActivated(() => {
+  active.value = true
+})
 watch(() => active.value && refreshRequested.value && !loading.value && !busy.value && !formOpen.value, ready => {
-  if (!ready) return
+  if (!ready) {
+    return
+  }
   refreshRequested.value = false
   void load()
 })

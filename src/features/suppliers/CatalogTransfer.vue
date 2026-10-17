@@ -16,25 +16,36 @@ const busy = ref(false)
 const showImport = ref(false)
 const error = ref('')
 const feedback = ref('')
-watch(preview, value => { emit('previewPending', value !== null) })
+watch(preview, value => {
+  emit('previewPending', value !== null)
+})
 let generation = 0
-onBeforeUnmount(() => { generation++ })
+onBeforeUnmount(() => {
+  generation++
+})
+
 function message(failure: PersistenceError): string {
   return persistenceErrorMessage(failure, 'Catalog') + (failure.kind === 'invalidRecord' ? ` ${failure.issues.map(issue => issue.message).join('; ')}` : '')
 }
+
 function pending(value: boolean): void {
   busy.value = value;
   emit('busy', value)
 }
+
 async function exportCatalog(): Promise<void> {
-  if (!service || busy.value || props.disabled) return
+  if (!service || busy.value || props.disabled) {
+    return
+  }
   const current = generation
   pending(true);
   error.value = '';
   feedback.value = ''
   try {
     const result = await service.export()
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     if (!result.ok) {
       error.value = message(result.error);
       return
@@ -42,18 +53,29 @@ async function exportCatalog(): Promise<void> {
     downloadJson(result.value, 'opticutlist-catalog', 'cocl')
     feedback.value = 'Catalog download started. Projects and physical inventory are excluded.'
   } catch (cause) {
-    if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not export the catalog.'
+    if (current === generation) {
+      error.value = cause instanceof Error ? cause.message : 'Could not export the catalog.'
+    }
   }
-  finally { if (current === generation) pending(false) }
+  finally {
+    if (current === generation) {
+      pending(false)
+    }
+  }
 }
+
 async function select(event: Event): Promise<void> {
-  if (!service || busy.value || props.disabled || !(event.target instanceof HTMLInputElement)) return
+  if (!service || busy.value || props.disabled || !(event.target instanceof HTMLInputElement)) {
+    return
+  }
   const file = event.target.files?.[0]
   const current = ++generation
   preview.value = null;
   error.value = '';
   feedback.value = ''
-  if (!file) return
+  if (!file) {
+    return
+  }
   if (!file.name.toLowerCase().endsWith('.cocl')) {
     error.value = 'Select an OptiCutList .cocl catalog file.';
     return
@@ -61,26 +83,49 @@ async function select(event: Event): Promise<void> {
   pending(true)
   try {
     const text = await file.text()
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     const result = await service.preview(text)
-    if (current !== generation) return
-    if (result.ok) preview.value = result.value
-    else error.value = message(result.error)
+    if (current !== generation) {
+      return
+    }
+    if (result.ok) {
+      preview.value = result.value
+    } else {
+      error.value = message(result.error)
+    }
   } catch (cause) {
-    if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not read this catalog file.'
+    if (current === generation) {
+      error.value = cause instanceof Error ? cause.message : 'Could not read this catalog file.'
+    }
   }
-  finally { if (current === generation) pending(false) }
+  finally {
+    if (current === generation) {
+      pending(false)
+    }
+  }
 }
+
 async function importCatalog(): Promise<void> {
-  if (!service || !preview.value || busy.value || props.disabled
-    || !window.confirm('Import this catalog? Existing records will not be overwritten. Projects and physical inventory will not change.')) return
+  if (
+    !service
+    || !preview.value
+    || busy.value
+    || props.disabled
+    || !window.confirm('Import this catalog? Existing records will not be overwritten. Projects and physical inventory will not change.')
+  ) {
+    return
+  }
   const current = generation
   pending(true);
   error.value = '';
   feedback.value = ''
   try {
     const result = await service.import(toRaw(preview.value.file), true)
-    if (current !== generation) return
+    if (current !== generation) {
+      return
+    }
     if (!result.ok) {
       error.value = message(result.error);
       return
@@ -89,9 +134,15 @@ async function importCatalog(): Promise<void> {
     feedback.value = 'Catalog imported successfully.';
     emit('imported')
   } catch (cause) {
-    if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not import the catalog.'
+    if (current === generation) {
+      error.value = cause instanceof Error ? cause.message : 'Could not import the catalog.'
+    }
   }
-  finally { if (current === generation) pending(false) }
+  finally {
+    if (current === generation) {
+      pending(false)
+    }
+  }
 }
 </script>
 <template>

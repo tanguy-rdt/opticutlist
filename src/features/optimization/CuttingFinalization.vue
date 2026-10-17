@@ -24,19 +24,32 @@ const reasons = {
   panelLimitReached: 'Insufficient panel quantity or remaining usable space'
 }
 let previousFocus: HTMLElement | null = null
-function close(): void { if (!working.value) emit('close') }
+
+function close(): void {
+  if (!working.value) {
+    emit('close')
+  }
+}
+
 onMounted(() => {
-  if (props.embedded) return
+  if (props.embedded) {
+    return
+  }
   previousFocus = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null
-  if (typeof dialog.value?.showModal === 'function') dialog.value.showModal()
-  else if (dialog.value) {
+  if (typeof dialog.value?.showModal === 'function') {
+    dialog.value.showModal()
+  } else if (dialog.value) {
     dialog.value.open = true;
     dialog.value.querySelector('button')?.focus()
   }
 })
 onBeforeUnmount(() => {
-  if (props.embedded) return;
-  if (typeof dialog.value?.close === 'function') dialog.value.close();
+  if (props.embedded) {
+    return;
+  }
+  if (typeof dialog.value?.close === 'function') {
+    dialog.value.close();
+  }
   previousFocus?.focus()
 })
 </script>

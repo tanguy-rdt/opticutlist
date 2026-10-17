@@ -11,9 +11,11 @@ import { drawTechnicalFrame, technicalInk as ink, technicalRule as rule, technic
 export function panelPartReference(document: CuttingPlanPdfDocument, placed: ScenePart): string {
   return `P${String(document.parts.findIndex(part => part.id === placed.part.id) + 1)}${placed.part.quantity > 1 ? `.${String(placed.copyIndex + 1)}` : ''}`
 }
+
 function dimensions(item: { lengthMm: number; widthMm: number; thicknessMm: number }): string {
   return `${String(item.lengthMm)} × ${String(item.widthMm)} × ${String(item.thicknessMm)} mm`
 }
+
 export function panelContainedParts(document: CuttingPlanPdfDocument) {
   return document.scene.parts.map(placed => ({ ref: panelPartReference(document, placed), name: placed.part.name, dimensions: dimensions(placed.dimensions), quantity: 1 }))
 }
@@ -32,7 +34,9 @@ export function layoutPanelTitleBlock(document: CuttingPlanPdfDocument, font: PD
   ]
   const dimensionWidth = Math.max(...records.map((row, index) => (index === 0 ? bold : font).widthOfTextAtSize(row.dimensions, textSize))) + 12
   const nameWidth = tableWidth - dimensionWidth
-  if (nameWidth < 60) throw new Error('The panel table does not fit this paper width. Choose a larger paper size or landscape orientation.')
+  if (nameWidth < 60) {
+    throw new Error('The panel table does not fit this paper width. Choose a larger paper size or landscape orientation.')
+  }
   const rows = records.map((record, index) => {
     const labelWidth = nameWidth - (index === 0 ? 12 : 20)
     const lines = index === 0
@@ -46,12 +50,16 @@ export function layoutPanelTitleBlock(document: CuttingPlanPdfDocument, font: PD
   let tableHeight = 0
   for (const row of rows) {
     // Keep the panel with at least its first child; only full rows may continue.
-    if (visible.length >= Math.min(2, rows.length) && tableHeight + row.height > maxHeight) break
+    if (visible.length >= Math.min(2, rows.length) && tableHeight + row.height > maxHeight) {
+      break
+    }
     visible.push(row)
     tableHeight += row.height
   }
   const height = tableHeight + technicalHeight
-  if (height + 160 > size.height) throw new Error('A panel or material name is too tall for this paper size. Choose a larger sheet.')
+  if (height + 160 > size.height) {
+    throw new Error('A panel or material name is too tall for this paper size. Choose a larger sheet.')
+  }
   const technicalTop = 36 + technicalHeight
   return {
     x,
@@ -71,7 +79,13 @@ export function layoutPanelTitleBlock(document: CuttingPlanPdfDocument, font: PD
   }
 }
 
-export function drawPanelTitleBlock(page: PDFPage, font: PDFFont, bold: PDFFont, block: ReturnType<typeof layoutPanelTitleBlock>, scale: string) {
+export function drawPanelTitleBlock(
+  page: PDFPage,
+  font: PDFFont,
+  bold: PDFFont,
+  block: ReturnType<typeof layoutPanelTitleBlock>,
+  scale: string
+) {
   const line = (x1: number, y1: number, x2: number, y2: number) => {
     page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.3, color: rule })
   }
@@ -89,7 +103,9 @@ export function drawPanelTitleBlock(page: PDFPage, font: PDFFont, bold: PDFFont,
     const dimensionFont = row.parent ? bold : font
     text(row.dimensions, tableEnd - 6 - dimensionFont.widthOfTextAtSize(row.dimensions, textSize), y - 12, dimensionFont)
     y -= row.height
-    if (y > block.technicalTop) line(block.x, y, tableEnd, y)
+    if (y > block.technicalTop) {
+      line(block.x, y, tableEnd, y)
+    }
   }
   return drawTechnicalTitleBlock(page, font, bold, block.technical, { ...block.content, scale })
 }

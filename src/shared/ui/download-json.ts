@@ -1,4 +1,5 @@
 import { projectFilename } from './project-filename'
+
 export function downloadJson(text: string, name: string, extension: 'pocl' | 'cocl' | 'oclproject.json' | 'oclstock.json'): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }))
   const link = document.createElement('a')
@@ -9,6 +10,8 @@ export function downloadJson(text: string, name: string, extension: 'pocl' | 'co
     link.click()
   } finally {
     link.remove();
-    window.setTimeout(() => { URL.revokeObjectURL(url) }, 1000)
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url)
+    }, 1000)
   }
 }

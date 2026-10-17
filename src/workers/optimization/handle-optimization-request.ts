@@ -19,7 +19,9 @@ export function handleOptimizationRequest(data: unknown): OptimizationResponse {
   }
 
   try {
-    if (data.type === 'optimizeProject') return { type: 'projectResult', requestId: data.requestId, selection: optimizeProject(data.input) }
+    if (data.type === 'optimizeProject') {
+      return { type: 'projectResult', requestId: data.requestId, selection: optimizeProject(data.input) }
+    }
     return { type: 'result', requestId: data.requestId, selection: optimizePanel(data.input) }
   } catch (error) {
     return {
