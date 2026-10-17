@@ -16,6 +16,7 @@ const fake = vi.hoisted(() => {
     constructor(readonly kind: string, attrs: Record<string, unknown> = {}) { this.attrs = { ...attrs }; nodes.push(this) }
     setAttrs(attrs: Record<string, unknown>): void { Object.assign(this.attrs, attrs) }
     add(...children: FakeNode[]): void { this.children.push(...children) }
+    getTextWidth(): number { return (typeof this.attrs.text === 'string' ? this.attrs.text.length : 0) * 8 }
     fill(value: string): void { this.attrs.fill = value }
     stroke(value: string): void { this.attrs.stroke = value }
     strokeWidth(value: number): void { this.attrs.strokeWidth = value }
@@ -216,4 +217,53 @@ describe('Konva read-only canvas adapter', () => {
     canvas.destroy()
     expect(fake.nodes.every(node => node.destroyed && node.events.size === 0)).toBe(true)
   })
+})
+
+it('opts in to exact offcut inspection without changing part interactions or kept state', () => {
+  const result = createCuttingPlanScene(viewerPlan, { panel: viewerPanel, parts: [viewerPart], settings: viewerSettings })
+  if (result.status !== 'valid') throw new Error('Invalid fixture')
+  const before = structuredClone(result.scene)
+  const select = vi.fn()
+  const hover = vi.fn()
+  const partSelect = vi.fn()
+  const canvas = createPlanCanvas(document.createElement('div'), result.scene, { width: 640, height: 440 }, palette, partSelect, vi.fn(), { indices: [0], onSelect: select, onHover: hover })
+  const waste = fake.nodes.filter(node => node.attrs.name === 'offcut-region')
+  expect(waste[0]?.attrs.listening).toBe(true)
+  expect(waste[1]?.attrs.listening).toBe(false)
+  waste[0]?.events.get('mouseenter')?.()
+  waste[0]?.events.get('click tap')?.()
+  waste[0]?.events.get('mouseleave')?.()
+  expect(hover.mock.calls).toEqual([[0], [null]])
+  expect(select).toHaveBeenCalledExactlyOnceWith(0)
+  expect(partSelect).not.toHaveBeenCalled()
+  canvas.setKeptWaste?.([1])
+  canvas.setWasteInspection?.(0, 1)
+  expect(waste.map(node => node.attrs.strokeWidth)).toEqual([3, 3])
+  canvas.setWasteInspection?.(0, null)
+  expect(waste.map(node => node.attrs.strokeWidth)).toEqual([3, 2])
+  canvas.setWasteInspection?.(null, null)
+  expect(waste.map(node => node.attrs.strokeWidth)).toEqual([1, 2])
+  expect(result.scene).toEqual(before)
+  canvas.destroy()
+  expect(waste.every(node => node.destroyed && !node.events.size)).toBe(true)
+})
+
+
+it('focuses the Stock drawing on deterministic offcut labels and hides labels that cannot fit', () => {
+  const result = createCuttingPlanScene(viewerPlan, { panel: viewerPanel, parts: [viewerPart], settings: viewerSettings })
+  if (result.status !== 'valid') throw new Error('Invalid fixture')
+  const original = structuredClone(result.scene)
+  const canvas = createPlanCanvas(document.createElement('div'), result.scene, { width: 640, height: 440 }, palette, vi.fn(), vi.fn(), { indices: [0, 1], labels: new Map([[0, 'Offcut 1'], [1, 'Offcut 2']]), onSelect: vi.fn(), onHover: vi.fn() })
+  const texts = fake.nodes.filter(node => node.kind === 'Text')
+  expect(texts.map(node => node.attrs.text)).toEqual(['Offcut 1', 'Offcut 2'])
+  expect(texts.every(node => node.attrs.listening === false)).toBe(true)
+  const part = fake.nodes.find(node => node.kind === 'Rect' && node.attrs.draggable === false)
+  expect(part?.attrs.opacity).toBe(0.5)
+  expect(fake.nodes.filter(node => node.attrs.name === 'offcut-region').every(node => node.attrs.fill === 'surface')).toBe(true)
+  canvas.setViewport({ scale: 4, x: 10, y: 20 })
+  expect(texts.every(node => node.attrs.visible === true && node.attrs.fontSize === 3.25)).toBe(true)
+  canvas.setViewport({ scale: 0.1, x: 10, y: 20 })
+  expect(texts.every(node => node.attrs.visible === false)).toBe(true)
+  expect(result.scene).toEqual(original)
+  canvas.destroy()
 })
