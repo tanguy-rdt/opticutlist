@@ -63,7 +63,7 @@ async function submit(): Promise<void> {
       </FormField>
       <FormField
         id="supplier-website"
-        label="Website URL (optional)"
+        label="Website URL"
         :error="errors.get('websiteUrl') ?? ''"
       >
         <template #default="{ controlAttrs }">

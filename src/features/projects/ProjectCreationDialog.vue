@@ -74,7 +74,7 @@ async function create(): Promise<void> {
       <FormField
         id="project-description"
         v-slot="{ controlAttrs }"
-        label="Description (optional)"
+        label="Description"
         :error="descriptionError"
       >
         <textarea

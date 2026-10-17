@@ -400,7 +400,7 @@ async function submit(): Promise<void> {
         <FormField
           id="product-price"
           required-indicator="asterisk"
-          label="Price per panel (optional)"
+          label="Price per panel"
           :error="errors.get('price') ?? ''"
         >
           <template #default="{ controlAttrs }">
@@ -448,7 +448,7 @@ async function submit(): Promise<void> {
       <FormField
         id="product-url"
         required-indicator="asterisk"
-        label="Product URL (optional)"
+        label="Product URL"
         :error="errors.get('productUrl') ?? ''"
       >
         <template #default="{ controlAttrs }">
