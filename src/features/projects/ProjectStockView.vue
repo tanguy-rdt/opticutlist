@@ -258,9 +258,9 @@ onBeforeUnmount(() => { active = false; window.removeEventListener('beforeunload
 .offcut-group-header { display: flex; align-items: center; gap: .25rem; padding-right: .5rem; }
 .active-panel { background: var(--subtle); color: var(--accent); }
 .panel-select { display: grid; flex: 1; min-width: 0; gap: .2rem; padding: .75rem; text-align: left; font-size: .875rem; }
-.panel-select:hover { background: var(--quiet-surface); }
+.panel-select:hover:not([aria-pressed="true"]) { background: var(--hover); }
 .offcut-row { display: flex; align-items: center; gap: .625rem; padding: .125rem .75rem; border-top: 1px solid var(--line); }
-.hovered-offcut { background: var(--quiet-surface); }
+.hovered-offcut { background: var(--hover); }
 .selected-offcut { background: var(--subtle); }
 .offcut-checkbox { flex: none; width: 1rem; height: 1rem; accent-color: var(--accent); }
 .offcut-select { flex: 1; min-width: 0; padding: .5rem 0; text-align: left; font-size: .875rem; border-radius: var(--control-radius); }

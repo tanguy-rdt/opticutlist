@@ -347,7 +347,7 @@ onActivated(() => {
               v-for="material in group.materials"
               :key="material.id"
               class="flex items-center gap-2 border-t border-line border-l-2 px-3 py-2"
-              :class="activeMaterial?.id === material.id ? 'border-l-accent bg-subtle' : 'border-l-transparent hover:bg-quiet-surface'"
+              :class="activeMaterial?.id === material.id ? 'border-l-accent bg-subtle' : 'border-l-transparent hover:bg-hover'"
             >
               <label class="flex min-h-11 items-center px-1">
                 <input
@@ -465,7 +465,7 @@ onActivated(() => {
               >
                 <label
                   class="flex items-start gap-3 px-4 py-3"
-                  :class="selectedStockIds.includes(item.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
+                  :class="selectedStockIds.includes(item.id) ? 'bg-success-surface' : 'hover:bg-hover'"
                 >
                   <input
                     type="checkbox"
@@ -582,7 +582,7 @@ onActivated(() => {
                 >
                   <label
                     class="flex items-start gap-3 px-4 py-3"
-                    :class="selectedProductIds.includes(product.id) ? 'bg-success-surface' : 'hover:bg-quiet-surface'"
+                    :class="selectedProductIds.includes(product.id) ? 'bg-success-surface' : 'hover:bg-hover'"
                   >
                     <input
                       type="checkbox"

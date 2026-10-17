@@ -269,7 +269,7 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
           <button
             type="button"
             class="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm"
-            :class="!materialFilter ? 'bg-success-surface text-accent' : 'hover:bg-subtle'"
+            :class="!materialFilter ? 'bg-success-surface text-accent' : 'hover:bg-hover'"
             :aria-pressed="!materialFilter"
             @click="materialFilter = ''"
           >
@@ -280,7 +280,7 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
             :key="group.id"
             type="button"
             class="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left"
-            :class="materialFilter === group.id ? 'bg-success-surface text-accent' : 'hover:bg-subtle'"
+            :class="materialFilter === group.id ? 'bg-success-surface text-accent' : 'hover:bg-hover'"
             :aria-pressed="materialFilter === group.id"
             @click="materialFilter = group.id"
           >
@@ -416,9 +416,9 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                   <tr
                     v-for="item in group.items"
                     :key="item.id"
-                    class="border-t border-line hover:bg-subtle"
+                    class="border-t border-line"
                     :data-stock-id="item.id"
-                    :class="[selectedId === item.id ? 'bg-success-surface' : '', dragged?.id === item.id ? 'opacity-50' : '']"
+                    :class="[selectedId === item.id ? 'bg-success-surface' : 'hover:bg-hover', dragged?.id === item.id ? 'opacity-50' : '']"
                     :style="dropTarget?.id === item.id ? { boxShadow: `inset 0 ${dropTarget.position === 'before' ? '2px' : '-2px'} 0 var(--accent)` } : {}"
                     @click="selectedId = item.id"
                     @dragover="dragOver($event, item)"
@@ -427,7 +427,7 @@ onMounted(() => { window.addEventListener('focus', refreshOnFocus); void load() 
                     <td class="px-2 py-2">
                       <button
                         type="button"
-                        class="inline-flex size-9 items-center justify-center rounded text-muted hover:bg-quiet-surface hover:text-ink focus-visible:outline-accent enabled:cursor-grab active:cursor-grabbing"
+                        class="inline-flex size-9 items-center justify-center rounded text-muted hover:bg-hover hover:text-ink focus-visible:outline-accent enabled:cursor-grab active:cursor-grabbing"
                         :draggable="canReorder"
                         :disabled="!canReorder"
                         :aria-label="`Reorder stock item ${item.id}`"

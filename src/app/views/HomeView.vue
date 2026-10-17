@@ -32,7 +32,7 @@ async function closeCreation(): Promise<void> {
         class="home-card relative flex flex-col overflow-hidden md:col-start-2 md:row-span-2 md:row-start-1"
         aria-labelledby="catalog-title"
       >
-        <div class="relative flex min-h-56 flex-1 items-center justify-center overflow-hidden bg-subtle p-6 md:min-h-72">
+        <div class="relative flex min-h-56 flex-1 items-center justify-center overflow-hidden bg-quiet-surface p-6 md:min-h-72">
           <div class="pointer-events-none absolute inset-0 bg-linear-to-t from-surface/40 to-transparent" />
           <svg
             class="relative h-auto w-full max-w-md text-accent"

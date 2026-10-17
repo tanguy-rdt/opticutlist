@@ -149,8 +149,8 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside); })
             tabindex="-1"
             :aria-selected="option.value === modelValue"
             :data-value="option.value"
-            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle"
-            :class="{ 'bg-success-surface text-accent': option === visible[active] || option.value === modelValue }"
+            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm"
+            :class="{ 'bg-success-surface text-accent': option === visible[active] || option.value === modelValue, 'hover:bg-hover': option !== visible[active] && option.value !== modelValue }"
             @pointerdown.prevent
             @click="choose(option)"
           >

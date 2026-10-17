@@ -560,7 +560,7 @@ onBeforeUnmount(() => {
 .swap-options { position: absolute; z-index: 5; right: 0; top: calc(100% + .5rem); display: flex; gap: .35rem; padding: .5rem; background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 12%, transparent); }
 .panel-context { margin-right: auto; min-width: 0; overflow-wrap: anywhere; }
 .tool { display: inline-flex; align-items: center; justify-content: center; width: var(--control-height-small); height: var(--control-height-small); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; }
-.tool:hover:not(:disabled) { background: var(--quiet-surface); color: var(--ink); }
+.tool:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
 .tool[aria-pressed="true"] { background: var(--subtle); color: var(--accent); }
 .tool:disabled { opacity: .45; cursor: not-allowed; }
 .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

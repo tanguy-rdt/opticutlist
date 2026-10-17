@@ -400,7 +400,7 @@ onMounted(load)
             :key="supplier.id"
             type="button"
             class="flex min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left text-sm md:min-w-0"
-            :class="selectedSupplierId === supplier.id ? 'border-selection-line bg-subtle text-accent' : 'border-transparent hover:bg-subtle'"
+            :class="selectedSupplierId === supplier.id ? 'border-selection-line bg-subtle text-accent' : 'border-transparent hover:bg-hover'"
             :aria-pressed="selectedSupplierId === supplier.id"
             :aria-label="`Select supplier ${supplier.name}`"
             @click="selectSupplier(supplier.id)"
@@ -638,9 +638,9 @@ onMounted(load)
                 <tr
                   v-for="product in section.items"
                   :key="product.id"
-                  class="border-t border-line hover:bg-subtle"
+                  class="border-t border-line"
                   :data-product-id="product.id"
-                  :class="[selectedProductId === product.id ? 'bg-subtle' : '', dragged?.id === product.id ? 'opacity-50' : '']"
+                  :class="[selectedProductId === product.id ? 'bg-subtle' : 'hover:bg-hover', dragged?.id === product.id ? 'opacity-50' : '']"
                   :style="dropTarget?.id === product.id ? { boxShadow: `inset 0 ${dropTarget.position === 'before' ? '2px' : '-2px'} 0 var(--accent)` } : {}"
                   @click="inspectProduct(product.id)"
                   @dragover="dragOver($event, product)"
@@ -649,7 +649,7 @@ onMounted(load)
                   <td class="px-2 py-2">
                     <button
                       type="button"
-                      class="inline-flex size-9 items-center justify-center rounded text-muted hover:bg-quiet-surface hover:text-ink focus-visible:outline-accent enabled:cursor-grab active:cursor-grabbing"
+                      class="inline-flex size-9 items-center justify-center rounded text-muted hover:bg-hover hover:text-ink focus-visible:outline-accent enabled:cursor-grab active:cursor-grabbing"
                       :draggable="canReorder"
                       :disabled="!canReorder"
                       :aria-label="`Reorder product ${product.name}`"

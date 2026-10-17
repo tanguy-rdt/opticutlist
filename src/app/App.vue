@@ -51,7 +51,7 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
       @click.prevent="focusContent"
     >Skip to content</a>
     <aside
-      class="border-b border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:border-r lg:border-b-0"
+      class="border-b border-line bg-sidebar lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:border-r lg:border-b-0"
       aria-label="Application navigation"
       @keydown.esc="closeNavigation"
     >
@@ -122,7 +122,7 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
             <a
               :href="href"
               class="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium"
-              :class="active(item.to) ? 'bg-subtle text-accent' : 'text-muted hover:bg-subtle hover:text-ink'"
+              :class="active(item.to) ? 'bg-subtle text-accent' : 'text-muted hover:bg-hover hover:text-ink'"
               :aria-current="active(item.to) ? 'page' : undefined"
               @click="item.to === '/projects' ? resume($event, item.to) : navigate($event)"
             >
@@ -140,7 +140,7 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
         <div class="mt-auto border-t border-line pt-3">
           <button
             type="button"
-            class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-subtle hover:text-ink"
+            class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover hover:text-ink"
             aria-haspopup="dialog"
             @click="settingsOpen = true"
           >

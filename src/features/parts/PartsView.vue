@@ -343,8 +343,8 @@ onMounted(load)
               <tr
                 v-for="part in visibleParts"
                 :key="part.id"
-                class="cursor-pointer border-t border-line hover:bg-subtle"
-                :class="selected?.id === part.id ? 'bg-success-surface' : ''"
+                class="cursor-pointer border-t border-line"
+                :class="selected?.id === part.id ? 'bg-success-surface' : 'hover:bg-hover'"
                 @click="selectedId = part.id"
               >
                 <th

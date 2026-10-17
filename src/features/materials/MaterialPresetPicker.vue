@@ -45,8 +45,8 @@ const groups = computed(() => materialPresetGroups.map(category => ({
           <label
             v-for="preset in group.presets"
             :key="preset.id"
-            class="flex cursor-pointer items-center gap-2 rounded-lg border border-line p-2 text-sm hover:bg-subtle"
-            :class="{ 'bg-success-surface': selectedId === preset.id }"
+            class="flex cursor-pointer items-center gap-2 rounded-lg border border-line p-2 text-sm"
+            :class="{ 'bg-success-surface': selectedId === preset.id, 'hover:bg-hover': selectedId !== preset.id }"
           >
             <input
               type="radio"

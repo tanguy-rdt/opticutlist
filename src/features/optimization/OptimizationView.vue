@@ -621,7 +621,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             <button
               type="button"
               class="block w-full space-y-2 rounded-lg p-2 text-left text-sm"
-              :class="panelIndex === index ? 'bg-subtle text-accent' : 'hover:bg-subtle'"
+              :class="panelIndex === index ? 'bg-subtle text-accent' : 'hover:bg-hover'"
               :data-panel-index="index"
               :aria-pressed="panelIndex === index"
               :aria-expanded="panelIndex === index"
@@ -658,7 +658,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
               >
                 <button
                   type="button"
-                  class="my-0.5 flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-subtle"
+                  class="my-0.5 flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-hover"
                   :class="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex]) ? 'bg-success-surface text-accent' : ''"
                   :data-copy-key="JSON.stringify([placed.partId, placed.copyIndex])"
                   :aria-pressed="panelIndex === index && selectedCopies[index] === JSON.stringify([placed.partId, placed.copyIndex])"
@@ -697,7 +697,7 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnload)
             >
               <button
                 type="button"
-                class="w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-subtle"
+                class="w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-hover"
                 :aria-label="`Inspect unplaced part ${partName(item.partId)}`"
                 aria-haspopup="dialog"
                 @click="inspectedUnplaced = item"

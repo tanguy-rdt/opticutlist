@@ -32,7 +32,7 @@ watch(() => props.disabled, value => { if (value) close() })
 onBeforeUnmount(() => { document.removeEventListener('pointerdown', outside) })
 </script>
 <template>
-  <li class="relative flex items-center gap-3 rounded-lg px-4 py-5 transition-colors hover:bg-subtle sm:gap-5 sm:px-5 motion-reduce:transition-none">
+  <li class="relative flex items-center gap-3 rounded-lg px-4 py-5 transition-colors hover:bg-hover sm:gap-5 sm:px-5 motion-reduce:transition-none">
     <RouterLink
       :to="navigation?.tabs.get(project.id) ?? { name: 'project-materials', params: { projectId: project.id } }"
       :aria-label="`Open project ${project.name}`"

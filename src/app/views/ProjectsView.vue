@@ -244,7 +244,7 @@ onMounted(load)
           </legend>
           <label
             class="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent"
-            :class="stockHandling === 'keep' ? 'bg-subtle' : 'hover:bg-quiet-surface'"
+            :class="stockHandling === 'keep' ? 'bg-subtle' : 'hover:bg-hover'"
           >
             <input
               v-model="stockHandling"
@@ -264,7 +264,7 @@ onMounted(load)
           </label>
           <label
             class="flex items-start gap-3 rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent"
-            :class="[stockHandling === 'restore' ? 'bg-subtle' : 'hover:bg-quiet-surface', restorationIssues.length ? 'cursor-not-allowed opacity-60' : 'cursor-pointer']"
+            :class="[stockHandling === 'restore' ? 'bg-subtle' : 'hover:bg-hover', restorationIssues.length ? 'cursor-not-allowed opacity-60' : 'cursor-pointer']"
           >
             <input
               v-model="stockHandling"

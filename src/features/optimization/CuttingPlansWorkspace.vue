@@ -511,7 +511,7 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
 .page-indicator { margin-left: auto; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
 .zoom-controls { display: flex; align-items: center; gap: .2rem; padding-left: .65rem; border-left: 1px solid var(--line); }
 .zoom-button { width: 1.875rem; height: 1.875rem; border-radius: .35rem; }
-.zoom-button:hover:not(:disabled) { background: var(--subtle); }
+.zoom-button:hover:not(:disabled) { background: var(--hover); }
 .zoom-button:disabled { opacity: .4; }
 .document-viewport { flex: 1; min-height: 0; overflow: auto; padding: 1.5rem 2rem; background: var(--canvas); scrollbar-gutter: stable; }
 .paper { width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
@@ -531,7 +531,7 @@ onBeforeUnmount(() => { disposed = true; pendingPrint?.close(); generation += 1;
 .setting legend { margin-bottom: .375rem; }
 .options { display: flex; gap: .25rem; padding: .2rem; background: var(--canvas); border-radius: .45rem; }
 .options button { flex: 1; height: var(--control-height-small); min-height: var(--control-height-small); padding: .3rem .5rem; border-radius: var(--control-radius); font-size: .8125rem; }
-.options button[aria-pressed='true'] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
+.options button[aria-pressed='true'] { background: var(--subtle); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
 .options button:hover { color: var(--accent); }
 .document-action { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: .5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .document-action .button { width: 100%; min-width: 0; padding-inline: .25rem; gap: .25rem; font-size: .75rem; white-space: nowrap; }

@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Plan and optimize rectangular panel cuts in your browser." />
     <title>OptiCutList</title>
+    <script id="theme-init">
+      try {
+        const theme = localStorage.getItem('opticutlist.theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch { /* CSS follows the system preference when storage is unavailable. */ }
+    </script>
   </head>
   <body>
     <div id="app"></div>

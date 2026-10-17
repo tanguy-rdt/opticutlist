@@ -7,7 +7,7 @@ const checked = defineModel<boolean>({ required: true })
     <label
       :for="id"
       class="flex items-center gap-2 text-sm font-semibold"
-      :class="disabled ? 'opacity-50' : 'cursor-pointer'"
+      :class="disabled ? 'text-muted' : 'cursor-pointer'"
     >
       <input
         :id="id"

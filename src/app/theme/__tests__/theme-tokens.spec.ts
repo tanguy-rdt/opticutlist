@@ -24,15 +24,36 @@ describe('accessible theme palette', () => {
     ['dark', /:root\[data-theme='dark'\] \{([\s\S]*?)\n\}/],
   ] as const)('keeps text, selected states and action labels readable in %s', (_theme, pattern) => {
     const colors = tokens(pattern)
-    for (const [first, second] of [['ink', 'canvas'], ['ink', 'surface'], ['muted', 'surface'], ['muted', 'canvas'], ['accent', 'subtle'], ['on-accent', 'accent'], ['danger', 'surface']]) {
+    for (const [first, second] of [['ink', 'canvas'], ['ink', 'surface'], ['muted', 'surface'], ['muted', 'canvas'], ['muted', 'sidebar'], ['muted', 'quiet-surface'], ['muted', 'subtle'], ['muted', 'hover'], ['ink', 'sidebar'], ['ink', 'quiet-surface'], ['accent', 'surface'], ['accent', 'subtle'], ['on-accent', 'accent'], ['on-accent', 'accent-hover'], ['danger', 'surface'], ['danger', 'danger-surface'], ['warning', 'warning-surface'], ['success', 'success-surface']]) {
       if (!first || !second) throw new Error('Missing contrast pair')
       expect(contrast(colors, first, second)).toBeGreaterThanOrEqual(4.5)
     }
-    expect(contrast(colors, 'control-line', 'surface')).toBeGreaterThanOrEqual(3)
+    for (const background of ['surface', 'sidebar', 'canvas', 'quiet-surface']) {
+      expect(contrast(colors, 'control-line', background)).toBeGreaterThanOrEqual(3)
+      expect(contrast(colors, 'accent', background)).toBeGreaterThanOrEqual(3)
+    }
   })
   it('keeps system dark tokens identical to the explicit dark theme', () => {
     const system = tokens(/:root:not\(\[data-theme\]\) \{([\s\S]*?)\n {2}\}/)
     const dark = tokens(/:root\[data-theme='dark'\] \{([\s\S]*?)\n\}/)
     expect([...system]).toEqual([...dark])
   })
+  it('keeps wood, part, offcut, selection and cut inks stable across themes', () => {
+    const root = tokens(/:root \{([\s\S]*?)\n\}/)
+    const dark = tokens(/:root\[data-theme='dark'\] \{([\s\S]*?)\n\}/)
+    const system = tokens(/:root:not\(\[data-theme\]\) \{([\s\S]*?)\n {2}\}/)
+    for (const name of ['cutting-panel', 'cutting-part', 'cutting-waste', 'cutting-ink', 'cutting-line', 'cutting-selection', 'cutting-kerf', 'cutting-cut']) {
+      expect(root.has(name)).toBe(true)
+      expect(dark.has(name)).toBe(false)
+      expect(system.has(name)).toBe(false)
+    }
+  })
+
+  it('separates selected, hover, sidebar and card surfaces in both themes', () => {
+    for (const pattern of [/:root \{([\s\S]*?)\n\}/, /:root\[data-theme='dark'\] \{([\s\S]*?)\n\}/]) {
+      const colors = tokens(pattern)
+      expect(new Set(['canvas', 'sidebar', 'surface', 'hover', 'subtle'].map(name => colors.get(name))).size).toBe(5)
+    }
+  })
+
 })
