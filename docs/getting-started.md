@@ -1,6 +1,10 @@
 # Getting started
 
+[Documentation home](README.md) / Start here
+
 Read [AGENTS.md](../AGENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md) before editing. The application is a browser-only Vue/TypeScript modular monolith, targeting a first stable 1.0 release. There is no backend, account service or cloud database to start.
+
+**On this page:** [Environment](#environment) · [Commands](#commands) · [Repository map](#repository-map) · [Contribution workflow](#contribution-workflow)
 
 ## Environment
 
@@ -66,6 +70,10 @@ Use schema-inferred types, branded IDs and complete-record validation. Empty num
 
 ## Build and hosting
 
-[Vite configuration](../vite.config.ts) sets the Pages base and emits module workers as ES chunks. [CI](../.github/workflows/ci.yml) currently runs Node setup, `npm ci`, lint, typecheck, tests and build. It uploads a Pages artifact for default-branch pushes. **The deployment job is commented out**, despite the root README describing automatic deployment. Repository Pages settings and deployed runtime behavior were not verified in this audit. See the [discrepancy register](architecture.md#guidance-and-implementation-discrepancies).
+[Vite configuration](../vite.config.ts) sets the Pages base and emits module workers as ES chunks. [CI](../.github/workflows/ci.yml) currently runs Node setup, `npm ci`, lint, typecheck, tests and build. Default-branch pushes upload a Pages artifact and run the active deployment job only after validation succeeds. Repository Pages settings and deployed runtime behavior were not verified in this audit. See the [discrepancy register](architecture.md#guidance-and-implementation-discrepancies).
 
 Local business data is not a backup. Before testing destructive workflows against useful data, use the supported transfers and understand their [backup limitations](persistence-and-json.md#backup-boundaries).
+
+---
+
+**Continue exploring:** [Explore the application](features.md) · [Understand the architecture](architecture.md) · [Documentation home](README.md)

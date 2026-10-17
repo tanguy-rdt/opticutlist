@@ -42,7 +42,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Test the local publisher
-        run: npm run test:unit -- scripts/wiki/__tests__/publish.spec.ts
+        run: npm run test:unit -- scripts/wiki/__tests__
 
       - name: Validate documentation before accessing the Wiki
         env:

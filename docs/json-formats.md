@@ -1,6 +1,10 @@
-# JSON exchange reference and compatibility
+# JSON formats & compatibility
+
+[Documentation home](README.md) / Import & compatibility
 
 This document specifies implemented exchange boundaries and a separately labeled future compatibility proposal. [Storage](storage.md) describes IndexedDB versions; portable file versions are independent. Existing complete row examples remain in [Parts JSON](parts-json.md) and [Stock JSON](stock-json-format.md).
+
+**On this page:** [Envelope fields](#envelope-fields) · [Project format: ownership plus dependencies](#project-format-ownership-plus-dependencies) · [Catalog format: remapped insert-only references](#catalog-format-remapped-insert-only-references) · [Stock format: exact identities and dependency preservation](#stock-format-exact-identities-and-dependency-preservation) · [Compatibility matrix: implemented behavior](#compatibility-matrix-implemented-behavior) · [Proposed compatibility architecture — not implemented](#proposed-compatibility-architecture--not-implemented)
 
 ## Shared processing contract
 
@@ -9,7 +13,7 @@ This document specifies implemented exchange boundaries and a separately labeled
 A selected filename extension never proves the payload valid. Catalog UI additionally requires a `.cocl` suffix; Stock UI requires `.json`, while Project/Parts file pickers advertise their accepted extensions and pass contents to their validators. Accepting `.pocl` or `.json` means accepting an older filename convention, not arbitrary old shapes or automatic model conversion. Unknown object properties are rejected by strict schemas, even when a new application UI field seems harmless.
 
 ```mermaid
-flowchart LR
+flowchart TD
   File[User-selected UTF-8 JSON] --> Parse[Parse unknown data]
   Parse --> Schema[Strict envelope and entity schemas]
   Schema --> Relations[Validate IDs and relationships]
@@ -185,3 +189,7 @@ flowchart LR
 A future dispatcher should retain a validator per supported historical version and apply explicit pure transformations before ID remapping. Each step needs golden historical fixtures, unsupported-version tests, loss detection and exact dependency validation. DB upgrades must remain a separate mechanism: a JSON migration must never open/change IndexedDB while merely previewing a file.
 
 Only introduce version 2 when semantics genuinely require it; accepting arbitrary extra keys or silently filling mandatory dimensions is not backward compatibility. Keep format-specific identity policies separate: project/catalog conflict remapping cannot safely be reused for physical inventory. A future full backup would need receipts, ledgers, reserved IDs and a coherent restoration policy, not merely concatenate the existing exchanges.
+
+---
+
+**Continue exploring:** [Parts import example](parts-json.md) · [Stock exchange example](stock-json-format.md) · [Documentation home](README.md)

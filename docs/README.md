@@ -1,54 +1,76 @@
 # OptiCutList developer documentation
 
-These guides describe the implementation audited on 17 October 2026. Start with the authoritative [agent instructions](../AGENTS.md) and [root architecture decisions](../ARCHITECTURE.md). These guides explain how to navigate the implementation; they do not replace those rules.
+**From project requirements to a validated cutting plan.**
 
-## Reading order
+OptiCutList is an open-source, browser-based workspace for planning rectangular panel cuts. It connects materials, finished parts, physically owned stock, optimization and printable fabrication documents. Business data stays in the browser's IndexedDB; there is no application backend to configure.
 
-1. [Getting started](getting-started.md): environment, commands, repository map and contribution workflow.
-2. [Architecture](architecture.md): boundaries, composition, state, routing and discrepancy register.
-3. [Domain model](domain-model.md): entities, identities, invariants and ownership.
-4. [Features](features.md): current screens and end-to-end workflows.
-5. [Optimization](optimization.md): candidate generation, ranking, constraints and editing.
-6. [Stock management](stock-management.md): availability, consumption, offcuts, history and deletion.
-7. [Persistence and JSON](persistence-and-json.md): stores, transactions and portable formats.
-8. [PDF generation](pdf-generation.md): validated document pipeline, rendering and browser output.
-9. [Testing](testing.md): regression suites, fixtures, test doubles and required checks.
-10. [Safe maintenance](maintenance.md): field, storage, optimizer, inventory and JSON extension recipes.
+This Wiki is the implementation guide for contributors: find the owning module, understand its invariants, and follow a change safely from UI to persistence.
 
-Detailed references:
+## Start here
 
-- [Storage](storage.md): every table/key/index, repository mechanics, transaction sequences and upgrades.
-- [JSON formats](json-formats.md): exact portable envelopes, compatibility matrix and a separately labeled migration proposal.
-- [Workflow traces](workflows.md): UI-to-service-to-storage sequences and error paths.
-- [Wiki publishing](wiki-publishing.md): GitHub setup, authentication, managed files and offline publication tests.
-
-Existing focused format references remain canonical examples:
-
-- [Parts JSON import, version 1](parts-json.md).
-- [Physical stock JSON exchange, version 1](stock-json-format.md).
-
-## Where to start for maintenance
-
-| Change | Read first | Main implementation entry |
+| Your goal | Start with | Then explore |
 | --- | --- | --- |
-| Add a project field | Domain model; persistence and JSON | [cutting-project.ts](../src/domain/model/cutting-project.ts) |
-| Change panel selection | Features; stock management | [MaterialsView.vue](../src/features/materials/MaterialsView.vue) |
-| Change optimization ranking | Optimization; root architecture | [optimize-project.ts](../src/domain/optimizer/optimize-project.ts) |
-| Diagnose inventory conflicts | Stock management | [project-stock-service.ts](../src/application/inventory/project-stock-service.ts) |
-| Extend a file format | Persistence and JSON | [application/projects](../src/application/projects/) |
-| Change PDF layout | PDF generation | [infrastructure/pdf](../src/infrastructure/pdf/) |
-| Add a shared control | Architecture; testing | [shared/ui](../src/shared/ui/) |
+| Run the project locally | [Getting started](getting-started.md#environment) | [Repository map](getting-started.md#repository-map) |
+| Understand the system | [Architecture](architecture.md) | [Domain & business rules](domain-model.md) |
+| Find a feature's implementation | [Application & UI](features.md) | [End-to-end workflow traces](workflows.md) |
+| Make a safe first change | [Contribution workflow](getting-started.md#contribution-workflow) | [Testing](testing.md) · [Maintenance recipes](maintenance.md) |
 
-## Audit coverage and limits
+### Your first contribution
 
-The audit covered all major `src/` directories: app, application (catalog, export, inventory, optimization, persistence, plans, projects), domain (models, compatibility, geometry, cutting trees, optimizer), every feature directory, infrastructure, shared UI and workers. Configuration, CI, public material manifest and representative unit/integration/regression suites were also inspected. Detailed source links in each guide identify the relevant boundary.
+1. **Run it.** Use the [local setup instructions](getting-started.md#environment); create a disposable project and explore Materials → Parts → Optimization → Cutting Plans → Stock.
+2. **Trace it.** Choose a screen in the [feature map](features.md) and follow its [workflow trace](workflows.md) into the application service.
+3. **Understand the boundary.** Read the relevant [domain invariant](domain-model.md#invariant-enforcement-and-failure-consequences) and [test suite](testing.md#test-boundaries).
+4. **Change and verify.** Follow a [maintenance recipe](maintenance.md), add focused coverage, and run the [required checks](testing.md).
 
-Mermaid diagrams are embedded in the relevant guides: system context/layers/modules/components and project save sequences in architecture; storage ER/read/write/reconciliation/upgrade diagrams in storage; domain values in domain model; user workflows in workflow traces; algorithm flows in optimization; rendering/output in PDF generation.
+## Explore the documentation
 
-The [discrepancy register](architecture.md#guidance-and-implementation-discrepancies) records older statements that no longer match code. No application behavior or authoritative guidance was changed during this audit.
+| Area | Guides & references |
+| --- | --- |
+| **Architecture & domain** | [System architecture](architecture.md) · [Entities, ownership & invariants](domain-model.md) |
+| **Data & persistence** | [Persistence overview](persistence-and-json.md) · [IndexedDB tables & transactions](storage.md) |
+| **Optimization & inventory** | [Optimization engine](optimization.md) · [Physical stock & offcuts](stock-management.md) |
+| **Application & documents** | [Screens & interactions](features.md) · [Workflow traces](workflows.md) · [Cutting plans & PDF](pdf-generation.md) |
+| **Import & compatibility** | [JSON contracts](json-formats.md) · [Parts import](parts-json.md) · [Stock exchange](stock-json-format.md) |
+| **Development** | [Getting started](getting-started.md) · [Testing](testing.md) · [Safe contributions](maintenance.md) · [Wiki publishing](wiki-publishing.md) |
 
-Source inspection and automated checks cannot establish real printer fidelity, browser-specific native PDF viewer behavior, production GitHub repository settings, storage quotas on individual devices or real-browser visual/accessibility behavior. Those remain manual verification areas. No browser or system software was installed.
+## Architecture at a glance
 
-## Keeping these guides current
+Vue features call injected application services. Pure domain code owns geometry and cutting rules; infrastructure implements persistence and document adapters. The optimizer runs in a Web Worker, while accepted-result persistence coordinates inventory changes.
 
-Update the relevant guide when changing a public contract, ownership rule, store version, worker protocol or PDF pipeline. Keep exact schemas in source and link them instead of copying large schemas into prose. Recommendations are explicitly labeled; descriptions without that label refer to current code. Do not turn historical compatibility fields into newly supported UI features simply because they remain in a schema.
+```mermaid
+flowchart TD
+  UI[Vue UI and Pinia] --> Services[Application services and ports]
+  Services --> Domain[Pure domain rules]
+  Adapters[Dexie and PDF adapters] --> Services
+  Adapters --> Domain
+  Worker[Optimization worker adapter] --> Domain
+```
+
+This diagram shows dependency direction, not execution order. For composition and runtime flows, see [architecture](architecture.md#layers-and-dependency-direction). IndexedDB is persistent truth; selection, hover, zoom and undo history are [transient state](architecture.md#data-flow-and-state-lifetime).
+
+> **Two distinctions to learn early:** Catalog references are not owned inventory. A collision-free layout is not necessarily an executable guillotine cutting plan. Read [stock ownership](stock-management.md#owned-stock-versus-references) and [independent validation](optimization.md#geometry-and-independent-validation) before changing either boundary.
+
+## Where do I find…?
+
+| I need to… | Go directly to… |
+| --- | --- |
+| Locate a component, route or shared control | [Feature map](features.md) · [Routing](architecture.md#routing) · [Shared UI](architecture.md#shared-ui-and-assets) |
+| Add a field without breaking existing projects | [Domain-field recipe](maintenance.md#introduce-a-domain-field) · [JSON compatibility](json-formats.md#compatibility-matrix-implemented-behavior) |
+| Understand a table, index or migration | [Table catalog](storage.md#complete-table-catalog) · [Upgrade path](storage.md#implemented-upgrade-path-and-future-migrations) |
+| Diagnose why a panel was chosen | [Stock preference & ranking](optimization.md#multi-panel-schedules-and-stock-preference) · [Search limitations](optimization.md#search-limitations-and-termination) |
+| Investigate stock availability or a reconciliation conflict | [Contextual availability](stock-management.md#availability-is-contextual) · [Atomic reconciliation](storage.md#stock-reconciliation-transaction-trace) |
+| Change PDF layout, preview, print or download | [PDF renderer map](pdf-generation.md#renderer-module-reference) · [Output lifecycle](pdf-generation.md#output-sequence-and-cleanup-ownership) |
+| Debug an import or preserve a legacy file | [JSON compatibility matrix](json-formats.md#compatibility-matrix-implemented-behavior) · [Transfer workflows](workflows.md#file-transfers-and-settings) |
+| Choose the right regression test | [Test boundaries](testing.md#test-boundaries) · [Invariant assertions](testing.md#assertion-patterns-that-catch-business-regressions) |
+
+## Contribute with confidence
+
+Read [AGENTS.md](../AGENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md) before editing; they remain authoritative. Keep technical claims grounded in source, preserve identities and inventory history, and follow the [safe contribution guide](maintenance.md). Documentation changes follow the same review discipline as code.
+
+These pages live in `docs/` and are [published automatically](wiki-publishing.md) to the Wiki. Edit the repository source, not generated Wiki pages. Stable page paths keep links working across both views.
+
+## About this reference
+
+The technical reference was audited on 17 October 2026 across the major source layers, configuration and representative regression suites. Detailed guides retain source links, compatibility guidance, limitations and explicitly labeled proposals. See the [discrepancy register](architecture.md#guidance-and-implementation-discrepancies) when historical guidance differs from code.
+
+Source inspection does not establish real-printer fidelity, browser-native PDF behavior, production repository settings, device storage quotas or visual/accessibility behavior in real browsers. These remain manual verification areas. Update the relevant guide when changing a contract, ownership rule, database version, worker protocol or PDF pipeline.

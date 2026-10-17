@@ -1,6 +1,10 @@
-# Feature map and user workflows
+# Application & UI
+
+[Documentation home](README.md) / Start here
 
 This guide describes current screens, not a future product roadmap. [Architecture](architecture.md) maps routes and layers; [stock management](stock-management.md) explains inventory rules.
+
+**On this page:** [Home and Projects](#home-and-projects) · [Global Catalog](#global-catalog) · [Project Materials](#project-materials) · [Project Parts](#project-parts) · [Optimization](#optimization) · [Cutting Plans and PDF](#cutting-plans-and-pdf)
 
 ## Home and Projects
 
@@ -75,3 +79,7 @@ Catalog and Stock import/export live here, with preview/confirmation and error w
 ## Developer workflow traces
 
 For each feature's UI entry, service calls, domain operations, actual write set, validation and failure paths, see [End-to-end workflows](workflows.md). This feature map remains the concise screen index rather than duplicating those sequences.
+
+---
+
+**Continue exploring:** [Follow implementation traces](workflows.md) · [Shared UI conventions](architecture.md#shared-ui-and-assets) · [Documentation home](README.md)

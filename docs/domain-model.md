@@ -1,6 +1,10 @@
-# Domain model and ownership
+# Domain model & business rules
+
+[Documentation home](README.md) / Architecture & domain
 
 The runtime contracts are the strict Zod schemas in [src/domain/model](../src/domain/model/). This guide describes relationships; source schemas remain the exact field-level reference. See [persistence and JSON](persistence-and-json.md) for how records cross storage boundaries.
+
+**On this page:** [Entity relationships](#entity-relationships) · [Grain and orientation](#grain-and-orientation) · [Provenance](#provenance) · [Schema field reference](#schema-field-reference) · [Invariant enforcement and failure consequences](#invariant-enforcement-and-failure-consequences)
 
 ## Identity and physical dimensions
 
@@ -201,3 +205,7 @@ A schema alone cannot enforce every relationship: a valid SupplierProduct shape 
 **Deleted project:** explicit deletion choice → transaction-time safety review → remove owned demand/layout records → preserve receipts and named ledger audit. Keep and Restore have different physical results but both preserve provenance/history required by remaining inventory.
 
 The [storage ER diagram](storage.md#physical-relationship-diagram) shows all tables and keys; [workflow traces](workflows.md) show how these lifecycles execute.
+
+---
+
+**Continue exploring:** [Stock ownership](stock-management.md) · [Persistent records](storage.md) · [Documentation home](README.md)

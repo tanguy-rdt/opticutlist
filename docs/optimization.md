@@ -1,6 +1,10 @@
-# Optimization, constraints and editing
+# Optimization engine
+
+[Documentation home](README.md) / Optimization & inventory
 
 Read the authoritative [algorithm rules](../AGENTS.md), especially the stable `largestAreaFirst` baseline. Optimization is pure and inventory-independent; persisting its accepted result is a separate inventory-affecting operation.
+
+**On this page:** [Inputs and worker boundary](#inputs-and-worker-boundary) · [Automatic supply preparation](#automatic-supply-preparation) · [Single-panel engine](#single-panel-engine) · [Multi-panel schedules and Stock preference](#multi-panel-schedules-and-stock-preference) · [Geometry and independent validation](#geometry-and-independent-validation) · [Verified limitations and extension hazards](#verified-limitations-and-extension-hazards)
 
 ## Inputs and worker boundary
 
@@ -20,69 +24,6 @@ There are no user-configured source quantities. Legacy `CuttingProject.panelQuan
 - `unavailable` legacy catalog products remain disallowed. Prices are not costs in optimization.
 
 This avoids unbounded catalog search while never treating physical Stock as unlimited.
-
-## Single-panel engine
-
-[planWithStrategy](../src/domain/optimizer/plan-with-strategy.ts) uses shared integer geometry and guillotine splitting. Current strategies are `largestAreaFirst`, `longestSideFirst`, `bestShortSideFit`. They differ in deterministic demand/region choices, not in validation rules. Do not change the baseline opportunistically while adding another strategy.
-
-[optimizePanel](../src/domain/optimizer/optimize-panel.ts) runs all strategies and ranks valid candidates by:
-
-1. Fewer unplaced copies.
-2. Greater used area on this panel.
-3. Larger single reusable waste region.
-4. Declared strategy order.
-
-Invalid trees appear as rejected candidates and never win. No valid usable region produces a typed failure, not an invented placement.
-
-## Multi-panel schedules and Stock preference
-
-[optimizeProject](../src/domain/optimizer/optimize-project.ts) reuses the single-panel engine inside deterministic greedy schedules. Normal candidates include maximum-copy coverage, smaller-panel selection and each possible first-source seed. Each allocation consumes only an internal source counter and advances explicit Part copy indices.
-
-With `preferStockPanels !== false` and owned sources present, the same scheduler additionally evaluates Stock-aware coverage/small-panel schedules and Stock-aware continuations from each first-source seed. Owned means validated Stock identity, not a name such as “Stock panel.”
-
-Final comparison is lexicographic:
-
-1. Maximize produced copies, so a less complete plan cannot win by avoiding Catalog.
-2. When preference is enabled, minimize the number of allocated Catalog panels.
-3. Minimize allocated panel count.
-4. Minimize waste area.
-5. Retain stable candidate order for ties.
-
-Disabling preference runs normal candidates/ranking without an explicit source bias. This is **not a small utilization bonus**, monetary objective or absolute instruction to use every available StockItem. Among evaluated complete solutions, zero Catalog beats one Catalog even if the owned panel is larger.
-
-Example regression: selected Catalog 800 × 400; two distinct StockItems 800 × 600; two compatible 200 × 400 Parts, kerf/margin permitting both layouts. Enabled preference chooses one owned panel and no Catalog panels; the second physical identity is unused. Disabled preference may choose Catalog for lower waste. See [optimize-project.spec.ts](../src/domain/optimizer/__tests__/optimize-project.spec.ts).
-
-### Search limitations and termination
-
-This is not exhaustive packing or a proof of globally minimum Catalog count. A schedule greedily continues after its first source and cannot explore every placement/allocation sequence. At most `2n + 4` schedules are constructed when preference is active for `n` sources; each loop either places at least one remaining copy or stops. Supply is finite and there are no empty allocated panels. Large safe-integer quantities are still potentially expensive: numeric validity is not a performance guarantee.
-
-## Geometry and independent validation
-
-[units.ts](../src/domain/geometry/units.ts) rounds supported millimetres to integer micrometres (0.001 mm). Arithmetic and region comparisons use these helpers. Range errors are distinct from expected “does not fit” outcomes. Validators use nonthrowing conversion and accumulate located issues for malformed external data.
-
-[rect.ts](../src/domain/geometry/rect.ts) removes the edge margin from each side; that margin includes its trim cut. Internal splits account for physical kerf between child regions. A remainder cannot silently absorb an impossible kerf. Material identity and exact thickness are checked separately from 2D geometry.
-
-[getAllowedOrientations](../src/domain/geometry/part-orientation.ts) applies final grain-axis compatibility when both grains are specified, overriding stale rotation preferences where needed. When either grain is `none`, rotation policy applies. Shared fit, optimizer, editor and validators must use this same rule.
-
-[validateCuttingTree](../src/domain/cutting-tree/validate-cutting-tree.ts) checks executable full-region guillotine structure, regions, leaves, compatibility, orientation and copy accounting. [validateProjectPlan](../src/domain/optimizer/validate-project-plan.ts) additionally checks global quantities, source panel limits and allocations. A nonoverlapping picture is insufficient proof of manufacturability.
-
-## Outputs and utilization
-
-[ProjectCuttingPlan](../src/domain/optimizer/project-plan.ts) explicitly returns allocated panels, global unplaced copy ranges/reasons and metrics. Reasons distinguish no compatible source, constraints preventing fit, and finite capacity/usable-space limits. Per-panel `allocatedElsewhere` demand describes copies made on other panels; it is not globally unplaced demand.
-
-Used area sums finished placed rectangles. Panel area uses full physical panel dimensions; waste is panel area minus placed area, so trims and kerf contribute to utilization loss rather than becoming reusable offcuts. Overall utilization is `usedArea / panelArea * 100`, not an average of panel percentages; an empty result uses zero.
-
-## Editing, annotations and persistence
-
-[editCuttingTree](../src/domain/cutting-tree/edit-cutting-tree.ts) performs immutable constrained rotate/swap operations. Rotation may recut only an anchored reserved region; swaps require exact permitted fits within existing regions. Both original and candidate trees are validated. Rejection leaves the old tree unchanged.
-
-[plan-editing-session.ts](../src/application/optimization/plan-editing-session.ts) maintains isolated baseline/current/undo/redo state. [plan-canvas.ts](../src/features/optimization/viewer/plan-canvas.ts) handles presentation; dragging pans, not free part relocation. The accepted edited plan participates in current-result persistence and PDF snapshots, never by mutating the baseline.
-
-[cutting-plan-scene.ts](../src/application/optimization/cutting-plan-scene.ts) derives parts, waste and physical kerf rectangles from a validated tree. [plan-canvas.ts](../src/features/optimization/viewer/plan-canvas.ts) scales those rectangles with panel geometry; zero-width/height kerfs get a 0.75-pixel screen-space stroke for visibility. The current `--cutting-kerf` token in [styles.css](../src/app/styles.css) is brown in light/dark themes, not red. There is no separate red centerline renderer in the current implementation. Piece boundaries use their own palette entry and are not interpreted as additional cuts.
-
-[dimensions.ts](../src/features/optimization/viewer/dimensions.ts) always draws overall dimensions and optionally selected-copy oriented dimensions/X/Y positions from the panel origin. Annotation strokes/text are screen-sized and noninteractive. It does not invent a selected-cut concept or cutting sequence. Fit reserves annotation lanes; ordinary editing does not reset manual zoom.
-
-[Current-result service](../src/application/plans/current-result-service.ts) validates/encodes and atomically replaces the current snapshot while reconciling inventory. Legacy/audited plans are retained. Cancellation and project changes invalidate stale queued writes; failed persistence must not expose an older plan as the current export. See [stock management](stock-management.md) and [testing](testing.md).
 
 ## Algorithm data structures and phase boundaries
 
@@ -136,6 +77,41 @@ Concrete example with origin `(0, 0)`, region 800 × 600 mm, a length-axis cut a
 
 A 798 mm finished length fits an 800 mm empty panel geometrically, but cannot be freed by a 3 mm separating cut with a positive remainder. It is reported as `remainderNarrowerThanKerf`, not silently shrunk or “fixed” by changing kerf. Margin is independently deducted from both sides before these operations.
 
+## Single-panel engine
+
+[planWithStrategy](../src/domain/optimizer/plan-with-strategy.ts) uses shared integer geometry and guillotine splitting. Current strategies are `largestAreaFirst`, `longestSideFirst`, `bestShortSideFit`. They differ in deterministic demand/region choices, not in validation rules. Do not change the baseline opportunistically while adding another strategy.
+
+[optimizePanel](../src/domain/optimizer/optimize-panel.ts) runs all strategies and ranks valid candidates by:
+
+1. Fewer unplaced copies.
+2. Greater used area on this panel.
+3. Larger single reusable waste region.
+4. Declared strategy order.
+
+Invalid trees appear as rejected candidates and never win. No valid usable region produces a typed failure, not an invented placement.
+
+## Multi-panel schedules and Stock preference
+
+[optimizeProject](../src/domain/optimizer/optimize-project.ts) reuses the single-panel engine inside deterministic greedy schedules. Normal candidates include maximum-copy coverage, smaller-panel selection and each possible first-source seed. Each allocation consumes only an internal source counter and advances explicit Part copy indices.
+
+With `preferStockPanels !== false` and owned sources present, the same scheduler additionally evaluates Stock-aware coverage/small-panel schedules and Stock-aware continuations from each first-source seed. Owned means validated Stock identity, not a name such as “Stock panel.”
+
+Final comparison is lexicographic:
+
+1. Maximize produced copies, so a less complete plan cannot win by avoiding Catalog.
+2. When preference is enabled, minimize the number of allocated Catalog panels.
+3. Minimize allocated panel count.
+4. Minimize waste area.
+5. Retain stable candidate order for ties.
+
+Disabling preference runs normal candidates/ranking without an explicit source bias. This is **not a small utilization bonus**, monetary objective or absolute instruction to use every available StockItem. Among evaluated complete solutions, zero Catalog beats one Catalog even if the owned panel is larger.
+
+Example regression: selected Catalog 800 × 400; two distinct StockItems 800 × 600; two compatible 200 × 400 Parts, kerf/margin permitting both layouts. Enabled preference chooses one owned panel and no Catalog panels; the second physical identity is unused. Disabled preference may choose Catalog for lower waste. See [optimize-project.spec.ts](../src/domain/optimizer/__tests__/optimize-project.spec.ts).
+
+### Search limitations and termination
+
+This is not exhaustive packing or a proof of globally minimum Catalog count. A schedule greedily continues after its first source and cannot explore every placement/allocation sequence. At most `2n + 4` schedules are constructed when preference is active for `n` sources; each loop either places at least one remaining copy or stops. Supply is finite and there are no empty allocated panels. Large safe-integer quantities are still potentially expensive: numeric validity is not a performance guarantee.
+
 ## Project candidate generation and ranking trace
 
 ```mermaid
@@ -163,6 +139,16 @@ Per-Part offsets are added back to every local tree leaf/placement when a panel 
 
 At most `n + 2` normal schedules, or `2n + 4` with Stock schedules, are evaluated for `n` sources. That is a count of schedules, **not linear total runtime**: each schedule repeatedly evaluates available sources using all placement strategies and remaining demand. Demand size, free regions and validators contribute additional work. There is no arbitrary iteration cap, but a schedule stops when no source places a copy and each accepted iteration reduces remaining demand.
 
+## Geometry and independent validation
+
+[units.ts](../src/domain/geometry/units.ts) rounds supported millimetres to integer micrometres (0.001 mm). Arithmetic and region comparisons use these helpers. Range errors are distinct from expected “does not fit” outcomes. Validators use nonthrowing conversion and accumulate located issues for malformed external data.
+
+[rect.ts](../src/domain/geometry/rect.ts) removes the edge margin from each side; that margin includes its trim cut. Internal splits account for physical kerf between child regions. A remainder cannot silently absorb an impossible kerf. Material identity and exact thickness are checked separately from 2D geometry.
+
+[getAllowedOrientations](../src/domain/geometry/part-orientation.ts) applies final grain-axis compatibility when both grains are specified, overriding stale rotation preferences where needed. When either grain is `none`, rotation policy applies. Shared fit, optimizer, editor and validators must use this same rule.
+
+[validateCuttingTree](../src/domain/cutting-tree/validate-cutting-tree.ts) checks executable full-region guillotine structure, regions, leaves, compatibility, orientation and copy accounting. [validateProjectPlan](../src/domain/optimizer/validate-project-plan.ts) additionally checks global quantities, source panel limits and allocations. A nonoverlapping picture is insufficient proof of manufacturability.
+
 ## Independent global validation details
 
 [validateProjectPlan](../src/domain/optimizer/validate-project-plan.ts) treats trees as authoritative, not response metrics or placement arrays. It:
@@ -177,10 +163,28 @@ At most `n + 2` normal schedules, or `2n + 4` with Stock schedules, are evaluate
 
 Worker validation, saved-plan reconstruction and PDF preparation reuse these checks. A protocol envelope guard alone is insufficient. Some low-level APIs assume schema-valid unique context Parts and throw on programmer misuse; the application/worker boundaries catch/translate these failures.
 
+## Outputs and utilization
+
+[ProjectCuttingPlan](../src/domain/optimizer/project-plan.ts) explicitly returns allocated panels, global unplaced copy ranges/reasons and metrics. Reasons distinguish no compatible source, constraints preventing fit, and finite capacity/usable-space limits. Per-panel `allocatedElsewhere` demand describes copies made on other panels; it is not globally unplaced demand.
+
+Used area sums finished placed rectangles. Panel area uses full physical panel dimensions; waste is panel area minus placed area, so trims and kerf contribute to utilization loss rather than becoming reusable offcuts. Overall utilization is `usedArea / panelArea * 100`, not an average of panel percentages; an empty result uses zero.
+
+## Editing, annotations and persistence
+
+[editCuttingTree](../src/domain/cutting-tree/edit-cutting-tree.ts) performs immutable constrained rotate/swap operations. Rotation may recut only an anchored reserved region; swaps require exact permitted fits within existing regions. Both original and candidate trees are validated. Rejection leaves the old tree unchanged.
+
+[plan-editing-session.ts](../src/application/optimization/plan-editing-session.ts) maintains isolated baseline/current/undo/redo state. [plan-canvas.ts](../src/features/optimization/viewer/plan-canvas.ts) handles presentation; dragging pans, not free part relocation. The accepted edited plan participates in current-result persistence and PDF snapshots, never by mutating the baseline.
+
+[cutting-plan-scene.ts](../src/application/optimization/cutting-plan-scene.ts) derives parts, waste and physical kerf rectangles from a validated tree. [plan-canvas.ts](../src/features/optimization/viewer/plan-canvas.ts) scales those rectangles with panel geometry; zero-width/height kerfs get a 0.75-pixel screen-space stroke for visibility. The current `--cutting-kerf` token in [styles.css](../src/app/styles.css) is brown in light/dark themes, not red. There is no separate red centerline renderer in the current implementation. Piece boundaries use their own palette entry and are not interpreted as additional cuts.
+
+[dimensions.ts](../src/features/optimization/viewer/dimensions.ts) always draws overall dimensions and optionally selected-copy oriented dimensions/X/Y positions from the panel origin. Annotation strokes/text are screen-sized and noninteractive. It does not invent a selected-cut concept or cutting sequence. Fit reserves annotation lanes; ordinary editing does not reset manual zoom.
+
+[Current-result service](../src/application/plans/current-result-service.ts) validates/encodes and atomically replaces the current snapshot while reconciling inventory. Legacy/audited plans are retained. Cancellation and project changes invalidate stale queued writes; failed persistence must not expose an older plan as the current export. See [stock management](stock-management.md) and [testing](testing.md).
+
 ## Offcuts, editing history and visual transforms
 
 ```mermaid
-flowchart LR
+flowchart TD
   Tree[Validated accepted cutting tree] --> Scene[createCuttingPlanScene]
   Scene --> Parts[Oriented placed Parts]
   Scene --> Kerf[Physical kerf rectangles]
@@ -205,3 +209,7 @@ UI zoom is pixels per mm plus translation in [viewport.ts](../src/features/optim
 - Historical diagnostics are compact; reconstruction can distinguish saved specific reasons but does not invent a full manufacturing sequence.
 
 Before changing scoring or adding a strategy, follow [maintenance](maintenance.md#modify-an-optimization-rule) and update authoritative decisions where required.
+
+---
+
+**Continue exploring:** [Result reconciliation](stock-management.md) · [From plans to documents](pdf-generation.md) · [Documentation home](README.md)

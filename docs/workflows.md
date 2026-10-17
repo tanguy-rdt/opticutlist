@@ -1,6 +1,10 @@
-# End-to-end workflow reference
+# End-to-end workflow traces
+
+[Documentation home](README.md) / Development & reference
 
 Read this alongside [feature map](features.md), [architecture](architecture.md) and [storage](storage.md). Paths below connect UI entry points to application/domain operations and actual writes. Unless stated otherwise, failure retains the user's draft or presents an actionable error; successful notification follows the underlying completed operation.
+
+**On this page:** [Project creation and editing](#project-creation-and-editing) · [Materials and supplier reference selection](#materials-and-supplier-reference-selection) · [Optimization and source allocation](#optimization-and-source-allocation) · [Manual cutting-plan editing](#manual-cutting-plan-editing) · [PDF generation and output](#pdf-generation-and-output) · [Generated offcuts and Keep updates](#generated-offcuts-and-keep-updates)
 
 ## Project creation and editing
 
@@ -195,3 +199,7 @@ Project/catalog imports can remap conflicts; Stock import must preserve physical
 4. Verify transaction-time checks, especially after preview or an async modal was opened.
 5. Confirm obsolete loads/workers/writes are invalidated on route changes.
 6. Reproduce with application-level isolated persistence tests before changing rendering or suppressing warnings.
+
+---
+
+**Continue exploring:** [Screen-level overview](features.md) · [Verify a workflow](testing.md) · [Documentation home](README.md)

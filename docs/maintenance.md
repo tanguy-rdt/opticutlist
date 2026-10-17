@@ -1,6 +1,10 @@
-# Safe maintenance and extension guide
+# Safe contribution guide
+
+[Documentation home](README.md) / Development & reference
 
 These are developer procedures, not implemented new features. They apply the current [AGENTS.md](../AGENTS.md) constraints to the audited code. Start with [architecture](architecture.md), then identify the owning service and test boundary before editing. Obtain approval before changing fundamental architecture or domain invariants.
+
+**On this page:** [Introduce a domain field](#introduce-a-domain-field) · [Add a Dexie table or migration](#add-a-dexie-table-or-migration) · [Modify an optimization rule](#modify-an-optimization-rule) · [Change stock reconciliation](#change-stock-reconciliation) · [Evolve a JSON exchange schema](#evolve-a-json-exchange-schema) · [Review and completion checklist](#review-and-completion-checklist)
 
 ## Introduce a domain field
 
@@ -98,3 +102,7 @@ For async features, identify cancellation ownership before coding: request IDs, 
 | Did documentation stay accurate? | Relative links, actual symbols, parsed Mermaid and updated discrepancy register |
 
 Run the four required validation commands, inspect the staged diff, create one scoped local Conventional Commit only when checks pass, and never push. Do not install browser/system software without separate explicit approval. Stop after the requested task instead of starting an adjacent cleanup.
+
+---
+
+**Continue exploring:** [Validation conventions](testing.md) · [Contribution checklist](getting-started.md#contribution-workflow) · [Documentation home](README.md)

@@ -1,6 +1,10 @@
-# IndexedDB storage reference
+# IndexedDB reference
+
+[Documentation home](README.md) / Data & persistence
 
 This is the physical-storage companion to [persistence and JSON](persistence-and-json.md). Exact contracts are [Repositories / LocalPersistence](../src/application/persistence/repositories.ts), [local-database.ts](../src/infrastructure/persistence/local-database.ts) and the linked schemas below. Relationships are application-enforced; IndexedDB has no foreign-key or automatic cascade rules here.
+
+**On this page:** [Adapter construction and transaction architecture](#adapter-construction-and-transaction-architecture) · [Complete table catalog](#complete-table-catalog) · [CRUD read/write mechanics](#crud-readwrite-mechanics) · [Atomic write sets](#atomic-write-sets) · [Versions: three separate axes](#versions-three-separate-axes) · [Deletion and recovery boundaries](#deletion-and-recovery-boundaries)
 
 ## Adapter construction and transaction architecture
 
@@ -272,3 +276,7 @@ Scoped Part delete removes its ID from the owner atomically. Project deletion is
 There is no automatic corrupt-record quarantine, repair UI, full application backup or cross-tab revision conflict protocol. On `invalidRecord`, preserve the original storage and inspect the reported path/schema. `notFound` can be a real dependency issue; do not create replacements with matching names. Browser quota, permission or IndexedDB errors become storage failures; Retry does not promise the underlying condition is resolved. Storage eviction/privacy behavior and concurrent-tab UX remain browser-level risks.
 
 Persisted, derived and transient data are catalogued in [architecture](architecture.md#data-flow-and-state-lifetime). Theme localStorage and session navigation are deliberate exceptions to IndexedDB business persistence, not alternative stores for domain entities.
+
+---
+
+**Continue exploring:** [Inventory lifecycle](stock-management.md) · [Migration recipe](maintenance.md#add-a-dexie-table-or-migration) · [Documentation home](README.md)

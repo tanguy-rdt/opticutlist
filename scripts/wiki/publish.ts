@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import type { Nodes } from 'mdast'
 import { z } from 'zod'
+import { WIKI_NAVIGATION } from './navigation.ts'
 import { hasControlCharacters, validateImage, validateMarkdown, validateName } from './publication-policy.ts'
 
 export const MANIFEST = '.opticutlist-docs-manifest.json'
@@ -198,20 +199,31 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
     for (const patch of patches.sort((a, b) => b.start - a.start)) rendered = rendered.slice(0, patch.start) + patch.value + rendered.slice(patch.end)
     output.set(`${page}.md`, Buffer.from(banner + rendered))
   }
-  const navigation = ['# Developer documentation', '', `[Home](${pageUrl('Home')})`, '']
+  const navigation = ['**OptiCutList**', '', `[Documentation home](${pageUrl('Home')})`, '']
+  const listed = new Set(['README.md'])
+  const label = (text: string): string => text.replace(/[[\]\\]/g, '\\$&')
+  for (const group of WIKI_NAVIGATION) {
+    const available = group.pages.filter(([path]) => pages.has(path))
+    if (!available.length) continue
+    navigation.push(`### ${group.title}`, '')
+    for (const [path, title] of available) {
+      const page = pages.get(path)
+      if (!page) continue
+      navigation.push(`- [${label(title)}](${pageUrl(page)})`)
+      listed.add(path)
+    }
+    navigation.push('')
+  }
+  // New/nested pages stay discoverable until their editorial placement is chosen.
   let previousGroup = ''
   for (const [name, page] of pages) {
-    if (page === 'Home') continue
-    const group = name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : 'Reference'
-    if (group !== previousGroup) { navigation.push(`## ${group}`, ''); previousGroup = group }
-    const title = (titles.get(name) ?? name).replace(/[[\]\\]/g, '\\$&')
-    navigation.push(`- [${title}](${pageUrl(page)})`)
+    if (listed.has(name)) continue
+    const group = name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : 'More reference'
+    if (group !== previousGroup) { navigation.push(`### ${label(group)}`, ''); previousGroup = group }
+    navigation.push(`- [${label(titles.get(name) ?? name)}](${pageUrl(page)})`)
   }
-  const nav = navigation.join('\n') + '\n'
-  output.set('_Sidebar.md', Buffer.from(banner + nav))
-  const home = output.get('Home.md')
-  if (!home) throw new Error('Missing generated Home page.')
-  output.set('Home.md', Buffer.from(home.toString('utf8') + '\n---\n\n' + nav))
+  output.set('_Sidebar.md', Buffer.from(banner + navigation.join('\n') + '\n'))
+  // Home is an authored portal, not a second copy of the entire sidebar.
   return output
 }
 

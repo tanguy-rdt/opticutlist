@@ -1,4 +1,6 @@
-# Physical stock JSON exchange (version 1)
+# Stock JSON exchange
+
+[Documentation home](README.md) / Import & compatibility
 
 Settings → Stock exports `stock.oclstock.json` as readable UTF-8 JSON. Import accepts this extension or legacy/general `.json` names; contents, not filenames, determine compatibility.
 
@@ -62,3 +64,7 @@ Version 1 also accepts an optional `stockOrders` array. Each entry uses the mate
 ```
 
 These are presentation preferences, separate from StockItems and movement history. Every listed ID must appear in `stockItems` with that material; duplicates and cross-material references are rejected. Exports omit stale IDs. Without metadata, rows use deterministic ID order; importing an older file preserves any local order. Import inserts new order records atomically with stock and rejects conflicting existing orders without overwriting them. Replaying identical data/order is safe. This optional addition does not change stock quantities or backup limitations.
+
+---
+
+**Continue exploring:** [Stock lifecycle](stock-management.md) · [Identity rules](json-formats.md#stock-format-exact-identities-and-dependency-preservation) · [Documentation home](README.md)

@@ -1,6 +1,10 @@
-# Physical stock management
+# Stock lifecycle & reconciliation
+
+[Documentation home](README.md) / Optimization & inventory
 
 Physical stock is an identity-based inventory system, not a collection of catalog availability estimates. Start with [StockItem](../src/domain/model/stock-item.ts), [ProjectStock](../src/domain/model/project-stock.ts), the [guarded stock repository](../src/application/inventory/stock-repository.ts) and [project-stock-service.ts](../src/application/inventory/project-stock-service.ts).
+
+**On this page:** [Owned stock versus references](#owned-stock-versus-references) · [Availability is contextual](#availability-is-contextual) · [Result persistence and automatic reconciliation](#result-persistence-and-automatic-reconciliation) · [Offcut candidates and Keep decisions](#offcut-candidates-and-keep-decisions) · [Transactions, idempotency and rollback](#transactions-idempotency-and-rollback) · [Project deletion](#project-deletion)
 
 ## Owned stock versus references
 
@@ -115,3 +119,7 @@ flowchart TD
   Keep --> Offcut[Owned cutting-provenance StockItem]
   Offcut --> Other[Eligible for other projects only]
 ```
+
+---
+
+**Continue exploring:** [Transaction trace](storage.md#stock-reconciliation-transaction-trace) · [Stock exchange contract](stock-json-format.md) · [Documentation home](README.md)

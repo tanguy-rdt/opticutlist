@@ -40,7 +40,7 @@ describe('Wiki generation and managed synchronization', () => {
     expect(page(options, '_Sidebar.md')).toContain('## guides')
     expect(page(options, '_Sidebar.md')).toContain('/wiki/Docs-guides--setup')
     expect(page(options, 'Home.md')).toContain('# Developer guide')
-    expect(page(options, 'Home.md')).toContain('# Developer documentation')
+    expect(page(options, 'Home.md')).not.toContain('### Architecture & domain')
   })
 
   it('converts inline links, reference definitions, directories, anchors and queries', () => {

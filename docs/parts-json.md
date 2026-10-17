@@ -1,4 +1,6 @@
-# Parts JSON import (version 1)
+# Parts JSON import
+
+[Documentation home](README.md) / Import & compatibility
 
 Parts → **New part ▾ → Import parts** accepts UTF-8 `.oclparts.json` and legacy `.json` files, validates a file, previews its rows and requires confirmation.
 Existing files remain supported. Standalone Parts export is no longer available; use full project export for project backups.
@@ -70,3 +72,7 @@ Part/ownership writes run through the existing project rules in one atomic
 transaction. A failure leaves the complete batch unapplied. Existing direct
 material choices remain valid, and exact thickness matching during optimization
 is unchanged.
+
+---
+
+**Continue exploring:** [Import processing](json-formats.md#parts-format-material-mapping-and-new-owned-records) · [Parts UI](features.md#project-parts) · [Documentation home](README.md)

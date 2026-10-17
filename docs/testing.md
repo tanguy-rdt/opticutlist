@@ -1,4 +1,6 @@
-# Testing and validation
+# Testing & validation
+
+[Documentation home](README.md) / Development & reference
 
 The required checks are defined in [AGENTS.md](../AGENTS.md) and [package.json](../package.json):
 
@@ -10,6 +12,8 @@ npm run build
 ```
 
 Run these before committing. Never weaken checks or install browsers/system software to make an unsupported environment appear green.
+
+**On this page:** [Tooling and organization](#tooling-and-organization) · [Test boundaries](#test-boundaries) · [Optimization and inventory regression matrix](#optimization-and-inventory-regression-matrix) · [PDF and browser boundaries](#pdf-and-browser-boundaries) · [Documentation checks](#documentation-checks) · [Current CI and completion process](#current-ci-and-completion-process)
 
 ## Tooling and organization
 
@@ -114,7 +118,7 @@ A mutation of the code under test that changes the intended invariant should fai
 
 ## Current CI and completion process
 
-[ci.yml](../.github/workflows/ci.yml) runs on push, pull_request and workflow_dispatch. The validation job uses Node from `.nvmrc`, npm caching, `npm ci`, lint, typecheck, tests and build with a 15-minute timeout. Default-branch pushes upload `dist` as a Pages artifact. The deploy job remains commented out; documentation or a green artifact does not verify a live deployment.
+[ci.yml](../.github/workflows/ci.yml) runs on push, pull_request and workflow_dispatch. The validation job uses Node from `.nvmrc`, npm caching, `npm ci`, lint, typecheck, tests and build with a 15-minute timeout. Default-branch pushes upload `dist` as a Pages artifact. The active deploy job requires successful validation and a default-branch push. A successful local build or uploaded artifact does not verify live repository settings.
 
 No configured coverage threshold, browser screenshot suite, architectural dependency-boundary plugin or Mermaid lint command is currently part of package scripts. Those are potential future tooling decisions, not checks that can be claimed as already running in CI. The full local test command includes application/persistence integration suites despite its `test:unit` name.
 
@@ -125,3 +129,7 @@ If an existing test fails during a documentation-only task, retain evidence and 
 [maintenance.md](maintenance.md) gives concrete change recipes for domain fields, Dexie migrations, optimization rules, stock reconciliation, JSON versions and new feature boundaries. [storage.md](storage.md) and [json-formats.md](json-formats.md) are the corresponding contract checklists.
 
 For Mermaid validation, use a real Mermaid parser when available; balanced fences alone do not prove valid syntax. A browser is unnecessary for parser-only validation. Keep temporary documentation tooling outside project dependencies unless adopting it as maintained repository tooling is explicitly part of the task. Link checks should include relative target existence, heading fragments, repository-root paths and newly added source-symbol references.
+
+---
+
+**Continue exploring:** [Safe change recipes](maintenance.md) · [Wiki validation](wiki-publishing.md) · [Documentation home](README.md)

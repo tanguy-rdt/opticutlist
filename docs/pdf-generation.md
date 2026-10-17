@@ -1,6 +1,10 @@
-# PDF document generation
+# Cutting plans & PDF
+
+[Documentation home](README.md) / Cutting plans & PDF
 
 PDFs are generated locally with pdf-lib and previewed from the actual bytes with PDF.js. Technical drawings remain vector paths, text, arrows and hatching. Cover images are the only optional user-provided raster content. No screenshot concatenation or external rendering service is involved.
+
+**On this page:** [Boundaries and generation flow](#boundaries-and-generation-flow) · [Document settings and cover](#document-settings-and-cover) · [Page composition](#page-composition) · [Coordinates, scales and supported paper](#coordinates-scales-and-supported-paper) · [Renderer module reference](#renderer-module-reference) · [Output sequence and cleanup ownership](#output-sequence-and-cleanup-ownership)
 
 ## Boundaries and generation flow
 
@@ -9,8 +13,8 @@ PDFs are generated locally with pdf-lib and previewed from the actual bytes with
 [OptimizationView.vue](../src/features/optimization/OptimizationView.vue) supplies the current accepted displayed layouts, including manual edits, only after result persistence is safe. [CuttingPlansWorkspace.vue](../src/features/optimization/CuttingPlansWorkspace.vue) coordinates current settings, generation, cancellation, preview and output.
 
 ```mermaid
-flowchart LR
-  Current[Validated current result + accepted edits] --> Snapshot[Detached application PDF DTO]
+flowchart TD
+  Current[Validated result and accepted edits] --> Snapshot[Detached application PDF DTO]
   Settings[Project PDF settings] --> Snapshot
   Snapshot --> Pricing[Exact-reference price resolution]
   Pricing --> Renderer[pdf-lib vector renderer]
@@ -177,3 +181,7 @@ Generation itself is asynchronous but not cooperatively cancellable inside pdf-l
 Price enrichment reads exact current product/live Stock references with caches but does not wrap the entire set of lookups in one new database snapshot transaction. Existing explicit validated pricing supplied in the DTO wins. Therefore a document is a validated geometry snapshot with optional current-reference prices, not an immutable accounting valuation. Missing live consumed Stock records can prevent resolving an otherwise historical purchase association; current code does not fall back through ProjectStock consumed snapshots.
 
 This limitation must not be “fixed” by matching dimensions/material, treating unknown as zero or changing saved geometry. A future price-history feature would need its own explicit business contract.
+
+---
+
+**Continue exploring:** [Validated plan inputs](optimization.md) · [PDF regression tests](testing.md#pdf-and-browser-boundaries) · [Documentation home](README.md)
