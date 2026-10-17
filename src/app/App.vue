@@ -7,6 +7,7 @@ import SettingsDialog from './settings/SettingsDialog.vue'
 import { dataImportRevisionKey } from './settings/data-import-revision'
 import AppIcon from '../shared/ui/AppIcon.vue'
 import AppToastHost from '../shared/ui/AppToastHost.vue'
+const logoUrl = `${import.meta.env.BASE_URL}logo.svg`
 const settingsOpen = ref(false)
 const dataImportRevision = ref(0)
 provide(dataImportRevisionKey, dataImportRevision)
@@ -61,34 +62,13 @@ function focusContent(): void { document.getElementById('main-content')?.focus()
           class="flex items-center gap-3"
           aria-label="OptiCutList home"
         >
-          <svg
-            class="h-7 w-7 text-accent"
-            viewBox="0 0 40 40"
-            fill="currentColor"
-            aria-hidden="true"
+          <img
+            :src="logoUrl"
+            class="h-7 w-7 shrink-0 object-contain"
+            width="28"
+            height="28"
+            alt=""
           >
-            <rect
-              x="1"
-              y="1"
-              width="23"
-              height="23"
-              rx="3"
-            />
-            <rect
-              x="27"
-              y="1"
-              width="12"
-              height="23"
-              rx="3"
-            />
-            <rect
-              x="1"
-              y="27"
-              width="38"
-              height="12"
-              rx="3"
-            />
-          </svg>
           <span class="text-sm font-bold tracking-tight">OptiCutList</span>
         </RouterLink>
         <button

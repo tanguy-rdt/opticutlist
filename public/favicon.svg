@@ -1,1 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="3" fill="#b45309"/><path d="M2 14h28M18 14v16" stroke="#fef3c7" stroke-width="2"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title id="title">OptiCutList</title>
+  <rect width="32" height="32" rx="7" fill="#245C46"/>
+  <rect x="5" y="5" width="13" height="11" rx="1" fill="#F0F3EE"/>
+  <rect x="20" y="5" width="7" height="5" rx="1" fill="#91C9A5"/>
+  <rect x="20" y="12" width="7" height="9" rx="1" fill="#F0F3EE"/>
+  <rect x="5" y="18" width="13" height="9" rx="1" fill="#91C9A5"/>
+  <rect x="20" y="23" width="7" height="4" rx="1" fill="#F0F3EE"/>
+</svg>

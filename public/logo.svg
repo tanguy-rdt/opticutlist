@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">OptiCutList — optimized cutting layout</title>
+  <rect width="64" height="64" rx="13" fill="#245C46"/>
+  <rect x="9" y="9" width="27" height="23" rx="2" fill="#F0F3EE"/>
+  <rect x="39" y="9" width="16" height="11" rx="2" fill="#91C9A5"/>
+  <rect x="39" y="23" width="16" height="20" rx="2" fill="#F0F3EE"/>
+  <rect x="9" y="35" width="27" height="20" rx="2" fill="#91C9A5"/>
+  <rect x="39" y="46" width="16" height="9" rx="2" fill="#F0F3EE"/>
+</svg>
