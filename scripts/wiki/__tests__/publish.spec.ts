@@ -298,14 +298,14 @@ describe('Wiki generation and managed synchronization', () => {
   })
 
   it('exposes the Wiki secret only to the clone and push steps', () => {
-    const workflow = readFileSync('.github/workflows/publish-wiki.yml', 'utf8')
+    const workflow = readFileSync('.github/workflows/cd.yml', 'utf8')
     const steps = workflow.split('      - name: ')
     const credentialed = steps.filter(step => step.includes('secrets.WIKI_PUBLISH_TOKEN'))
     expect(credentialed).toHaveLength(2)
     expect(credentialed.every(step => !step.includes('node ') && !step.includes('npm '))).toBe(true)
     expect(steps.find(step => step.startsWith('Validate documentation'))).toContain('--validate')
     expect(workflow.indexOf('--validate')).toBeLessThan(workflow.indexOf('secrets.WIKI_PUBLISH_TOKEN'))
-    expect(workflow).toContain('github.event.repository.default_branch')
+    expect(workflow).toContain("github.ref == 'refs/heads/master'")
     expect(workflow).not.toContain('pull_request_target')
   })
 

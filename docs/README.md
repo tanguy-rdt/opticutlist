@@ -31,7 +31,7 @@ This Wiki is the implementation guide for contributors: find the owning module, 
 | **Optimization & inventory** | [Optimization engine](optimization.md) · [Physical stock & offcuts](stock-management.md) |
 | **Application & documents** | [Screens & interactions](features.md) · [Workflow traces](workflows.md) · [Cutting plans & PDF](pdf-generation.md) |
 | **Import & compatibility** | [JSON contracts](json-formats.md) · [Parts import](parts-json.md) · [Stock exchange](stock-json-format.md) |
-| **Development** | [Getting started](getting-started.md) · [Testing](testing.md) · [Safe contributions](maintenance.md) · [Wiki publishing](wiki-publishing.md) |
+| **Development** | [Getting started](getting-started.md) · [Testing](testing.md) · [Safe contributions](maintenance.md) · [CI & releases](ci-cd.md) · [Wiki publishing](wiki-publishing.md) |
 
 ## Architecture at a glance
 

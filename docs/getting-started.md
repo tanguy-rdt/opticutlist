@@ -70,7 +70,7 @@ Use schema-inferred types, branded IDs and complete-record validation. Empty num
 
 ## Build and hosting
 
-[Vite configuration](../vite.config.ts) sets the Pages base and emits module workers as ES chunks. [CI](../.github/workflows/ci.yml) currently runs Node setup, `npm ci`, lint, typecheck, tests and build. Default-branch pushes upload a Pages artifact and run the active deployment job only after validation succeeds. Repository Pages settings and deployed runtime behavior were not verified in this audit. See the [discrepancy register](architecture.md#guidance-and-implementation-discrepancies).
+[Vite configuration](../vite.config.ts) sets the Pages base and emits module workers as ES chunks. [CI](../.github/workflows/ci.yml) currently runs Node setup, `npm ci`, lint, typecheck, tests and build. CI validates master pushes and PRs targeting master without publishing. [CD](../.github/workflows/cd.yml) deploys Pages only after revalidating a stable version tag reachable from master; Wiki publication is independent. See [CI/CD and releases](ci-cd.md). Repository Pages settings and deployed runtime behavior were not verified in this audit. See the [discrepancy register](architecture.md#guidance-and-implementation-discrepancies).
 
 Local business data is not a backup. Before testing destructive workflows against useful data, use the supported transfers and understand their [backup limitations](persistence-and-json.md#backup-boundaries).
 

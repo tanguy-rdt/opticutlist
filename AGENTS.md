@@ -110,8 +110,8 @@ Build OptiCutList, an open-source browser application for planning and optimizin
 
 ## CI/CD
 
-- GitHub Actions validates every push and pull request with `npm ci`, lint, typecheck, unit tests and build.
-- On pushes to the default branch (currently `master`), deploy the validated build to GitHub Pages only after all checks succeed.
+- `ci.yml` validates pushes to master and pull requests targeting master with `npm ci`, lint, typecheck, unit tests and build. CI never publishes or deploys.
+- `cd.yml` owns Pages and Wiki publication. Pages deploys only on pushed stable vMAJOR.MINOR.PATCH tags whose exact commit is reachable from origin/master, after validation/build of that tagged revision. Master pushes and manual runs never deploy Pages. Wiki publication is independently limited to relevant master changes. Keep deployment conditions and shell checks in native YAML, without custom routing infrastructure. Keep exactly these two workflow files.
 - Prefer maintained official GitHub Actions, least-privilege permissions and npm caching.
 - Configure Vite's base path for the actual repository and Vue Router hash history for static hosting.
 - Document required GitHub repository settings in `README.md`.

@@ -163,7 +163,7 @@ export function buildWiki(options: WikiOptions): Map<string, Buffer> {
     }
     return `${repoUrl}/${stat.isDirectory() ? 'tree' : 'blob'}/${encodeURIComponent(options.branch)}/${urlPath(portable(relative(source, target)))}`.replace(/\/$/, '') + tail
   }
-  const banner = '<!-- Generated from docs/ by publish-wiki.yml. Edit the main repository, not this page. -->\n\n'
+  const banner = '<!-- Generated from docs/ by cd.yml. Edit the main repository, not this page. -->\n\n'
   const titles = new Map<string, string>()
   for (const [name, page] of pages) {
     const current = resolve(docs, name)

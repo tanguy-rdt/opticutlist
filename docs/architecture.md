@@ -281,7 +281,7 @@ These are observations, not permission to weaken authoritative rules:
 | Existing statement | Current implementation and evidence |
 | --- | --- |
 | Root README says only shell/tooling exists | Feature directories implement project workflow, inventory, optimizer, transfers and PDF. README status is stale. |
-| Earlier developer guides said Pages deployment was commented out | The current [ci.yml](../.github/workflows/ci.yml) contains an active deploy job, gated by successful validation and a default-branch push. Live repository settings remain unverified. |
+| Earlier developer guides said Pages deployment was commented out | The current [ci.yml](../.github/workflows/ci.yml) is validation-only; [cd.yml](../.github/workflows/cd.yml) independently owns tag-only Pages deployment and master Wiki publication. Live repository settings remain unverified. |
 | Historical root architecture passages describe manual project panel quantities/default one | [CuttingProject](../src/domain/model/cutting-project.ts) retains `panelQuantities` for compatibility; new runs use demand-bounded catalog supply and actual stock counts. No current manual quantity controls. |
 | Earlier documentation describes Parts exchange downloads | Current AGENTS and [parts-json.md](parts-json.md) correctly say import-only; no exporter remains in [parts-transfer-service.ts](../src/application/projects/parts-transfer-service.ts). |
 | Older broad catalog descriptions exclude inventory creation | Current AGENTS explicitly permits confirmed Add to stock through guarded `StockRepository.addFromProduct`; catalog records remain unchanged. See [stock-repository.ts](../src/application/inventory/stock-repository.ts). |

@@ -118,7 +118,7 @@ A mutation of the code under test that changes the intended invariant should fai
 
 ## Current CI and completion process
 
-[ci.yml](../.github/workflows/ci.yml) runs on push, pull_request and workflow_dispatch. The validation job uses Node from `.nvmrc`, npm caching, `npm ci`, lint, typecheck, tests and build with a 15-minute timeout. Default-branch pushes upload `dist` as a Pages artifact. The active deploy job requires successful validation and a default-branch push. A successful local build or uploaded artifact does not verify live repository settings.
+[ci.yml](../.github/workflows/ci.yml) validates master pushes, PRs targeting master and manual runs using Node from `.nvmrc`, npm caching, `npm ci`, lint, typecheck, tests and build. It cannot publish. [cd.yml](../.github/workflows/cd.yml) independently revalidates exact stable-tag releases before Pages deployment, and validates the publisher before relevant master Wiki publication. Workflow validation checks YAML, inline shell and native event conditions without deploying. See [release procedures](ci-cd.md).
 
 No configured coverage threshold, browser screenshot suite, architectural dependency-boundary plugin or Mermaid lint command is currently part of package scripts. Those are potential future tooling decisions, not checks that can be claimed as already running in CI. The full local test command includes application/persistence integration suites despite its `test:unit` name.
 

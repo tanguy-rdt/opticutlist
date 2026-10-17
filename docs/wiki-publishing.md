@@ -2,7 +2,7 @@
 
 [Documentation home](README.md) / Development & reference
 
-The main repository's `docs/` directory is the only source of truth. [publish-wiki.yml](../.github/workflows/publish-wiki.yml) generates a separate Wiki checkout; it never moves/deletes source documentation or changes the application. Publication requires the one-time GitHub setup below. No publication is performed by local generation/tests.
+The main repository's `docs/` directory is the only source of truth. [cd.yml](../.github/workflows/cd.yml) generates a separate Wiki checkout; it never moves/deletes source documentation or changes the application. Publication requires the one-time GitHub setup below. No publication is performed by local generation/tests.
 
 **On this page:** [Enable and initialize the Wiki](#enable-and-initialize-the-wiki) · [Configure authentication](#configure-authentication) · [Managed files, names and links](#managed-files-names-and-links) · [Publication security rules](#publication-security-rules) · [Test without publishing](#test-without-publishing) · [Troubleshooting](#troubleshooting)
 
@@ -40,9 +40,9 @@ Credentials reach Git only through a temporary `GIT_ASKPASS` executable reading 
 
 ## Triggers and execution
 
-Automatic runs are scheduled by pushes changing `docs/**`, `scripts/wiki/**`, the publishing workflow or npm manifests. A dynamic job guard permits publication **only on the main repository's current default branch**. Other branch events/manual selections are skipped; there is no pull-request trigger or `pull_request_target` use. This avoids hardcoding `master` and continues to enforce the boundary after a default-branch rename.
+Native CD path filters publish the Wiki for master pushes changing `docs/**`, `scripts/wiki/**`, `.github/workflows/cd.yml` or npm manifests. Path filters do not apply to tag pushes; the Pages job alone handles those. The Wiki job explicitly requires a master push and excludes deleted refs. Pull requests, other branches and version tags never publish the Wiki. Branch renames require updating the YAML guards.
 
-Manual execution: **Actions → Publish developer Wiki → Run workflow**, selecting the default branch. This publishes; use the local preview command below when publication is not intended. The workflow must already exist on the default branch for manual dispatch to be available.
+CD has no manual-dispatch trigger. After completing setup or correcting an authentication problem, rerun the Wiki job from the original relevant master-push run. For a local dry run, use the preview command below. See [CI/CD and releases](ci-cd.md).
 
 The job checks out source with persisted credentials disabled, uses Node from `.nvmrc`, installs locked dependencies without lifecycle scripts and runs the publisher tests. It validates the complete documentation before cloning, then generates locally and checks Wiki ownership without the token. It stages changes, commits only if content differs and pushes without force. Only the clone and push steps receive `WIKI_PUBLISH_TOKEN`; the parser, tests and commit step do not. `scripts/wiki/git-auth.sh` provides the temporary askpass helper for each authenticated Git operation. Identical reruns produce no commit. Concurrent automation runs serialize; a competing manual Wiki push causes a safe non-fast-forward failure, requiring a fresh rerun.
 
@@ -58,7 +58,7 @@ The job checks out source with persisted credentials disabled, uses Node from `.
 
 Example: `docs/optimization.md` → `Docs-optimization.md`; `docs/guides/setup.md` → `Docs-guides--setup.md`. Each path component is normalized to ASCII letters/numbers and hyphens. Changing a page heading does not change its URL. Ambiguous case/slug collisions fail instead of silently overwriting another page.
 
-Add a Markdown file under docs to publish it automatically. Relative Markdown links, reference definitions and image destinations are rewritten through source offsets from a Markdown parser. Links to docs pages/directories with README become absolute Wiki page URLs, retaining query/anchor suffixes. Links to source code, root guidance or directories outside docs point to the main repository's default branch. Copied images/assets use raw Wiki asset URLs. HTTP(S), mailto links and same-page anchors remain unchanged; authenticated URLs and other schemes are rejected. Images must be local.
+Add a Markdown file under docs to publish it automatically. Relative Markdown links, reference definitions and image destinations are rewritten through source offsets from a Markdown parser. Links to docs pages/directories with README become absolute Wiki page URLs, retaining query/anchor suffixes. Links to source code, root guidance or directories outside docs point to `master`, the configured source branch. Copied images/assets use raw Wiki asset URLs. HTTP(S), mailto links and same-page anchors remain unchanged; authenticated URLs and other schemes are rejected. Images must be local.
 
 Fenced code (including Mermaid), indented/inline code, tables, labels and link titles are preserved; the script patches destinations rather than reserializing Markdown. Raw HTML is rejected; use Markdown image/link syntax or fenced examples. This avoids incomplete HTML sanitization. Raw Wiki asset delivery must be accessible to readers; public Wiki assets work without an account, while private deployment/access policies need maintainer verification. Symlinks, missing local link targets and paths outside the repository are rejected.
 
@@ -116,7 +116,7 @@ The generator uses one development-only dependency, `mdast-util-from-markdown`, 
 | Managed file edited manually | Move desired changes back to docs or preserve in an unrelated manual page, then restore the managed file from history |
 | Missing link or naming collision | Fix the reported source path/filename in docs; no publication occurs on generation failure |
 | Source and destination overlap / symlink error | Use a separate real temporary checkout/directory, not docs or a symlink into it |
-| Manual run skipped | Select the default branch, not a feature branch |
+| No manual Run workflow control | CD is push-only; rerun the original relevant master-push Wiki job after correcting setup |
 | No new Wiki commit | Expected when generated bytes and manifest are unchanged |
 
 [GitHub sidebar conventions](https://docs.github.com/en/communities/documenting-your-project-with-wikis/creating-a-footer-or-sidebar-for-your-wiki) explain the reserved `_Sidebar.md` name. Wiki publication is independent of the application's GitHub Pages deployment and does not modify its build or navigation.

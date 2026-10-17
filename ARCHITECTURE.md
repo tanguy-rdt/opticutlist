@@ -345,7 +345,7 @@ Use pdf-lib to generate vector PDFs from validated plan data, including dimensio
 
 ## CI/CD and Hosting
 
-GitHub Actions must validate **every push and pull request** using `npm ci`, ESLint, TypeScript type checking, Vitest and production build. On pushes to the default branch (currently `master`), deploy to GitHub Pages **only after validation passes**; this is implemented in `.github/workflows/ci.yml` as a `deploy` job that `needs` the `validate` job. Use maintained official actions and least-privilege permissions. Configure the correct Vite base path for the actual GitHub repository and Vue Router hash history. Document required GitHub Pages settings in `README.md`.
+`.github/workflows/ci.yml` validates master pushes, PRs targeting master and manual validation runs without publishing. `.github/workflows/cd.yml` contains two independent jobs: Pages validates/builds/deploys exact pushed stable-version tags after inline Bash verifies syntax, revision agreement and origin/master ancestry; Wiki publishes relevant master changes with its existing hardened publisher. Native branch/tag/path filters schedule CD: GitHub applies paths to branch pushes, not tags. No custom router or intermediate jobs are used. Only Pages receives Pages/OIDC permissions; the existing github-pages environment and separate concurrency groups are preserved. CD has no PR/manual trigger. See `docs/ci-cd.md`; Vite base and hash routing are unchanged.
 
 ## Implementation Order (Not Public Versions)
 
@@ -591,9 +591,9 @@ Images are validated using the existing pdf-lib decoder in `infrastructure/pdf/c
 
 ### Developer Wiki publication
 
-`docs/` remains the developer-documentation source of truth. `.github/workflows/publish-wiki.yml` publishes only default-branch push/manual runs to a separate Wiki Git checkout using an explicit `WIKI_PUBLISH_TOKEN`, without a GITHUB_TOKEN write fallback. The main checkout needs read permission only. Setup and credential compatibility are documented in `docs/wiki-publishing.md`.
+`docs/` remains the developer-documentation source of truth. `.github/workflows/cd.yml` publishes the Wiki only for relevant master pushes to a separate Wiki Git checkout using an explicit `WIKI_PUBLISH_TOKEN`, without a GITHUB_TOKEN write fallback. The main checkout needs read permission only. Setup and credential compatibility are documented in `docs/wiki-publishing.md`.
 
-The Node/TypeScript tooling under `scripts/wiki/` parses Markdown with the development-only mdast parser and patches link destinations without reserializing code fences, Mermaid or tables. Path-based pages, Home/sidebar and copied assets are tracked in a hash manifest; unowned collisions or manual changes block updates, and obsolete files are removed only with verified manifest ownership. Local generation/tests have no Git/network publication operations. This workflow is independent of application code, runtime dependencies and GitHub Pages deployment.
+The Node/TypeScript tooling under `scripts/wiki/` parses Markdown with the development-only mdast parser and patches link destinations without reserializing code fences, Mermaid or tables. Path-based pages, Home/sidebar and copied assets are tracked in a hash manifest; unowned collisions or manual changes block updates, and obsolete files are removed only with verified manifest ownership. Local generation/tests have no Git/network publication operations. The Wiki job is independent of the Pages release jobs, application code and runtime dependencies.
 
 Wiki publication now validates an explicit Markdown/referenced raster-image allowlist before any destination writes. SVG, raw HTML, hidden/sensitive files, ambiguous paths and unsupported image containers/metadata fail closed; source-code links remain links rather than copied files. Generation and ownership checks run without the Wiki token, which is scoped to separate Git clone/push steps. See `docs/wiki-publishing.md` for authoring and validation rules.
 

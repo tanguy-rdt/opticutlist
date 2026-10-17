@@ -32,7 +32,7 @@ The app uses Vue Router hash history (`#/...`), so deep links work on static hos
 
 ## Continuous Integration and Deployment
 
-`.github/workflows/ci.yml` runs on every push and pull request:
+`.github/workflows/ci.yml` validates pushes to `master`, pull requests targeting `master`, and manual validation runs:
 
 1. `npm ci`
 2. `npm run lint`
@@ -40,14 +40,14 @@ The app uses Vue Router hash history (`#/...`), so deep links work on static hos
 4. `npm run test:unit`
 5. `npm run build`
 
-On a push to the repository's **default branch** (currently `master`), the validated `dist/` is uploaded and a separate `deploy` job publishes it to GitHub Pages. The deploy job depends on the validation job, so a failed check never deploys. Pull requests and other branches are validated only.
+`.github/workflows/cd.yml` owns publication. Pages deploys only for pushed stable `vMAJOR.MINOR.PATCH` tags whose exact commit is reachable from `origin/master`; the tagged revision is revalidated and built before upload/deployment. Ordinary pushes, pull requests and manual runs never deploy Pages. Wiki publication runs independently for relevant documentation/publisher changes on `master`, with no manual CD trigger. See the [CI/CD and release guide](docs/ci-cd.md).
 
 ### Required GitHub repository settings
 
 1. **Settings → Pages → Build and deployment → Source:** select **GitHub Actions**.
-2. **Settings → Environments → `github-pages`:** created automatically on the first deployment. Under *Deployment branches and tags*, allow the default branch (`master`). If you rename the default branch, update this rule too.
+2. **Settings → Environments → `github-pages`:** created automatically on the first deployment. Under *Deployment branches and tags*, permit release tags matching `v*`. Replace any branch-only rule that would block tags; the workflow enforces the stricter stable-version syntax and master ancestry.
 3. **Settings → Actions → General → Workflow permissions:** the default *Read repository contents* is sufficient; the workflow requests `pages: write` and `id-token: write` only for the deploy job.
-4. Optional: **Settings → Branches** — add a branch protection rule for the default branch requiring the *Lint, typecheck, test and build* check to pass before merging.
+4. Optional: **Settings → Branches** — add a branch protection rule for `master` requiring the *Lint, typecheck, test and build* check to pass before merging.
 
 The site is served at `https://<owner>.github.io/opticutlist/`.
 

@@ -6,5 +6,5 @@ export const WIKI_NAVIGATION = [
   { title: 'Optimization & inventory', pages: [['optimization.md', 'Optimization engine'], ['stock-management.md', 'Stock & offcuts']] },
   { title: 'Cutting plans & PDF', pages: [['pdf-generation.md', 'PDF pipeline & rendering']] },
   { title: 'Import & compatibility', pages: [['json-formats.md', 'JSON formats'], ['parts-json.md', 'Parts import'], ['stock-json-format.md', 'Stock exchange']] },
-  { title: 'Development & reference', pages: [['workflows.md', 'Workflow traces'], ['testing.md', 'Testing'], ['maintenance.md', 'Safe contributions'], ['wiki-publishing.md', 'Wiki authoring & publishing']] },
+  { title: 'Development & reference', pages: [['workflows.md', 'Workflow traces'], ['testing.md', 'Testing'], ['ci-cd.md', 'CI & releases'], ['maintenance.md', 'Safe contributions'], ['wiki-publishing.md', 'Wiki authoring & publishing']] },
 ] as const

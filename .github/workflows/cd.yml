@@ -1,0 +1,141 @@
+name: CD
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+    # GitHub applies paths to branch pushes, not tag pushes.
+    paths:
+      - 'docs/**'
+      - 'scripts/wiki/**'
+      - '.github/workflows/cd.yml'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+jobs:
+  pages:
+    name: Validate and deploy tagged release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && !github.event.deleted
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout exact tagged revision and master ancestry
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tag and exact master-reachable revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo '::error::Release tags must match vMAJOR.MINOR.PATCH without suffixes or leading zeros.'
+            exit 1
+          fi
+          head="$(git rev-parse --verify 'HEAD^{commit}')"
+          test "$head" = "$(git rev-parse --verify "${GITHUB_REF}^{commit}")"
+          test "$head" = "$(git rev-parse --verify "${GITHUB_SHA}^{commit}")"
+          if ! git merge-base --is-ancestor "$head" refs/remotes/origin/master; then
+            echo '::error::The tagged commit must be reachable from origin/master.'
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build exact tagged application
+        run: npm run build
+      - name: Upload validated Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+      - name: Deploy validated release artifact
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+  wiki:
+    name: Publish developer Wiki
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && !github.event.deleted
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: publish-wiki-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out documentation source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Test the local publisher
+        run: npm run test:unit -- scripts/wiki/__tests__
+
+      - name: Validate documentation before accessing the Wiki
+        env:
+          WIKI_REPOSITORY: ${{ github.repository }}
+          SOURCE_BRANCH: master
+        run: node scripts/wiki/cli.ts --validate --source "$GITHUB_WORKSPACE" --repository "$WIKI_REPOSITORY" --branch "$SOURCE_BRANCH"
+
+      - name: Clone Wiki
+        env:
+          WIKI_PUBLISH_TOKEN: ${{ secrets.WIKI_PUBLISH_TOKEN }}
+          WIKI_REPOSITORY: ${{ github.repository }}
+        run: bash scripts/wiki/git-auth.sh clone "$RUNNER_TEMP/opticutlist-wiki"
+
+      - name: Generate, check ownership and commit changed content without credentials
+        id: content
+        env:
+          WIKI_REPOSITORY: ${{ github.repository }}
+          SOURCE_BRANCH: master
+        shell: bash
+        run: |
+          set -euo pipefail
+          wiki_dir="$RUNNER_TEMP/opticutlist-wiki"
+          node scripts/wiki/cli.ts --source "$GITHUB_WORKSPACE" --destination "$wiki_dir" --repository "$WIKI_REPOSITORY" --branch "$SOURCE_BRANCH"
+          git -C "$wiki_dir" add --force --all
+          if git -C "$wiki_dir" diff --cached --quiet; then
+            echo 'Wiki content is unchanged; no commit or push.'
+            exit 0
+          fi
+          git -C "$wiki_dir" -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit --quiet -m 'docs: synchronize developer documentation'
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Push changed Wiki content
+        if: steps.content.outputs.changed == 'true'
+        env:
+          WIKI_PUBLISH_TOKEN: ${{ secrets.WIKI_PUBLISH_TOKEN }}
+        run: bash scripts/wiki/git-auth.sh push "$RUNNER_TEMP/opticutlist-wiki"
