@@ -74,6 +74,7 @@ describe('Wiki documentation portal', () => {
   })
 
   it('resolves documentation and source links, including heading fragments', () => {
+    const anchorsByFile = new Map<string, Set<string>>()
     for (const file of markdownFiles(docs)) {
       const markdown = readFileSync(file, 'utf8')
       visit(fromMarkdown(markdown), node => {
@@ -84,7 +85,12 @@ describe('Wiki documentation portal', () => {
         const target = name ? resolve(dirname(file), name) : file
         // Generation itself validates target existence and safe asset boundaries.
         if (target.endsWith('.md') && url.hash) {
-          expect(anchors(readFileSync(target, 'utf8')), `${relative(source, file)} → ${node.url}`).toContain(decodeURIComponent(url.hash.slice(1)))
+          let targetAnchors = anchorsByFile.get(target)
+          if (targetAnchors === undefined) {
+            targetAnchors = anchors(readFileSync(target, 'utf8'))
+            anchorsByFile.set(target, targetAnchors)
+          }
+          expect(targetAnchors, `${relative(source, file)} → ${node.url}`).toContain(decodeURIComponent(url.hash.slice(1)))
         }
       })
     }
