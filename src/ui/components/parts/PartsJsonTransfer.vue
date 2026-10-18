@@ -171,6 +171,9 @@ async function confirm(): Promise<void> {
           <p class="text-sm">
             {{ preview.file.parts.length }} parts will be added. Existing parts will remain unchanged.
           </p>
+          <p class="text-sm text-muted">
+            Missing grain and rotation use no grain constraint and allowed rotation. Choose a project material for each part before importing.
+          </p>
           <p
             v-if="preview.file.parts.length && !options.length"
             class="text-sm text-muted"
@@ -196,7 +199,7 @@ async function confirm(): Promise<void> {
                   {{ part.length }} × {{ part.width }} × {{ part.thickness }} mm · Qty {{ part.quantity }}
                 </p>
                 <p class="text-xs text-muted">
-                  {{ part.material }} · Grain: {{ part.grainDirection }} · Rotation: {{ part.rotation }}
+                  {{ part.material ?? 'Material not supplied' }} · Grain: {{ part.grainDirection }} · Rotation: {{ part.rotation }}
                 </p>
               </div>
               <div>

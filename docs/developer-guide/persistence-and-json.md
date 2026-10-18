@@ -86,7 +86,7 @@ Read the [complete format example and safety rules](json-formats.md#stock-format
 
 ### Parts import
 
-Read the [complete Parts JSON specification](json-formats.md#parts-format-material-mapping-and-new-owned-records). Rows use human-readable material labels and nominal `length`, `width`, `thickness`, not domain `lengthMm` keys or IDs. Every imported Part receives a new identity. Unique exact eligible labels can propose a material; ambiguous/missing labels require user mapping in preview.
+Read the [complete Parts JSON specification](json-formats.md#parts-format-material-mapping-and-new-owned-records). Rows use human-readable material labels and nominal `length`, `width`, `thickness`, not domain `lengthMm` keys or IDs. Every imported Part receives a new identity. Material labels, grain and rotation are optional in Parts input: missing labels require user mapping, and omitted constraints normalize to `none` / `allowed`. Unique exact eligible labels can propose a material; ambiguous/missing labels require user mapping in preview.
 
 [parts-transfer-service.ts](../../src/application/projects/parts-transfer-service.ts) rechecks project material membership and creates the whole batch plus ownership atomically. Reimporting intentionally creates another batch. There is no standalone Parts exporter to maintain; full project export is the portable project backup path.
 

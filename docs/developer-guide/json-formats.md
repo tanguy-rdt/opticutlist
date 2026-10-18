@@ -51,6 +51,8 @@ Preview results are data to review, not a durable reservation. Import rechecks p
 | Stock | `format: "opticutlist-stock"`, `schemaVersion: 1`, `materials`, `stockItems` | `stockOrders` | [validateStockTransfer](../../src/application/inventory/stock-transfer-format.ts) |
 | Parts | `format: "opticutlist-parts"`, `version: 1`, `parts` | None | [validatePartsTransfer](../../src/application/projects/parts-transfer-format.ts) |
 
+Parts has no optional top-level fields; its optional row fields are described in [Parts optional fields](#parts-optional-fields).
+
 Array fields can be empty where their schemas permit; every referenced dependency must still satisfy the format's relationship checks. Duplicate entity IDs within a collection are rejected. Stable-ID reuse is not equivalent to matching names.
 
 ### Shared entity payloads
@@ -284,11 +286,13 @@ The referenced MDF material must already exist and match in the destination. Man
 
 ## Parts format: material mapping and new owned records
 
-Parts rows contain `name`, `material`, `length`, `width`, `thickness`, `quantity`, `grainDirection`, `rotation`, all required. No database IDs, preset IDs or catalog objects belong in the file. `material` is a label, not an identity.
+Parts rows require `name`, `length`, `width`, `thickness` and `quantity`. `material`, `grainDirection` and `rotation` are optional for CAD software that cannot supply them. No database IDs, preset IDs or catalog objects belong in the file. When supplied, `material` is a label, not an identity.
 
 [Parts preview](../../src/application/projects/parts-transfer-service.ts) computes eligible project materials and proposes mappings only for exactly one matching label. Import requires one non-null material ID per row, new Part IDs and explicit confirmation, then calls scoped `createMany`. Membership is checked again inside the write transaction. A repeated import intentionally adds another batch. There is no supported standalone export.
 
 ### Parts JSON — version 1
+
+The first row supplies all fields; the second shows the minimum CAD payload. Choose its material explicitly in the import preview.
 
 ```json
 {
@@ -307,13 +311,10 @@ Parts rows contain `name`, `material`, `length`, `width`, `thickness`, `quantity
     },
     {
       "name": "Shelf",
-      "material": "Birch plywood",
       "length": 524,
       "width": 500,
       "thickness": 18,
-      "quantity": 3,
-      "grainDirection": "none",
-      "rotation": "allowed"
+      "quantity": 3
     }
   ]
 }
@@ -321,7 +322,7 @@ Parts rows contain `name`, `material`, `length`, `width`, `thickness`, `quantity
 
 ### Parts required fields
 
-Every top-level property and every row property shown above is **required**. Version 1 has no optional Parts fields and no implicit defaults.
+The top-level `format`, `version` and `parts` properties are required. Each row must include the five fields listed below; physical dimensions and quantity have no implicit defaults.
 
 | Location / field | Required value or type |
 | --- | --- |
@@ -329,15 +330,24 @@ Every top-level property and every row property shown above is **required**. Ver
 | `version` | Number `1`; `schemaVersion` is not accepted |
 | `parts` | Array of part rows; an empty array is valid and duplicate names are allowed |
 | `parts[].name` | Nonempty trimmed string, at most 200 characters |
-| `parts[].material` | Nonempty trimmed material label, at most 200 characters |
 | `parts[].length` | Finite positive number, millimeters |
 | `parts[].width` | Finite positive number, millimeters |
 | `parts[].thickness` | Finite positive number, millimeters |
 | `parts[].quantity` | Positive safe integer, at most 9007199254740991 |
-| `parts[].grainDirection` | `"none"`, `"length"` or `"width"` |
-| `parts[].rotation` | `"allowed"` or `"forbidden"` |
 
-Use JSON numbers, not numeric strings. Unknown properties are rejected. Parts import uses `length`, `width`, `thickness` and a **material label**; a Part embedded in a project file instead uses `lengthMm`, `widthMm`, `thicknessMm`, `id` and `materialId`. These are two different payloads, not interchangeable spellings.
+### Parts optional fields
+
+| Field | Accepted value when supplied | Behavior when omitted |
+| --- | --- | --- |
+| `parts[].material` | Nonempty trimmed material label, at most 200 characters | No material is guessed, even if only one is eligible; choose it in preview |
+| `parts[].grainDirection` | `"none"`, `"length"` or `"width"` | `"none"` (no grain constraint) |
+| `parts[].rotation` | `"allowed"` or `"forbidden"` | `"allowed"` (90° rotation permitted when grain does not determine orientation) |
+
+Only omitted fields receive these behaviors. Explicit values remain unchanged; null, blank strings, wrong types and invalid enum values are rejected. These defaults match the new-Part form. Review the preview and edit imported Parts if the real material needs a grain or rotation constraint; missing CAD information cannot establish one.
+
+Validation normalizes grain and rotation before preview or import. Every stored Part still has an explicit material ID, grain direction and rotation policy; project JSON and the domain Part schema remain unchanged.
+
+Use JSON numbers, not numeric strings. Unknown properties are rejected. Parts import uses `length`, `width`, `thickness` and an optional **material label**; a Part embedded in a project file instead uses `lengthMm`, `widthMm`, `thicknessMm`, `id` and `materialId`. These are two different payloads, not interchangeable spellings.
 
 ### Parts import and material mapping
 
@@ -367,6 +377,8 @@ is unchanged.
 | Change / input | Current outcome |
 | --- | --- |
 | Version 1 omits optional project description/settings | Valid, resolved defaults at use time |
+| Parts v1 omits material / grain / rotation | Explicit preview material choice / `none` / `allowed` |
+| Parts v1 supplies invalid optional values | Rejected; optional does not mean accepting null or blank values |
 | `preferStockPanels` absent versus false | Enabled versus explicitly disabled; false preserved |
 | PDF orientation absent versus Landscape | Portrait fallback versus explicit Landscape |
 | Product price absent versus zero | Unknown/N/A versus valid zero |
@@ -396,6 +408,10 @@ This is a documentation convention; it does not implement migration or make a ne
 5. Review each format separately. A Project format change does not automatically change Catalog, Stock or Parts versions. Distinguish an exchange-version increment from a compatible optional addition within version 1.
 
 **Version history today:** version 1 is the only implemented baseline for Project, Catalog, Stock and Parts. There are no later-version changes to list yet. Do not add a speculative version-2 format or claim that changing the version number alone migrates a file.
+
+### Version 1 compatible addition — CAD Parts imports
+
+Parts import accepts omitted `material`, `grainDirection` and `rotation` with the behaviors above. Existing complete version-1 files retain their values. This broadens the reader without a version bump or persisted-record migration. **Older application builds that required all three fields may reject the reduced CAD payload**; include all fields when targeting those readers. No other exchange format changed.
 
 ## Proposed compatibility architecture — not implemented
 

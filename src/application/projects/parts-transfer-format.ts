@@ -8,13 +8,13 @@ export const partsTransferSchema = z.strictObject({
   version: z.literal(1),
   parts: z.array(z.strictObject({
     name: partSchema.shape.name,
-    material: nameSchema,
+    material: nameSchema.optional(),
     length: partSchema.shape.lengthMm,
     width: partSchema.shape.widthMm,
     thickness: partSchema.shape.thicknessMm,
     quantity: partSchema.shape.quantity,
-    grainDirection: partSchema.shape.grainDirection,
-    rotation: partSchema.shape.rotation,
+    grainDirection: partSchema.shape.grainDirection.default('none'),
+    rotation: partSchema.shape.rotation.default('allowed'),
   })),
 })
 export type PartsTransfer = z.infer<typeof partsTransferSchema>

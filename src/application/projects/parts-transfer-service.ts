@@ -55,6 +55,9 @@ export function createPartsTransferService(persistence: Persistence, json: Pick<
             file: parsed.value,
             materials: available,
             materialIds: parsed.value.parts.map(part => {
+              if (part.material === undefined) {
+                return null
+              }
               const matches = available.filter(material => material.name === part.material);
               return matches.length === 1 ? matches[0]?.id ?? null : null
             })

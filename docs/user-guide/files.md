@@ -45,7 +45,7 @@ Stock import adds new independent stock, leaves identical existing records uncha
 1. Open a project's **Parts** tab.
 2. Open the arrow menu beside **New part** and choose **Import parts**.
 3. Choose a supported **.oclparts.json** or **.json** parts file.
-4. Review the rows and choose a project material for each row that needs one.
+4. Review the rows and choose a project material for each row that needs one. A CAD file may omit material, grain and rotation. Missing grain means no grain constraint; missing rotation allows turning the part. Review those defaults before importing.
 5. Click **Import parts** and confirm when asked.
 
 Parts are added to this project, without replacing existing ones. Importing the same parts list twice adds a second batch. There is no separate parts export; export the project when you want to save its parts.

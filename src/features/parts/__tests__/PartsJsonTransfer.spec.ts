@@ -77,4 +77,22 @@ describe('Parts JSON actions', () => {
     expect(wrapper.get('#import-part-material-0').text()).toContain(material.name)
   })
 
+  it('shows CAD defaults and requires choosing an omitted material before import', async () => {
+    const { wrapper, service } = setup()
+    const minimal = partsTransferSchema.parse({ format: 'opticutlist-parts', version: 1, parts: [{ name: 'CAD shelf', length: 600, width: 300, thickness: 18, quantity: 2 }] })
+    service.preview.mockResolvedValue({ ok: true, value: { file: minimal, materials: [material], materialIds: [null] } })
+    await button(wrapper, 'Import JSON').trigger('click')
+    await select(wrapper)
+    expect(wrapper.text()).toContain('Material not supplied')
+    expect(wrapper.text()).toContain('Grain: none · Rotation: allowed')
+    expect(button(wrapper, 'Import parts').attributes('disabled')).toBeDefined()
+    expect(service.import).not.toHaveBeenCalled()
+    await wrapper.get('#import-part-material-0').trigger('click')
+    await wrapper.get('[role="option"]').trigger('click')
+    expect(button(wrapper, 'Import parts').attributes('disabled')).toBeUndefined()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(service.import).toHaveBeenCalledWith(projectId, minimal, [material.id], true)
+  })
+
 })
