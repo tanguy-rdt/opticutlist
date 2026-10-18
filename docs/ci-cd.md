@@ -11,6 +11,7 @@ Exactly two native GitHub Actions workflows own automation: [CI](../.github/work
 | Application-only push to master | Validate | Never | Never | Never |
 | Relevant documentation/publisher push to master | Validate | Never | Never | Validate and publish changed content |
 | Valid stable version tag push | No branch-triggered run | Verify, validate, build, deploy | Verify, validate, build, publish | Never |
+| Valid SemVer prerelease tag push | No branch-triggered run | Never | Verify, validate, build, publish | Never |
 | Invalid version tag push | No branch-triggered run | Reject or do not trigger | Reject or do not trigger | Never |
 | PR targeting master | Validate | Never | Never | Never |
 | Manual CI run | Validate | Never | Never | Never |
@@ -26,23 +27,23 @@ Wiki-relevant paths are `docs/**`, `scripts/wiki/**`, `.github/workflows/cd.yml`
 3. The Pages job checks out the exact event SHA with full history. Inline Bash rejects invalid tags, checks agreement between HEAD/event/tag, and requires ancestry in `origin/master` before dependency installation.
 4. That checkout runs `npm ci`, lint, typecheck, unit tests and production build. Only then do the official Pages actions upload `dist` and deploy it to the existing `github-pages` environment.
 
-Stable tags contain three decimal integers without leading zeros except zero itself, and no prerelease/build suffix. Lightweight and annotated tags are supported. Unmerged commits and mismatched revisions fail validation. A newer master revision never replaces the tagged build source. No package-version synchronization or GitHub Release creation is automated.
+Pages requires stable tags containing three decimal integers without leading zeros except zero itself, and no prerelease/build suffix. GHCR additionally accepts a hyphen followed by nonempty dot-separated SemVer prerelease identifiers: ASCII letters, digits and hyphens, with no leading zeros in numeric-only identifiers. Build metadata is outside the release policy and remains rejected. See [SemVer prerelease rules](https://semver.org/#spec-item-9). Lightweight and annotated tags are supported. Unmerged commits and mismatched revisions fail validation. A newer master revision never replaces the tagged build source. No package-version synchronization or GitHub Release creation is automated.
 
 Vite's `/opticutlist/` base, Vue Router hash routing and static assets are unchanged. Branch pushes, PRs and documentation updates cannot deploy Pages.
 
 ## Docker image publication
 
-The independent `docker` job uses the same inline release-validation block as Pages, shared by a native YAML anchor (`verify-release`). Both jobs check out the exact event SHA with full history and disabled persisted credentials; both reject anything except `vMAJOR.MINOR.PATCH` without leading zeros and verify HEAD/event/tag agreement plus `origin/master` ancestry. An invalid or unmerged tag fails before registry login. No extra workflow, routing script or intermediary job is needed. Pages and Docker have no `needs` dependency, so either distribution can succeed when the other fails.
+The independent `docker` job uses the same inline release-validation block as Pages, shared by a native YAML anchor (`verify-release`). Both jobs check out the exact event SHA with full history and disabled persisted credentials, validate the supported SemVer forms and verify HEAD/event/tag agreement plus `origin/master` ancestry. Pages additionally excludes hyphenated tags at the job boundary, so valid prereleases publish only to GHCR. The shared validator rejects malformed non-prerelease candidates before Pages can deploy. An invalid or unmerged tag fails before registry login. No extra workflow, routing script or intermediary job is needed. Pages and Docker have no `needs` dependency, so either distribution can succeed when the other fails.
 
 After `npm ci`, lint, typecheck and the full unit suite, maintained Docker actions generate metadata, set up QEMU/Buildx, authenticate to `ghcr.io` with the built-in `GITHUB_TOKEN`, and build/push the root checkout using `context: .` and `file: ./docker/Dockerfile`. The Dockerfile itself builds the server-storage frontend and Node backend; browser Pages storage stays IndexedDB. Runtime dependencies, non-root execution, `/data`, origin protection and healthcheck are unchanged.
 
-`docker/metadata-action` lowercases `ghcr.io/${{ github.repository }}` and emits only the full SemVer (`type=semver,pattern={{version}}`, `flavor: latest=false`). For this repository, `v1.2.3` maps to **`ghcr.io/tanguy-rdt/opticutlist:1.2.3`**. No floating or branch aliases are generated. OCI labels identify the actual source repository, release version/revision, package description and GPL-3.0-only license.
+`docker/metadata-action` lowercases `ghcr.io/${{ github.repository }}` and emits only the full SemVer (`type=semver,pattern={{version}}`, `flavor: latest=false`). For this repository, `v1.2.3` maps to **`ghcr.io/tanguy-rdt/opticutlist:1.2.3`** and `v1.1.0-beta.2` maps to **`ghcr.io/tanguy-rdt/opticutlist:1.1.0-beta.2`**. `v1.1.0-beta` and `v1.1.0-rc.1` are also accepted; `v01.1.0`, `v1.1`, `v1.1.0-beta.02`, `v1.1.0-` and `v1.1.0+build` cannot publish. No floating or branch aliases are generated. OCI labels identify the actual source repository, release version/revision, package description and GPL-3.0-only license.
 
 The build targets `linux/amd64` and `linux/arm64` in one Buildx publication, with ARM64 emulation on the hosted runner. Node provides SQLite directly; the lockfile includes Linux x64/ARM64 prebuilt build-tool packages. The final versioned multi-platform image requires both builds to succeed. These are configured targets, not a claim that cross-platform builds or GHCR publication have already run locally. Verify the successful Actions run and registry platform manifest before advertising a particular published release.
 
 To make releases anonymously installable, open the owner's **Packages → opticutlist → Package settings → Change visibility → Public** after first publication. Packages may initially be private even for a public source repository. Confirm that the package is connected to this repository and that its Actions access permits this repository to write. Organization package policies can also restrict publication. No personal access token or visibility-changing API script is used. See [GitHub Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
-Existing release tags are not backfilled automatically by adding this workflow. A maintainer must publish a new intended stable tag through the established release process; this implementation task does not create/push tags or publish images. Do not repoint a release tag to ship different source under the same version. See [Docker and Portainer installation](storage.md#standalone-docker-deployment) for pulls, configuration, backups and upgrades.
+Existing release tags are not backfilled automatically by adding this workflow. A maintainer must publish a new intended release tag through the established release process; this implementation task does not create/push tags or publish images. Do not repoint a release tag to ship different source under the same version. See [Docker and Portainer installation](storage.md#standalone-docker-deployment) for pulls, configuration, backups and upgrades.
 
 ## Settings and security
 
@@ -59,7 +60,7 @@ Wiki parsing, validation, ownership checks and commits run without its token. On
 | Symptom | Check |
 | --- | --- |
 | No Pages run | Push a `v*` tag; branch and PR events cannot deploy |
-| Tag validation fails | Use exact `vMAJOR.MINOR.PATCH`; inspect revision agreement and master ancestry |
+| Tag validation fails | Use a supported stable/prerelease tag, without leading-zero numeric identifiers or build metadata; inspect revision agreement and master ancestry |
 | Pages waits or refuses deployment | Environment reviewers/tag restrictions and Pages source |
 | Validation fails | Fix the source through the normal reviewed release process; never bypass checks |
 | GHCR publication denied / anonymous pull fails | Repository package-write policy, package Actions access, and Public visibility; do not add a PAT workaround |
