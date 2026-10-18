@@ -72,7 +72,7 @@ A deletion preview is not authorization to skip transaction-time checks: invento
 
 ## Exchanges, ordering and edge cases
 
-[Stock exchange](stock-json-format.md) exports identity/provenance and matching Material snapshots, not movement history. Import accepts new independent manual/purchase stock and exact existing records; conflicts/history-reserved missing IDs block the whole file. It cannot recreate consumed sources or absent generated offcuts and is not an inventory audit backup.
+[Stock exchange](json-formats.md#stock-format-exact-identities-and-dependency-preservation) exports identity/provenance and matching Material snapshots, not movement history. Import accepts new independent manual/purchase stock and exact existing records; conflicts/history-reserved missing IDs block the whole file. It cannot recreate consumed sources or absent generated offcuts and is not an inventory audit backup.
 
 [stock-order.ts](../../src/application/inventory/stock-order.ts) stores material-keyed display order separately. Reordering cannot change quantity, source, eligibility or reconciliation. Identical-dimension StockItems remain distinct throughout ordering, project selection, optimizer allocation and transfer.
 
@@ -122,4 +122,4 @@ flowchart TD
 
 ---
 
-**Continue exploring:** [Transaction trace](storage.md#stock-reconciliation-transaction-trace) · [Stock exchange contract](stock-json-format.md) · [Documentation home](../README.md)
+**Continue exploring:** [Transaction trace](storage.md#stock-reconciliation-transaction-trace) · [Stock exchange contract](json-formats.md#stock-format-exact-identities-and-dependency-preservation) · [Documentation home](../README.md)

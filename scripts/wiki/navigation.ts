@@ -29,8 +29,6 @@ export const WIKI_NAVIGATION = [
       ['developer-guide/storage.md', 'Storage internals & API'],
       ['developer-guide/deployment.md', 'Deployment & operations'],
       ['developer-guide/json-formats.md', 'JSON compatibility'],
-      ['developer-guide/parts-json.md', 'Parts file reference'],
-      ['developer-guide/stock-json-format.md', 'Stock file reference'],
       ['developer-guide/pdf-generation.md', 'PDF rendering'],
       ['developer-guide/testing.md', 'Testing'],
       ['developer-guide/maintenance.md', 'Safe contributions'],

@@ -48,7 +48,7 @@ Selections autosave through serialized project-service writes. The right-hand pa
 
 [PartForm.vue](../../src/ui/components/parts/PartForm.vue) restricts material choices to project membership and validates the complete Part. Grain is in Dimensions. Rotation is shown only for no grain constraint; hiding it retains the draft preference. Shared technical previews and errors do not change validation semantics. Create/update/delete/import success messages use shared toasts; failures remain actionable.
 
-[PartsJsonTransfer.vue](../../src/ui/components/parts/PartsJsonTransfer.vue) previews rows and resolves material labels explicitly before atomic import. Read the [format reference](parts-json.md).
+[PartsJsonTransfer.vue](../../src/ui/components/parts/PartsJsonTransfer.vue) previews rows and resolves material labels explicitly before atomic import. Read the [format reference](json-formats.md#parts-format-material-mapping-and-new-owned-records).
 
 ## Optimization
 

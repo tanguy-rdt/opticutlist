@@ -80,13 +80,13 @@ Import inserts dependency order in one transaction. Existing manual ranks are pr
 
 ### Stock transfer
 
-Read the [complete format example and safety rules](stock-json-format.md). The file contains referenced Material snapshots and strict StockItems, optionally `stockOrders`. Materials must already exist and match; they are checks, not material creation requests. Purchased stock requires its exact catalog dependency.
+Read the [complete format example and safety rules](json-formats.md#stock-format-exact-identities-and-dependency-preservation). The file contains referenced Material snapshots and strict StockItems, optionally `stockOrders`. Materials must already exist and match; they are checks, not material creation requests. Purchased stock requires its exact catalog dependency.
 
 [stock-transfer-service.ts](../../src/application/inventory/stock-transfer-service.ts) is atomic and insert-only: identical records are no-ops; conflicting IDs, missing dependencies or reserved historical identities block the entire import. Cutting offcuts require matching existing stock and recorded origin/audit history. Missing generated inventory cannot be recreated. Stock movements and quantities are never merged or reset.
 
 ### Parts import
 
-Read the [complete Parts JSON specification](parts-json.md). Rows use human-readable material labels and nominal `length`, `width`, `thickness`, not domain `lengthMm` keys or IDs. Every imported Part receives a new identity. Unique exact eligible labels can propose a material; ambiguous/missing labels require user mapping in preview.
+Read the [complete Parts JSON specification](json-formats.md#parts-format-material-mapping-and-new-owned-records). Rows use human-readable material labels and nominal `length`, `width`, `thickness`, not domain `lengthMm` keys or IDs. Every imported Part receives a new identity. Unique exact eligible labels can propose a material; ambiguous/missing labels require user mapping in preview.
 
 [parts-transfer-service.ts](../../src/application/projects/parts-transfer-service.ts) rechecks project material membership and creates the whole batch plus ownership atomically. Reimporting intentionally creates another batch. There is no standalone Parts exporter to maintain; full project export is the portable project backup path.
 

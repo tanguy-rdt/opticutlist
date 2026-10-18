@@ -32,7 +32,7 @@ This guide covers the implementation: find the owning module, understand its inv
 | **Data & persistence** | [Persistence overview](persistence-and-json.md) · [IndexedDB tables & transactions](storage.md) · [Self-hosted deployment & API](storage.md#self-hosted-storage) · [Docker & Portainer](deployment.md#standalone-docker-deployment) · [Standalone archive](deployment.md#standalone-archive) |
 | **Optimization & inventory** | [Optimization engine](optimization.md) · [Physical stock & offcuts](stock-management.md) |
 | **Application & documents** | [Screens & interactions](features.md) · [Workflow traces](workflows.md) · [Cutting plans & PDF](pdf-generation.md) |
-| **Import & compatibility** | [JSON contracts](json-formats.md) · [Parts import](parts-json.md) · [Stock exchange](stock-json-format.md) |
+| **Import & compatibility** | [JSON compatibility: Project, Catalog, Stock and Parts](json-formats.md) |
 | **Development** | [Developer setup](getting-started.md) · [Testing](testing.md) · [Safe contributions](maintenance.md) · [CI & releases](ci-cd.md) · [Wiki publishing](wiki-publishing.md) |
 
 ## Architecture at a glance

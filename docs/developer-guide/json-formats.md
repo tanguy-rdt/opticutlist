@@ -2,7 +2,7 @@
 
 [Documentation home](../README.md) / [Developer Guide](README.md) / Import & compatibility
 
-This document specifies implemented exchange boundaries and a separately labeled future compatibility proposal. [Storage](storage.md) describes IndexedDB versions; portable file versions are independent. The version-1 baseline below shows a complete JSON document for each supported exchange format, including Parts import. Detailed row rules remain in [Parts JSON](parts-json.md) and [Stock JSON](stock-json-format.md).
+This document specifies implemented exchange boundaries and a separately labeled future compatibility proposal. [Storage](storage.md) describes IndexedDB versions; portable file versions are independent. The version-1 baseline below shows a complete JSON document for each supported exchange format, including Parts import. Required fields, material mapping, provenance, ordering and import safety rules are consolidated on this page.
 
 **On this page:** [Version 1 baseline](#version-1-baseline) · [Envelope fields](#envelope-fields) · [Project format: ownership plus dependencies](#project-format-ownership-plus-dependencies) · [Catalog format: remapped insert-only references](#catalog-format-remapped-insert-only-references) · [Stock format: exact identities and dependency preservation](#stock-format-exact-identities-and-dependency-preservation) · [Parts format: required fields](#parts-format-material-mapping-and-new-owned-records) · [Compatibility matrix: implemented behavior](#compatibility-matrix-implemented-behavior) · [Documenting future versions](#documenting-future-versions) · [Proposed compatibility architecture — not implemented](#proposed-compatibility-architecture--not-implemented)
 
@@ -201,7 +201,19 @@ This product deliberately has no price. An importer must preserve unknown, not i
 
 ## Stock format: exact identities and dependency preservation
 
+Settings → Stock exports `stock.oclstock.json` as readable UTF-8 JSON. Import accepts that extension or general `.json` filenames; contents determine compatibility.
+
 [stock-transfer-format.ts](../../src/application/inventory/stock-transfer-format.ts) validates stock, exact referenced Material snapshots and optional material order rows. No unrelated materials may be included. Stock-order IDs must point to included same-material stock.
+
+All StockItem fields in the example below are required. Material `libraryPresetId` and the top-level `stockOrders` array are optional. IDs are stable domain identities: do not replace them with names or regenerate them when replaying a file. Material snapshots contain only identities used by included stock, for verification; **import never creates or updates materials**. A compatible catalog must already exist (use Catalog import separately). Preset identity is optional and does not determine compatibility.
+
+Stock fields reuse the existing strict StockItem schema. Length, width and thickness are finite positive millimeters; quantity is a positive safe integer. `kind` is `fullPanel` or `offcut`; grain is `none`, `length` or `width`. Unknown properties, duplicate IDs, missing references and unsupported versions are rejected. Empty inventory uses empty `materials` and `stockItems` arrays.
+
+Provenance is preserved verbatim:
+
+- Manual: `{ "source": "manual" }`.
+- Purchase: `{ "source": "purchase", "supplierProductId": "product-id" }`. The catalog product must already exist with the same material ID.
+- Cutting: `{ "source": "cutting", "projectId": "project-id", "savedPlanId": "plan-id", "sourceStockItemId": "source-stock-id", "panelIndex": 0, "wasteIndex": 1 }`. A catalog-origin offcut uses `supplierProductId` instead of `sourceStockItemId`; at least one exact source identity is required. Indices are zero-based non-negative integers.
 
 The transaction-time `inspect` in [stock-transfer-service.ts](../../src/application/inventory/stock-transfer-service.ts) checks:
 
@@ -211,7 +223,23 @@ The transaction-time `inspect` in [stock-transfer-service.ts](../../src/applicat
 4. Cutting provenance is an identical **existing** StockItem with a live project or deleted-project audit, plan origin and matching immutable creation snapshot.
 5. Incoming ordering does not overwrite a different live local order.
 
-Only new independent manual/purchased records are inserted. Identical records are no-ops, not quantity increments. Absent generated offcuts cannot be recreated from this file, even if a convincing-looking project ID is supplied. See the [full example](stock-json-format.md).
+Only new independent manual/purchased records are inserted. Identical records are no-ops, not quantity increments. Absent generated offcuts cannot be recreated from this file, even if a convincing-looking project ID is supplied. The complete version-1 example follows below.
+
+### Stock import outcomes
+
+New manual/purchased records may be added with unchanged IDs and quantities. Conflicting IDs or material snapshots block the entire file; there is no name/dimension matching, ID remapping, quantity merging or deletion. Cutting-generated offcuts require matching original history, including a retained deleted-project audit when its plan payload has been removed. Missing or modified offcuts are never recreated.
+
+Failures leave existing data unchanged. Identical records can be replayed without stock movements. Imports do not reset movement history, project selections, cutting results or reconciliation state.
+
+### Stock backup limitations
+
+This is **not a complete application backup**. Files exclude catalog products/suppliers, projects, cutting trees, movement receipts, project stock ledgers, PDFs and images. Material snapshots are dependency checks, not catalog imports. The file cannot restore project-generated stock/history to an empty installation or undo consumption in another project. These scenarios are rejected rather than guessing or resetting provenance. Transfer matching catalog dependencies separately before importing independent manual/purchased stock.
+
+### Stock display ordering
+
+The optional `stockOrders` array is shown in the complete example below. Each entry uses a material ID as `id` and lists its `stockItemIds` in display order.
+
+These are presentation preferences, separate from StockItems and movement history. Every listed ID must appear in `stockItems` with that material; duplicates and cross-material references are rejected. Exports omit stale IDs. Without metadata, rows use deterministic ID order; importing an older file preserves any local order. Import inserts new order records atomically with stock and rejects conflicting existing orders without overwriting them. Replaying identical data/order is safe. This optional addition does not change stock quantities or backup limitations.
 
 ### Stock JSON — version 1
 
@@ -268,12 +296,22 @@ Parts rows contain `name`, `material`, `length`, `width`, `thickness`, `quantity
   "version": 1,
   "parts": [
     {
-      "name": "Shelf",
-      "material": "MDF",
-      "length": 400,
-      "width": 200,
-      "thickness": 15,
+      "name": "Cabinet side",
+      "material": "Birch plywood",
+      "length": 720,
+      "width": 560,
+      "thickness": 18,
       "quantity": 2,
+      "grainDirection": "length",
+      "rotation": "forbidden"
+    },
+    {
+      "name": "Shelf",
+      "material": "Birch plywood",
+      "length": 524,
+      "width": 500,
+      "thickness": 18,
+      "quantity": 3,
       "grainDirection": "none",
       "rotation": "allowed"
     }
@@ -281,25 +319,48 @@ Parts rows contain `name`, `material`, `length`, `width`, `thickness`, `quantity
 }
 ```
 
+### Parts required fields
+
 Every top-level property and every row property shown above is **required**. Version 1 has no optional Parts fields and no implicit defaults.
 
 | Location / field | Required value or type |
 | --- | --- |
 | `format` | Exactly `"opticutlist-parts"` |
 | `version` | Number `1`; `schemaVersion` is not accepted |
-| `parts` | Array of part rows; an empty array is valid |
+| `parts` | Array of part rows; an empty array is valid and duplicate names are allowed |
 | `parts[].name` | Nonempty trimmed string, at most 200 characters |
 | `parts[].material` | Nonempty trimmed material label, at most 200 characters |
 | `parts[].length` | Finite positive number, millimeters |
 | `parts[].width` | Finite positive number, millimeters |
 | `parts[].thickness` | Finite positive number, millimeters |
-| `parts[].quantity` | Positive safe integer |
+| `parts[].quantity` | Positive safe integer, at most 9007199254740991 |
 | `parts[].grainDirection` | `"none"`, `"length"` or `"width"` |
 | `parts[].rotation` | `"allowed"` or `"forbidden"` |
 
 Use JSON numbers, not numeric strings. Unknown properties are rejected. Parts import uses `length`, `width`, `thickness` and a **material label**; a Part embedded in a project file instead uses `lengthMm`, `widthMm`, `thicknessMm`, `id` and `materialId`. These are two different payloads, not interchangeable spellings.
 
-For a normal import, select eligible materials in the target project first and confirm the material mapping. See [Parts JSON import](parts-json.md#contract) for mapping, grain and repeated-import rules.
+### Parts import and material mapping
+
+Parts → **New part ▾ → Import parts** accepts UTF-8 `.oclparts.json` and legacy `.json` filenames, previews the rows and requires confirmation. It appends new Parts without overwriting existing ones or creating materials. Use project export to save a project's parts; standalone Parts export is not supported.
+
+The file contains no project/database IDs, catalogue entities, stock, plans or UI
+state. CAD exporters should convert their units to millimeters and export original
+part dimensions rather than rotated cutting placements. Numbers must be numbers,
+not strings. Do not append undocumented metadata to version 1.
+
+Before importing, choose project materials or eligible catalogue/stock panels in
+Materials. Import proposes a material only when its exact label matches exactly
+one eligible project Material. Missing or ambiguous labels require an explicit
+per-row material choice in the preview. No material is inferred from dimensions,
+stock provenance or preset texture. Own-project offcuts never qualify. Identical
+material names cannot convey database identity: review these mappings explicitly.
+
+Every imported Part gets a new internal ID. Importing a file twice intentionally
+adds two batches; it is not a synchronization/update format. Validation and all
+Part/ownership writes run through the existing project rules in one atomic
+transaction. A failure leaves the complete batch unapplied. Existing direct
+material choices remain valid, and exact thickness matching during optimization
+is unchanged.
 
 ## Compatibility matrix: implemented behavior
 
@@ -357,4 +418,4 @@ Only introduce version 2 when semantics genuinely require it; accepting arbitrar
 
 ---
 
-**Continue exploring:** [Parts import example](parts-json.md) · [Stock exchange example](stock-json-format.md) · [Documentation home](../README.md)
+**Continue exploring:** [Parts UI](features.md#project-parts) · [Stock lifecycle](stock-management.md) · [Documentation home](../README.md)
