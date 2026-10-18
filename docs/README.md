@@ -27,7 +27,7 @@ This Wiki is the implementation guide for contributors: find the owning module, 
 | Area | Guides & references |
 | --- | --- |
 | **Architecture & domain** | [System architecture](architecture.md) · [Entities, ownership & invariants](domain-model.md) |
-| **Data & persistence** | [Persistence overview](persistence-and-json.md) · [IndexedDB tables & transactions](storage.md) · [Self-hosted deployment & API](storage.md#self-hosted-storage) · [Docker & Portainer](storage.md#standalone-docker-deployment) |
+| **Data & persistence** | [Persistence overview](persistence-and-json.md) · [IndexedDB tables & transactions](storage.md) · [Self-hosted deployment & API](storage.md#self-hosted-storage) · [Docker & Portainer](storage.md#standalone-docker-deployment) · [Standalone archive](storage.md#standalone-archive) |
 | **Optimization & inventory** | [Optimization engine](optimization.md) · [Physical stock & offcuts](stock-management.md) |
 | **Application & documents** | [Screens & interactions](features.md) · [Workflow traces](workflows.md) · [Cutting plans & PDF](pdf-generation.md) |
 | **Import & compatibility** | [JSON contracts](json-formats.md) · [Parts import](parts-json.md) · [Stock exchange](stock-json-format.md) |

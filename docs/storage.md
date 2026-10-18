@@ -328,6 +328,56 @@ Outside loopback, use HTTPS with a browser-trusted certificate even on a LAN/VPN
 
 A reverse proxy must preserve the configured Host and forward the actual browser Origin. Set `OCL_ORIGIN` to the exact external origin. The server does not trust forwarded headers or infer an origin from a request. HTTPS, VPN restrictions, process supervision and firewall/access controls are the operator's responsibility.
 
+### Standalone archive
+
+Run OptiCutList without Docker or a source checkout. You need **Node.js 24 or newer** installed on the server. The archive contains the built application and its JavaScript dependencies; no npm install, Git, TypeScript or compilation is needed. SQLite is provided by Node itself, not a separately compiled npm addon.
+
+#### Install and start
+
+1. Open [GitHub Releases](https://github.com/tanguy-rdt/opticutlist/releases) and download `opticutlist-VERSION-self-hosted.tar.gz` from the desired stable or prerelease release. `VERSION` is the full tag, including `v` and any prerelease suffix. Assets appear only after a successful archive job; no particular published version is assumed here.
+2. Extract it using your archive manager. Open a terminal in the extracted `opticutlist` folder.
+3. Start the server:
+
+```sh
+node start.mjs
+```
+
+4. Open **http://127.0.0.1:3000/opticutlist/** on that machine. Leave the terminal running; **Ctrl+C** stops the server cleanly.
+
+The default database is **`.opticutlist/opticutlist.sqlite` in the home directory of the account running Node**, outside the installation folder. Keep using that same account when updating. The SQLite database and WAL/journal files belong together; never delete this data directory during an upgrade. The application opens existing databases and applies its existing migrations without resetting them.
+
+To choose another persistent location, use an absolute path outside the installation. On macOS/Linux:
+
+```sh
+OCL_DATABASE_PATH="$HOME/opticutlist-data/opticutlist.sqlite" node start.mjs
+```
+
+Parent directories are created automatically. Keep this same setting on every start. The launcher rejects database paths inside the extracted installation, including symlink aliases. It locates the bundled frontend independently of the terminal's working directory. Existing `OCL_PORT`, `OCL_HOST` and `OCL_ORIGIN` settings remain available; the defaults are loopback and port 3000.
+
+For a remote server with SSH access, run `ssh -N -L 3000:127.0.0.1:3000 USER@SERVER` on your computer, replacing the login/address, then open the same local URL while the tunnel stays open. Direct access beyond loopback requires an explicit exact `OCL_ORIGIN` and trusted HTTPS browser access. Do not simply expose the port publicly.
+
+**No authentication is built in. Everyone reaching this instance shares its database. Use trusted networks, a private VPN or externally access-controlled deployments only.** Optimization remains in the browser; online browser-local data is not automatically copied to this server.
+
+#### Update safely
+
+1. Stop the server with Ctrl+C and ensure no other process is writing to the same database.
+2. Back up the **complete stopped data directory**, including any WAL/journal files. For the default location on macOS/Linux, use:
+
+```sh
+tar -czf "$HOME/opticutlist-backup-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$HOME" .opticutlist
+```
+
+Check that the backup command succeeded. Use your configured data directory instead if you changed it. Never copy only a live main SQLite file.
+
+3. Extract the newer application into a new folder; keep the old installation and backup until verification succeeds.
+4. Run `node start.mjs` in the new application folder, under the same account and with the same database setting. Open the application and check projects and stock.
+
+To restore, stop all writers and extract a known-good backup into a **fresh data directory**, then start the matching application version with `OCL_DATABASE_PATH` pointing to the restored database. Do not mix unrelated database/WAL files or overwrite a live database. Database migrations can make downgrading unsafe without a matching backup.
+
+#### Platform verification
+
+The archive contains JavaScript and static assets, not Node itself or native npm binaries. Use an official compatible Node.js runtime. Local extraction/startup/persistence tests verify macOS ARM64; the release job must run the same tests on its Linux x64 runner before attaching an asset. Until that job has succeeded, Linux release execution is configured but not verified by this local task. Windows and other CPU/OS combinations have not been verified; do not infer support from the archive format alone.
+
 ### Standalone Docker deployment
 
 The [Dockerfile](../docker/Dockerfile) packages the existing self-hosted application as one image, one Node process, port **3000/TCP**, and one persistent **`/data`** volume. No Compose, Stack or additional HTTP server is required. Optimization remains in the browser. The ordinary GitHub Pages build is unchanged.

@@ -2,19 +2,19 @@
 
 [Documentation home](README.md) / Development & reference
 
-Exactly two native GitHub Actions workflows own automation: [CI](../.github/workflows/ci.yml) validates changes; [CD](../.github/workflows/cd.yml) has three independent jobs for Pages deployment, versioned GHCR images and Wiki publication. Their triggers, conditions and shell checks are defined directly in YAML.
+Exactly two native GitHub Actions workflows own automation: [CI](../.github/workflows/ci.yml) validates changes; [CD](../.github/workflows/cd.yml) has four independent jobs for Pages deployment, GHCR images, standalone release archives and Wiki publication. Their triggers, conditions and shell checks are defined directly in YAML.
 
 ## Event routing
 
-| Event | CI | Pages | Docker / GHCR | Wiki |
-| --- | --- | --- | --- | --- |
-| Application-only push to master | Validate | Never | Never | Never |
-| Relevant documentation/publisher push to master | Validate | Never | Never | Validate and publish changed content |
-| Valid stable version tag push | No branch-triggered run | Verify, validate, build, deploy | Verify, validate, build, publish | Never |
-| Valid SemVer prerelease tag push | No branch-triggered run | Never | Verify, validate, build, publish | Never |
-| Invalid version tag push | No branch-triggered run | Reject or do not trigger | Reject or do not trigger | Never |
-| PR targeting master | Validate | Never | Never | Never |
-| Manual CI run | Validate | Never | Never | Never |
+| Event | CI | Pages | Docker / GHCR | Standalone archive | Wiki |
+| --- | --- | --- | --- | --- | --- |
+| Application-only push to master | Validate | Never | Never | Never | Never |
+| Relevant documentation/publisher push to master | Validate | Never | Never | Never | Validate and publish changed content |
+| Valid stable version tag push | No branch-triggered run | Verify, validate, build, deploy | Verify, validate, build, publish | Build, smoke-test, attach | Never |
+| Valid SemVer prerelease tag push | No branch-triggered run | Never | Verify, validate, build, publish | Build, smoke-test, attach | Never |
+| Invalid version tag push | No branch-triggered run | Reject or do not trigger | Reject or do not trigger | Reject or do not trigger | Never |
+| PR targeting master | Validate | Never | Never | Never | Never |
+| Manual CI run | Validate | Never | Never | Never | Never |
 
 CD uses native push filters: `master`, `v*` tags, and documentation/publisher paths. GitHub does not evaluate path filters for tag pushes, so the documentation filter cannot suppress a release tag. See [GitHub's workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore).
 
@@ -45,15 +45,30 @@ To make releases anonymously installable, open the owner's **Packages → opticu
 
 Existing release tags are not backfilled automatically by adding this workflow. A maintainer must publish a new intended release tag through the established release process; this implementation task does not create/push tags or publish images. Do not repoint a release tag to ship different source under the same version. See [Docker and Portainer installation](storage.md#standalone-docker-deployment) for pulls, configuration, backups and upgrades.
 
+## Standalone release archives
+
+The independent `standalone` job reuses `verify-release` for stable and SemVer prerelease tags, exact checkout and `origin/master` ancestry. It runs the existing checks, invokes `npm run package:self-hosted -- "$GITHUB_REF_NAME"`, then runs the extracted-archive tests against that exact artifact through `OCL_TEST_ARCHIVE`. Only after success does GitHub CLI attach `dist-standalone/opticutlist-TAG-self-hosted.tar.gz` to the corresponding GitHub Release. Missing releases are created with `--verify-tag` (never creating a tag), with prerelease status for hyphenated tags. Existing release metadata is preserved; reruns replace only the same named archive asset.
+
+Only this job has `contents: write`. The built-in token reaches only the final release step; no PAT, new workflow or application service is introduced. Pages, GHCR and Wiki have no dependency on archive publication. No release is created/published during local validation.
+
+The packager stages an explicit runtime allowlist in a temporary directory and uses the existing `tar` tool for `.tar.gz`. It includes no Node binary, database, source checkout, dev toolchain or native npm module. It checks compiled imports so a new SSR dependency must be deliberately packaged. Archive tests run independently with only bundled Zod, a writable external home/data directory and the host's Node 24+ runtime. Local verification covers macOS ARM64; the hosted release job gates attachment on the same tests on Linux x64. Windows and other combinations remain unverified. See [installation and upgrades](storage.md#standalone-archive).
+
+For a local artifact (no publication):
+
+```sh
+npm run package:self-hosted -- local
+OCL_TEST_ARCHIVE="$PWD/dist-standalone/opticutlist-local-self-hosted.tar.gz" npm run test:unit -- scripts/self-hosted/__tests__
+```
+
 ## Settings and security
 
 - **Pages source:** GitHub Actions.
 - **Environment:** retain `github-pages`, its protection/reviewer rules and permission for `v*` release tags. A master-only deployment rule blocks releases.
-- **Permissions:** workflows default to read-only contents. Only Pages receives `pages: write` and `id-token: write`; only Docker receives `packages: write` alongside `contents: read`. The built-in token authenticates registry login, without entering npm commands or image build arguments; no new secret/PAT is needed.
+- **Permissions:** workflows default to read-only contents. Only Pages receives `pages: write` and `id-token: write`; only Docker receives `packages: write` alongside `contents: read`; only standalone release attachment receives `contents: write`. The built-in token authenticates registry login, without entering npm commands or image build arguments; no new secret/PAT is needed.
 - **Wiki secret:** retain `WIKI_PUBLISH_TOKEN`; see [Wiki authentication](wiki-publishing.md#configure-authentication). No new credentials are required.
 - **Wiki setup:** enable and initialize the separate Wiki repository; preserve/rename conflicting manual Home/sidebar pages before first publication.
 
-Wiki parsing, validation, ownership checks and commits run without its token. Only clone/push steps receive it through the existing `GIT_ASKPASS` helper. Asset allowlists, path checks, the manifest and manual-page safeguards are unchanged. Pages, Docker and Wiki have separate concurrency groups and no dependencies on one another. Docker publication serializes per release ref; registry logout is handled by the login action. No registry credential is passed as a Docker build argument, secret or image label.
+Wiki parsing, validation, ownership checks and commits run without its token. Only clone/push steps receive it through the existing `GIT_ASKPASS` helper. Asset allowlists, path checks, the manifest and manual-page safeguards are unchanged. Pages, Docker, standalone archives and Wiki have separate concurrency groups and no dependencies on one another. Docker publication serializes per release ref; registry logout is handled by the login action. No registry credential is passed as a Docker build argument, secret or image label.
 
 ## Troubleshooting and local checks
 

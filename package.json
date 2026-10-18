@@ -18,6 +18,7 @@
     "test": "vitest",
     "test:unit": "vitest run",
     "build:self-hosted": "vite build --config server/frontend.config.ts && vite build --config server/vite.config.ts",
+    "package:self-hosted": "npm run build:self-hosted && node scripts/self-hosted/package.ts",
     "start:self-hosted": "node server-dist/main.js",
     "test:server": "vitest run server/__tests__ --maxWorkers=1"
   },
