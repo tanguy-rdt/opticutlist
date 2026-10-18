@@ -2,9 +2,24 @@
 
 [Documentation home](../README.md) / [Developer Guide](README.md) / Import & compatibility
 
-This document specifies implemented exchange boundaries and a separately labeled future compatibility proposal. [Storage](storage.md) describes IndexedDB versions; portable file versions are independent. Existing complete row examples remain in [Parts JSON](parts-json.md) and [Stock JSON](stock-json-format.md).
+This document specifies implemented exchange boundaries and a separately labeled future compatibility proposal. [Storage](storage.md) describes IndexedDB versions; portable file versions are independent. The version-1 baseline below shows a complete JSON document for each supported exchange format, including Parts import. Detailed row rules remain in [Parts JSON](parts-json.md) and [Stock JSON](stock-json-format.md).
 
-**On this page:** [Envelope fields](#envelope-fields) · [Project format: ownership plus dependencies](#project-format-ownership-plus-dependencies) · [Catalog format: remapped insert-only references](#catalog-format-remapped-insert-only-references) · [Stock format: exact identities and dependency preservation](#stock-format-exact-identities-and-dependency-preservation) · [Compatibility matrix: implemented behavior](#compatibility-matrix-implemented-behavior) · [Proposed compatibility architecture — not implemented](#proposed-compatibility-architecture--not-implemented)
+**On this page:** [Version 1 baseline](#version-1-baseline) · [Envelope fields](#envelope-fields) · [Project format: ownership plus dependencies](#project-format-ownership-plus-dependencies) · [Catalog format: remapped insert-only references](#catalog-format-remapped-insert-only-references) · [Stock format: exact identities and dependency preservation](#stock-format-exact-identities-and-dependency-preservation) · [Parts format: required fields](#parts-format-material-mapping-and-new-owned-records) · [Compatibility matrix: implemented behavior](#compatibility-matrix-implemented-behavior) · [Documenting future versions](#documenting-future-versions) · [Proposed compatibility architecture — not implemented](#proposed-compatibility-architecture--not-implemented)
+
+## Version 1 baseline
+
+**All four exchange formats currently support only version 1.** There is no version 2 importer or exporter. Application release versions, IndexedDB versions, SQLite migrations and JSON exchange versions are independent.
+
+| Exchange | File extension | Version field | Direction | Version 1 definition |
+| --- | --- | --- | --- | --- |
+| Project | `.oclproject.json` (also accepts legacy `.pocl` / `.json` names) | `schemaVersion: 1` | Import and export | [Project document](#project-format-ownership-plus-dependencies) |
+| Catalog | `.cocl` | `schemaVersion: 1` | Import and export | [Catalog document](#catalog-format-remapped-insert-only-references) |
+| Stock | `.oclstock.json` (also accepts `.json`) | `schemaVersion: 1` | Import and export | [Stock document](#stock-format-exact-identities-and-dependency-preservation) |
+| Parts | `.oclparts.json` (also accepts `.json`) | **`version: 1`**, not `schemaVersion` | **Import only** | [Parts document and required fields](#parts-format-material-mapping-and-new-owned-records) |
+
+The examples are complete JSON files, not fragments or patches. They demonstrate required fields and selected optional fields. Other optional values and saved-plan payloads follow the field contracts below and their linked schemas; empty `savedPlans` means there are no saved plans in that example. A valid file still needs destination-specific dependency checks and explicit import confirmation.
+
+Treat these definitions as the current **version-1 reference**. Add only the differences for a future format version, following [Documenting future versions](#documenting-future-versions); do not duplicate unchanged format definitions.
 
 ## Shared processing contract
 
@@ -81,20 +96,76 @@ Historical plan snapshots can refer to historical material/product identities be
 
 Stock allocation keys and project stockItemIds are not converted into newly owned panels. Physical StockItems, movements, Keep decisions and receipts are excluded. Import may retain unavailable stock references that need review, and later reconciliation can report missing inventory dependencies. Export is a project transfer, not a promise to restore inventory audit state on another machine.
 
-Minimal complete example:
+### Project JSON — version 1
 
 ```json
 {
   "format": "opticutlist-project",
   "schemaVersion": 1,
   "project": {
-    "id": "workbench", "name": "Workbench",
-    "partIds": [], "materialIds": [], "supplierProductIds": [],
-    "cuttingSettings": { "kerfMm": 3, "edgeMarginMm": 0, "preferStockPanels": false },
-    "pdfSettings": { "orientation": "landscape", "description": "Workshop copy" }
+    "id": "workbench",
+    "name": "Workbench",
+    "partIds": [
+      "shelf"
+    ],
+    "materialIds": [
+      "mdf"
+    ],
+    "supplierProductIds": [
+      "sheet"
+    ],
+    "cuttingSettings": {
+      "kerfMm": 3,
+      "edgeMarginMm": 0,
+      "preferStockPanels": false
+    },
+    "pdfSettings": {
+      "orientation": "landscape",
+      "description": "Workshop copy"
+    }
   },
-  "parts": [],
-  "catalog": { "materials": [], "suppliers": [], "products": [] },
+  "parts": [
+    {
+      "id": "shelf",
+      "name": "Shelf",
+      "materialId": "mdf",
+      "lengthMm": 400,
+      "widthMm": 200,
+      "thicknessMm": 15,
+      "quantity": 2,
+      "grainDirection": "none",
+      "rotation": "allowed"
+    }
+  ],
+  "catalog": {
+    "materials": [
+      {
+        "id": "mdf",
+        "name": "MDF",
+        "category": "Engineered wood panels"
+      }
+    ],
+    "suppliers": [
+      {
+        "id": "supplier",
+        "name": "Workshop supplier"
+      }
+    ],
+    "products": [
+      {
+        "id": "sheet",
+        "supplierId": "supplier",
+        "materialId": "mdf",
+        "name": "MDF sheet",
+        "lengthMm": 800,
+        "widthMm": 600,
+        "thicknessMm": 15,
+        "grainDirection": "none",
+        "currency": "EUR",
+        "availability": "unknown"
+      }
+    ]
+  },
   "savedPlans": []
 }
 ```
@@ -107,7 +178,7 @@ The same `catalog` grouping exports complete records. Optional order rows are `{
 
 [Catalog import](../../src/application/catalog/catalog-transfer-service.ts) inserts materials, suppliers and products in one transaction. Existing local order stays first; newly imported order IDs append after remapping. No inventory or project records are transferred. Preview exposes remapped conflicts/reuse counts; a “conflict” here is not necessarily rejection, unlike physical Stock conflicts.
 
-Complete small example:
+### Catalog JSON — version 1
 
 ```json
 {
@@ -142,11 +213,93 @@ The transaction-time `inspect` in [stock-transfer-service.ts](../../src/applicat
 
 Only new independent manual/purchased records are inserted. Identical records are no-ops, not quantity increments. Absent generated offcuts cannot be recreated from this file, even if a convincing-looking project ID is supplied. See the [full example](stock-json-format.md).
 
+### Stock JSON — version 1
+
+```json
+{
+  "format": "opticutlist-stock",
+  "schemaVersion": 1,
+  "materials": [
+    {
+      "id": "mdf",
+      "name": "MDF",
+      "category": "Engineered wood panels"
+    }
+  ],
+  "stockItems": [
+    {
+      "id": "owned-sheet",
+      "kind": "fullPanel",
+      "materialId": "mdf",
+      "lengthMm": 800,
+      "widthMm": 600,
+      "thicknessMm": 15,
+      "quantity": 2,
+      "grainDirection": "none",
+      "provenance": {
+        "source": "manual"
+      }
+    }
+  ],
+  "stockOrders": [
+    {
+      "id": "mdf",
+      "stockItemIds": [
+        "owned-sheet"
+      ]
+    }
+  ]
+}
+```
+
+The referenced MDF material must already exist and match in the destination. Manual provenance makes this a transfer of independent owned stock; it does not create supplier products or recover cutting history. The optional `stockOrders` entry controls display order only.
+
 ## Parts format: material mapping and new owned records
 
 Parts rows contain `name`, `material`, `length`, `width`, `thickness`, `quantity`, `grainDirection`, `rotation`, all required. No database IDs, preset IDs or catalog objects belong in the file. `material` is a label, not an identity.
 
 [Parts preview](../../src/application/projects/parts-transfer-service.ts) computes eligible project materials and proposes mappings only for exactly one matching label. Import requires one non-null material ID per row, new Part IDs and explicit confirmation, then calls scoped `createMany`. Membership is checked again inside the write transaction. A repeated import intentionally adds another batch. There is no supported standalone export.
+
+### Parts JSON — version 1
+
+```json
+{
+  "format": "opticutlist-parts",
+  "version": 1,
+  "parts": [
+    {
+      "name": "Shelf",
+      "material": "MDF",
+      "length": 400,
+      "width": 200,
+      "thickness": 15,
+      "quantity": 2,
+      "grainDirection": "none",
+      "rotation": "allowed"
+    }
+  ]
+}
+```
+
+Every top-level property and every row property shown above is **required**. Version 1 has no optional Parts fields and no implicit defaults.
+
+| Location / field | Required value or type |
+| --- | --- |
+| `format` | Exactly `"opticutlist-parts"` |
+| `version` | Number `1`; `schemaVersion` is not accepted |
+| `parts` | Array of part rows; an empty array is valid |
+| `parts[].name` | Nonempty trimmed string, at most 200 characters |
+| `parts[].material` | Nonempty trimmed material label, at most 200 characters |
+| `parts[].length` | Finite positive number, millimeters |
+| `parts[].width` | Finite positive number, millimeters |
+| `parts[].thickness` | Finite positive number, millimeters |
+| `parts[].quantity` | Positive safe integer |
+| `parts[].grainDirection` | `"none"`, `"length"` or `"width"` |
+| `parts[].rotation` | `"allowed"` or `"forbidden"` |
+
+Use JSON numbers, not numeric strings. Unknown properties are rejected. Parts import uses `length`, `width`, `thickness` and a **material label**; a Part embedded in a project file instead uses `lengthMm`, `widthMm`, `thicknessMm`, `id` and `materialId`. These are two different payloads, not interchangeable spellings.
+
+For a normal import, select eligible materials in the target project first and confirm the material mapping. See [Parts JSON import](parts-json.md#contract) for mapping, grain and repeated-import rules.
 
 ## Compatibility matrix: implemented behavior
 
@@ -170,6 +323,18 @@ There is no implemented file-to-file migration chain, generic recovery converter
 Import services deliberately write transaction-scoped raw repositories after validating/remapping the batch, rather than calling nested guarded CRUD transactions. Consequently, their checks must be audited separately from ordinary creation/update checks. `readTransferRecords` does not include archived `projectStock.deletedProject` IDs in its destination project-ID set, whereas guarded `ProjectService.saveProject` explicitly rejects archived IDs. A project import colliding with such an archive therefore needs targeted regression review; the ordinary creation guard alone does not prove that import path is protected. This is a source-level risk, not a behavior change or a reproduced failure in this documentation task.
 
 Similarly, destination historical material/product reservations are limited to the sets actually collected above. Do not claim full-audit restoration or blanket historical collision coverage from insert-only semantics alone. Future compatibility work should test these boundaries explicitly before extending the file contracts.
+
+## Documenting future versions
+
+This is a documentation convention; it does not implement migration or make a new version acceptable to today's importers.
+
+1. Keep the version-1 definitions above as the baseline. Preserve their examples and field requirements.
+2. When a new exchange version is actually implemented, add a dated change entry for **that format and version**. List only added, removed or changed fields, defaults and meaning, with the exact previous behavior.
+3. State which older versions the new importer accepts, whether a migration runs, what the exporter writes and what older application versions reject. Link the implementing schemas and compatibility tests.
+4. Include a focused JSON example of changed content only, clearly labeled as a fragment when it is not a complete importable file. Refer to the baseline for unchanged fields.
+5. Review each format separately. A Project format change does not automatically change Catalog, Stock or Parts versions. Distinguish an exchange-version increment from a compatible optional addition within version 1.
+
+**Version history today:** version 1 is the only implemented baseline for Project, Catalog, Stock and Parts. There are no later-version changes to list yet. Do not add a speculative version-2 format or claim that changing the version number alone migrates a file.
 
 ## Proposed compatibility architecture — not implemented
 

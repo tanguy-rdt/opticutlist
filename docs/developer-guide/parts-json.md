@@ -6,6 +6,8 @@ Parts → **New part ▾ → Import parts** accepts UTF-8 `.oclparts.json` and l
 Existing files remain supported. Standalone Parts export is no longer available; use full project export for project backups.
 Import appends new Parts; it never overwrites existing Parts or creates materials.
 
+Only version 1 is currently supported. The [JSON compatibility reference](json-formats.md#version-1-baseline) records the complete version-1 baseline for all exchange formats; future entries describe only changes from that baseline.
+
 ## Complete example
 
 ```json
