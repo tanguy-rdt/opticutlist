@@ -13,6 +13,8 @@ Create a project, select materials and panels, add your parts, then click **Opti
 
 Your data stays in this browser on this device. It is not shared with other browsers or installations. Export your projects, catalog and stock separately before clearing browser data. These exports are not a complete backup of stock history.
 
+**Self-hosting safety:** Docker, Portainer and standalone installations have no built-in login. Anyone who can reach the application can access the same data. The examples above keep access on one computer. Access from other devices needs a trusted network and properly protected HTTPS access set up by someone who manages that network. Do not expose OptiCutList directly to the Internet.
+
 ## Docker
 
 Docker runs the application in a small, separate environment called a container. You need Docker installed and running on the computer where you want to use OptiCutList.
@@ -66,7 +68,16 @@ Data is saved in the hidden `.opticutlist` folder in your user home folder, outs
 
 Standalone startup has been tested on macOS with Apple Silicon. Linux x64 is tested before each archive is uploaded. Windows has not been verified.
 
-**Self-hosting safety:** Docker, Portainer and standalone installations have no built-in login. Anyone who can reach the application can access the same data. The examples above keep access on one computer. Access from other devices needs a trusted network and properly protected HTTPS access set up by someone who manages that network. Do not expose OptiCutList directly to the Internet.
+### Update standalone safely
+
+1. Stop the application with **Ctrl+C**. Make sure no other copy is running.
+2. Copy the entire `.opticutlist` folder from your home folder to a safe backup location. Include all its files. Do this only while the application is stopped.
+3. Download and extract the newer archive into a new folder. Run `node start.mjs` there using the same computer account. Your data stays in the original home folder.
+4. Open the application and check your projects and stock before removing the old application folder. Keep your backup: returning to an older version may require restoring it.
+
+
+**No built-in login:** Keep this application on your own computer or a trusted, access-controlled network.
+
 
 ## Update and keep your data
 
@@ -91,10 +102,7 @@ Reopen the online application to use the deployed version. Keep the same browser
 
 ### Standalone
 
-1. Stop the application with **Ctrl+C**. Make sure no other copy is running.
-2. Copy the entire `.opticutlist` folder from your home folder to a safe backup location. Include all its files. Do this only while the application is stopped.
-3. Download and extract the newer archive into a new folder. Run `node start.mjs` there using the same computer account. Your data stays in the original home folder.
-4. Open the application and check your projects and stock before removing the old application folder.
+Follow [Update standalone safely](#update-standalone-safely) above.
 
 An update may change the database format. Returning to an older application version may require restoring its matching backup.
 

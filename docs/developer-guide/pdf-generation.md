@@ -1,6 +1,6 @@
 # Cutting plans & PDF
 
-[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Cutting plans & PDF
+[Documentation home](../README.md) / [Developer Guide](README.md) / Cutting plans & PDF
 
 PDFs are generated locally with pdf-lib and previewed from the actual bytes with PDF.js. Technical drawings remain vector paths, text, arrows and hatching. Cover images are the only optional user-provided raster content. No screenshot concatenation or external rendering service is involved.
 
@@ -8,9 +8,9 @@ PDFs are generated locally with pdf-lib and previewed from the actual bytes with
 
 ## Boundaries and generation flow
 
-[cutting-plan-pdf-service.ts](../src/application/export/cutting-plan-pdf-service.ts) defines detached document DTOs and the renderer port. It independently validates trees/global copy accounting before calling infrastructure and returns typed generation failures. [cutting-plan-scene.ts](../src/application/optimization/cutting-plan-scene.ts) derives geometry shared with interactive presentation.
+[cutting-plan-pdf-service.ts](../../src/application/export/cutting-plan-pdf-service.ts) defines detached document DTOs and the renderer port. It independently validates trees/global copy accounting before calling infrastructure and returns typed generation failures. [cutting-plan-scene.ts](../../src/application/optimization/cutting-plan-scene.ts) derives geometry shared with interactive presentation.
 
-[OptimizationView.vue](../src/ui/pages/OptimizationView.vue) supplies the current accepted displayed layouts, including manual edits, only after result persistence is safe. [CuttingPlansWorkspace.vue](../src/ui/components/optimization/CuttingPlansWorkspace.vue) coordinates current settings, generation, cancellation, preview and output.
+[OptimizationView.vue](../../src/ui/pages/OptimizationView.vue) supplies the current accepted displayed layouts, including manual edits, only after result persistence is safe. [CuttingPlansWorkspace.vue](../../src/ui/components/optimization/CuttingPlansWorkspace.vue) coordinates current settings, generation, cancellation, preview and output.
 
 ```mermaid
 flowchart TD
@@ -28,11 +28,11 @@ Neither preview nor generation/print/download consumes stock. Current-result per
 
 ## Document settings and cover
 
-[PdfSettings](../src/domain/model/pdf-settings.ts) belongs to CuttingProject: optional A4/A3, portrait/landscape, title override, description and cover image. Missing orientation defaults to Portrait at use time. Existing explicit Landscape is preserved, including in project JSON. Settings writes reread the project and serialize through the project service, preserving unrelated selections/ownership.
+[PdfSettings](../../src/domain/model/pdf-settings.ts) belongs to CuttingProject: optional A4/A3, portrait/landscape, title override, description and cover image. Missing orientation defaults to Portrait at use time. Existing explicit Landscape is preserved, including in project JSON. Settings writes reread the project and serialize through the project service, preserving unrelated selections/ownership.
 
-Document title defaults to project name; override affects PDF cover/metadata, never renames the project. Clearing the override restores fallback. Description is optional, multiline and bounded to 2,000 characters. [cover-page.ts](../src/infrastructure/pdf/cover-page.ts) measures/wraps it in gray italic text, preserves meaningful line breaks and fits only present content as a balanced block. There is no empty image placeholder or obsolete OptiCutList/Cutting plans heading above the title.
+Document title defaults to project name; override affects PDF cover/metadata, never renames the project. Clearing the override restores fallback. Description is optional, multiline and bounded to 2,000 characters. [cover-page.ts](../../src/infrastructure/pdf/cover-page.ts) measures/wraps it in gray italic text, preserves meaningful line breaks and fits only present content as a balanced block. There is no empty image placeholder or obsolete OptiCutList/Cutting plans heading above the title.
 
-[cover-image.ts](../src/infrastructure/pdf/cover-image.ts) validates PNG/JPEG decoding, 2 MB maximum and 40 megapixels. One bounded MIME/base64 payload persists in PDF settings; a transient data URI supplies the sidebar preview. Temporary object URLs are never stored. New selections/removal invalidate obsolete reads. Import schema checks signatures/size, while actual decoding still detects corrupt payloads at generation. Replace/Remove remain recovery options.
+[cover-image.ts](../../src/infrastructure/pdf/cover-image.ts) validates PNG/JPEG decoding, 2 MB maximum and 40 megapixels. One bounded MIME/base64 payload persists in PDF settings; a transient data URI supplies the sidebar preview. Temporary object URLs are never stored. New selections/removal invalidate obsolete reads. Import schema checks signatures/size, while actual decoding still detects corrupt payloads at generation. Replace/Remove remain recovery options.
 
 The sidebar uses full-width title and four-line textarea, horizontal contained image preview/actions, segmented paper/orientation controls and equal-width Print/Download actions. Scaling is automatic, not an editable field. No drawing settings are persisted in cover image data.
 
@@ -40,7 +40,7 @@ Long text is measured and may shrink within supported readable limits. Impossibl
 
 ## Page composition
 
-[generateProjectCuttingPdf](../src/infrastructure/pdf/cutting-plan-pdf.ts) builds one document in this order:
+[generateProjectCuttingPdf](../../src/infrastructure/pdf/cutting-plan-pdf.ts) builds one document in this order:
 
 1. Cover.
 2. Fabrication schedules: complete Parts list, materials/purchasing and panel inventory; unplaced demand when present.
@@ -51,27 +51,27 @@ Sheet numbers are filled after all pages are generated, including continuation p
 
 ### Fabrication schedules
 
-[pdf-table.ts](../src/infrastructure/pdf/pdf-table.ts) measures column widths/text and whole-row heights, repeats headers after page breaks and reserves footer space. Fabrication styling uses grayscale hierarchy: medium-light column headers, bold gray parent panels, white normal/indented child rows and thin separators, without position-based zebra striping. Parents can be kept with the next child where possible.
+[pdf-table.ts](../../src/infrastructure/pdf/pdf-table.ts) measures column widths/text and whole-row heights, repeats headers after page breaks and reserves footer space. Fabrication styling uses grayscale hierarchy: medium-light column headers, bold gray parent panels, white normal/indented child rows and thin separators, without position-based zebra striping. Parents can be kept with the next child where possible.
 
-Purchasing groups allocated source identities and counts actual used panels. [resolveProjectPdfPricing](../src/application/export/project-pdf-pricing.ts) obtains current catalog prices by exact catalog identity or purchase/cutting stock provenance, including safe ancestor traversal. Missing/cyclic/unavailable ancestry cannot establish a price. It never matches material/dimensions or invents historical costs. A consumed source that is absent from the live stock repository can limit ancestry resolution; no price-history reconstruction is implemented.
+Purchasing groups allocated source identities and counts actual used panels. [resolveProjectPdfPricing](../../src/application/export/project-pdf-pricing.ts) obtains current catalog prices by exact catalog identity or purchase/cutting stock provenance, including safe ancestor traversal. Missing/cyclic/unavailable ancestry cannot establish a price. It never matches material/dimensions or invents historical costs. A consumed source that is absent from the live stock repository can limit ancestry resolution; no price-history reconstruction is implemented.
 
-[purchasing-schedule.ts](../src/infrastructure/pdf/purchasing-schedule.ts) computes known unit totals and currency-separated sums. Unknown remains N/A, never zero. The visual summary is a compact right-aligned **TOTAL:** block; when unknown prices exist the numeric sum is only known prices, even though no “known only” note is printed. It is not a complete purchase valuation or optimizer cost function.
+[purchasing-schedule.ts](../../src/infrastructure/pdf/purchasing-schedule.ts) computes known unit totals and currency-separated sums. Unknown remains N/A, never zero. The visual summary is a compact right-aligned **TOTAL:** block; when unknown prices exist the numeric sum is only known prices, even though no “known only” note is printed. It is not a complete purchase valuation or optimizer cost function.
 
 ### Individual Part drawings
 
-[part-drawing-grid.ts](../src/infrastructure/pdf/part-drawing-grid.ts) creates two columns with up to three rows, depending on orientation/usable height. Partial pages keep the capacity-derived cell size; they do not stretch one or two drawings to fill the sheet. [part-drawings.ts](../src/infrastructure/pdf/part-drawings.ts) centers each nominal Part drawing with independent fit scale, name/thickness, extension lines, arrows and exact millimetre labels. Thin internal grid rules are lighter than the outer frame.
+[part-drawing-grid.ts](../../src/infrastructure/pdf/part-drawing-grid.ts) creates two columns with up to three rows, depending on orientation/usable height. Partial pages keep the capacity-derived cell size; they do not stretch one or two drawings to fill the sheet. [part-drawings.ts](../../src/infrastructure/pdf/part-drawings.ts) centers each nominal Part drawing with independent fit scale, name/thickness, extension lines, arrows and exact millimetre labels. Thin internal grid rules are lighter than the outer frame.
 
 One shared bottom title block per page shows actual project identity, UNITS / Millimeters (mm), SCALE N/A and final SHEET number. There are no per-Part metadata/title-block tables or large page heading bands. Independent cell scale does not change physical dimensions.
 
 ### Cutting panel drawings
 
-[panel-drawing.ts](../src/infrastructure/pdf/panel-drawing.ts) draws the validated panel, placed Parts, true oriented dimensions, grain and waste-only hatching. It reserves dimension clearance and title assembly height before choosing scale. [panel-title-block.ts](../src/infrastructure/pdf/panel-title-block.ts) adds a full-width nomenclature directly above the shared technical strip: panel reference/material with dimensions right-aligned, then indented Part references/names with complete oriented dimensions and thin separators. Source Stock/Catalog provenance is omitted from this label.
+[panel-drawing.ts](../../src/infrastructure/pdf/panel-drawing.ts) draws the validated panel, placed Parts, true oriented dimensions, grain and waste-only hatching. It reserves dimension clearance and title assembly height before choosing scale. [panel-title-block.ts](../../src/infrastructure/pdf/panel-title-block.ts) adds a full-width nomenclature directly above the shared technical strip: panel reference/material with dimensions right-aligned, then indented Part references/names with complete oriented dimensions and thin separators. Source Stock/Catalog provenance is omitted from this label.
 
 Rows use their measured heights; extra Parts continue on paginated detail sheets rather than becoming unreadably small or disappearing. Continuation sheets retain technical settings, scale and numbering. No cutting sequence is inferred from decorative borders.
 
 ## Shared technical strip
 
-[technical-title-block.ts](../src/infrastructure/pdf/technical-title-block.ts) is the single four-cell renderer:
+[technical-title-block.ts](../../src/infrastructure/pdf/technical-title-block.ts) is the single four-cell renderer:
 
 `PROJECT | CONTEXT | SCALE | SHEET`
 
@@ -81,17 +81,17 @@ Schedules and cutting sheets use CUTTING SETTINGS / kerf / edge margin; individu
 
 ## Coordinates, scales and supported paper
 
-[pdf-layout.ts](../src/infrastructure/pdf/pdf-layout.ts) converts millimetres to PDF points (72 points/inch) and applies uniform scale with PDF's bottom-up coordinate system. [technical-drawing.ts](../src/infrastructure/pdf/technical-drawing.ts) selects a conventional print scale that fits actual available drawing bounds; drawings are never stretched in one axis. Dimensions report source millimetres, not measurements estimated from pixels.
+[pdf-layout.ts](../../src/infrastructure/pdf/pdf-layout.ts) converts millimetres to PDF points (72 points/inch) and applies uniform scale with PDF's bottom-up coordinate system. [technical-drawing.ts](../../src/infrastructure/pdf/technical-drawing.ts) selects a conventional print scale that fits actual available drawing bounds; drawings are never stretched in one axis. Dimensions report source millimetres, not measurements estimated from pixels.
 
 A4/A3 Portrait and Landscape use the same measured layout helpers. Font/column/row overflow is reported where it cannot safely fit rather than clipping geometry. Printing at Actual size / 100% is required to preserve a labeled physical scale; browser “fit” options can rescale an otherwise correct PDF.
 
 ## Preview, download and print resources
 
-[pdf-preview.ts](../src/ui/pdf/pdf-preview.ts) lazily imports PDF.js and uses its Vite-bundled local worker. It passes detached bytes, cancels obsolete loads/renders, cleans pages and destroys obsolete documents/workers. Preview raster canvases are UI output only; the exported bytes stay vector.
+[pdf-preview.ts](../../src/ui/pdf/pdf-preview.ts) lazily imports PDF.js and uses its Vite-bundled local worker. It passes detached bytes, cancels obsolete loads/renders, cleans pages and destroys obsolete documents/workers. Preview raster canvases are UI output only; the exported bytes stay vector.
 
 Download and Print share the generation pipeline/current configuration and use busy guards/spinners. Browser handoff success shows no toast claiming disk saving. Errors are retryable and use persistent error toasts where appropriate.
 
-[pdf-print-view.ts](../src/ui/pdf/pdf-print-view.ts) opens a tab synchronously from the click to avoid asynchronous popup blocking, clears opener, then embeds the generated Blob URL in a native PDF viewer. Users print there; automatic print dialog behavior is not guaranteed. A blocked/closed tab produces an actionable error. The viewer owns URL cleanup on pagehide and survives SPA workspace navigation once ready; pending tabs close on cancellation/failure.
+[pdf-print-view.ts](../../src/ui/pdf/pdf-print-view.ts) opens a tab synchronously from the click to avoid asynchronous popup blocking, clears opener, then embeds the generated Blob URL in a native PDF viewer. Users print there; automatic print dialog behavior is not guaranteed. A blocked/closed tab produces an actionable error. The viewer owns URL cleanup on pagehide and survives SPA workspace navigation once ready; pending tabs close on cancellation/failure.
 
 Download removes its temporary anchor and revokes the URL after a bounded grace period/document exit because browsers expose no reliable download-completion event. Do not revoke an output URL immediately after handing it to a browser consumer.
 
@@ -103,17 +103,17 @@ Built-in Helvetica/WinAnsi does not encode arbitrary Unicode; unsupported text y
 
 | Module / symbols | Input/output responsibility |
 | --- | --- |
-| [cutting-plan-pdf-service.ts](../src/application/export/cutting-plan-pdf-service.ts): `prepareProjectPdfDocument`, `panelDocument` | Clone/validate accepted plans, create per-panel scenes/metrics and portable renderer DTOs |
-| [project-pdf-pricing.ts](../src/application/export/project-pdf-pricing.ts): `resolveProjectPdfPricing` | Read-only current-reference lookup with per-generation Promise caches and cycle detection |
-| [cutting-plan-pdf.ts](../src/infrastructure/pdf/cutting-plan-pdf.ts): `generateProjectCuttingPdf`, `appendFabricationSections`, `finishPdf` | Document order, shared fonts, page assembly and deferred numbering |
-| [cover-page.ts](../src/infrastructure/pdf/cover-page.ts): `drawCoverPage` | Measure present cover content, wrap description/title and contain image |
-| [pdf-layout.ts](../src/infrastructure/pdf/pdf-layout.ts): `pdfPageSize`, `pdfRect`, `fitPdfPanel` | Paper geometry, uniform coordinate transforms and true kerf extents |
-| [technical-drawing.ts](../src/infrastructure/pdf/technical-drawing.ts): `technicalTransform`, `drawDimensions`, `drawWaste`, `drawGrain` | Conventional scales and vector annotation primitives |
-| [part-drawing-grid.ts](../src/infrastructure/pdf/part-drawing-grid.ts): `partDrawingCells`, `partDrawingGeometry` | Two-column drawing capacity and independent per-cell fit |
-| [panel-title-block.ts](../src/infrastructure/pdf/panel-title-block.ts): `layoutPanelTitleBlock`, `panelPartReference` | Measured nomenclature rows and copy-consistent drawing labels |
-| [technical-title-block.ts](../src/infrastructure/pdf/technical-title-block.ts) | One four-cell strip renderer and deferred sheet-number coordinates |
-| [pdf-table.ts](../src/infrastructure/pdf/pdf-table.ts): `createPdfTables` | Shared page cursor, column measurement, whole-row breaks and repeated headers |
-| [pdf-text.ts](../src/infrastructure/pdf/pdf-text.ts) | Font-measured wrapping/bounded text; no manual character-count clipping |
+| [cutting-plan-pdf-service.ts](../../src/application/export/cutting-plan-pdf-service.ts): `prepareProjectPdfDocument`, `panelDocument` | Clone/validate accepted plans, create per-panel scenes/metrics and portable renderer DTOs |
+| [project-pdf-pricing.ts](../../src/application/export/project-pdf-pricing.ts): `resolveProjectPdfPricing` | Read-only current-reference lookup with per-generation Promise caches and cycle detection |
+| [cutting-plan-pdf.ts](../../src/infrastructure/pdf/cutting-plan-pdf.ts): `generateProjectCuttingPdf`, `appendFabricationSections`, `finishPdf` | Document order, shared fonts, page assembly and deferred numbering |
+| [cover-page.ts](../../src/infrastructure/pdf/cover-page.ts): `drawCoverPage` | Measure present cover content, wrap description/title and contain image |
+| [pdf-layout.ts](../../src/infrastructure/pdf/pdf-layout.ts): `pdfPageSize`, `pdfRect`, `fitPdfPanel` | Paper geometry, uniform coordinate transforms and true kerf extents |
+| [technical-drawing.ts](../../src/infrastructure/pdf/technical-drawing.ts): `technicalTransform`, `drawDimensions`, `drawWaste`, `drawGrain` | Conventional scales and vector annotation primitives |
+| [part-drawing-grid.ts](../../src/infrastructure/pdf/part-drawing-grid.ts): `partDrawingCells`, `partDrawingGeometry` | Two-column drawing capacity and independent per-cell fit |
+| [panel-title-block.ts](../../src/infrastructure/pdf/panel-title-block.ts): `layoutPanelTitleBlock`, `panelPartReference` | Measured nomenclature rows and copy-consistent drawing labels |
+| [technical-title-block.ts](../../src/infrastructure/pdf/technical-title-block.ts) | One four-cell strip renderer and deferred sheet-number coordinates |
+| [pdf-table.ts](../../src/infrastructure/pdf/pdf-table.ts): `createPdfTables` | Shared page cursor, column measurement, whole-row breaks and repeated headers |
+| [pdf-text.ts](../../src/infrastructure/pdf/pdf-text.ts) | Font-measured wrapping/bounded text; no manual character-count clipping |
 
 ### Coordinate transformation, explicitly
 
@@ -184,4 +184,4 @@ This limitation must not be “fixed” by matching dimensions/material, treatin
 
 ---
 
-**Continue exploring:** [Validated plan inputs](optimization.md) · [PDF regression tests](testing.md#pdf-and-browser-boundaries) · [Documentation home](README.md)
+**Continue exploring:** [Validated plan inputs](optimization.md) · [PDF regression tests](testing.md#pdf-and-browser-boundaries) · [Documentation home](../README.md)

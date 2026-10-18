@@ -8,4 +8,4 @@ New to OptiCutList? [Start with the User Guide](user-guide/README.md) for instal
 
 ## Developer Guide
 
-Working on the application? [Open the Developer Guide](developer-guide.md) for setup, architecture, business rules, storage, testing and maintenance references.
+Working on the application? [Open the Developer Guide](developer-guide/README.md) for setup, architecture, business rules, storage, testing and maintenance references.

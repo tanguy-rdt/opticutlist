@@ -51,23 +51,26 @@ describe('Wiki documentation portal', () => {
     expect(sidebar).not.toContain('More reference')
   })
 
-  it('keeps Home focused on the two guides and preserves existing technical page URLs', () => {
+  it('keeps only the homepage at docs root and publishes both nested guides', () => {
     const wiki = output()
     const home = wiki.get('Home.md')?.toString() ?? ''
     expect(home).toContain('## User Guide')
     expect(home).toContain('## Developer Guide')
     expect(home).toContain('/wiki/Docs-user-guide--README')
-    expect(home).toContain('/wiki/Docs-developer-guide')
+    expect(home).toContain('/wiki/Docs-developer-guide--README)')
+    expect(readdirSync(docs).sort()).toEqual(['README.md', 'developer-guide', 'user-guide'])
     expect(home).not.toContain('```')
     expect(home.match(/^# /gm)).toHaveLength(1)
     expect(WIKI_NAVIGATION.map(group => group.title)).toEqual(['User Guide', 'Developer Guide'])
     for (const path of ['architecture', 'storage', 'getting-started', 'optimization', 'pdf-generation']) {
-      expect(wiki.has(`Docs-${path}.md`)).toBe(true)
+      expect(wiki.has(`Docs-developer-guide--${path}.md`)).toBe(true)
     }
-    const storage = wiki.get('Docs-storage.md')?.toString() ?? ''
+    const storage = wiki.get('Docs-developer-guide--storage.md')?.toString() ?? ''
     expect(storage).toContain('### Standalone archive')
-    expect(storage).toContain('/wiki/Docs-deployment#standalone-archive')
-    expect(wiki.get('Docs-deployment.md')?.toString()).toContain('node start.mjs')
+    expect(storage).toContain('/wiki/Docs-developer-guide--deployment#standalone-archive')
+    expect(wiki.get('Docs-developer-guide--deployment.md')?.toString()).toContain('/wiki/Docs-user-guide--installation#standalone-download')
+    expect(wiki.get('Docs-developer-guide--getting-started.md')?.toString()).toContain('npm run build:self-hosted')
+    expect(wiki.get('Docs-user-guide--installation.md')?.toString()).toContain('node start.mjs')
   })
 
   it('resolves documentation and source links, including heading fragments', () => {

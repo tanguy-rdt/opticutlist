@@ -1,14 +1,14 @@
 # Safe contribution guide
 
-[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Development & reference
+[Documentation home](../README.md) / [Developer Guide](README.md) / Development & reference
 
-These are developer procedures, not implemented new features. They apply the current [AGENTS.md](../AGENTS.md) constraints to the audited code. Start with [architecture](architecture.md), then identify the owning service and test boundary before editing. Obtain approval before changing fundamental architecture or domain invariants.
+These are developer procedures, not implemented new features. They apply the current [AGENTS.md](../../AGENTS.md) constraints to the audited code. Start with [architecture](architecture.md), then identify the owning service and test boundary before editing. Obtain approval before changing fundamental architecture or domain invariants.
 
 **On this page:** [Introduce a domain field](#introduce-a-domain-field) · [Add a Dexie table or migration](#add-a-dexie-table-or-migration) · [Modify an optimization rule](#modify-an-optimization-rule) · [Change stock reconciliation](#change-stock-reconciliation) · [Evolve a JSON exchange schema](#evolve-a-json-exchange-schema) · [Review and completion checklist](#review-and-completion-checklist)
 
 ## Introduce a domain field
 
-1. Locate the owning Zod schema in [domain/model](../src/domain/model/). Add the field there and infer the type; do not create a second hand-maintained entity interface.
+1. Locate the owning Zod schema in [domain/model](../../src/domain/model/). Add the field there and infer the type; do not create a second hand-maintained entity interface.
 2. Decide absent/empty/null/zero/false behavior explicitly. Existing optional price distinguishes omitted from zero; Stock preference distinguishes omitted from false. Do not use a truthiness fallback when false or zero is meaningful.
 3. Audit every complete-record constructor: form submission, fixture, adapter import, inline preset save, copy/remapping and snapshot creation. Generic update is full replacement, so omitted fields can be lost if callers reconstruct records carelessly.
 4. Decide whether the field belongs in historical snapshots as well as the live entity. Current prices do not belong in PanelSnapshot; historical geometry/settings do. Avoid putting UI-only offcut labels or transient editor state into schemas.
@@ -20,7 +20,7 @@ Relevant examples: optional project `description`, `cuttingSettings`, `pdfSettin
 
 ## Add a Dexie table or migration
 
-Source: [local-database.ts](../src/infrastructure/persistence/local-database.ts), [repository ports](../src/application/persistence/repositories.ts), [storage reference](storage.md).
+Source: [local-database.ts](../../src/infrastructure/persistence/local-database.ts), [repository ports](../../src/application/persistence/repositories.ts), [storage reference](storage.md).
 
 1. Define whether the new data is an entity, an embedded value, presentation metadata or derived state. Avoid a table for something already safely computed.
 2. Add a typed repository to application ports and a strict runtime schema. Select primary key/indexes from actual query requirements; most current guards scan arrays/lists.
@@ -35,7 +35,7 @@ Source: [local-database.ts](../src/infrastructure/persistence/local-database.ts)
 ## Modify an optimization rule
 
 1. Identify the rule's level. Compatibility/orientation belongs in shared domain helpers; single-panel strategy choice belongs in strategy code; whole-result Stock priority belongs in project candidate generation and comparison.
-2. Read [plan-with-strategy.ts](../src/domain/optimizer/plan-with-strategy.ts), [optimize-panel.ts](../src/domain/optimizer/optimize-panel.ts), [optimize-project.ts](../src/domain/optimizer/optimize-project.ts) and both validators before changing a score.
+2. Read [plan-with-strategy.ts](../../src/domain/optimizer/plan-with-strategy.ts), [optimize-panel.ts](../../src/domain/optimizer/optimize-panel.ts), [optimize-project.ts](../../src/domain/optimizer/optimize-project.ts) and both validators before changing a score.
 3. Keep `largestAreaFirst` unchanged as required. New strategies join `PLACEMENT_STRATEGIES` and reuse splitting/validation. A ranking change requires updating root architecture decisions.
 4. Use micrometre helpers. Never “fix” a fit by changing physical kerf, thickness or Part dimensions. Check grain in final panel axes, not only the stored rotation flag.
 5. Preserve explicit demand, source provenance, finite physical limits, empty-panel rejection and global copy indices. No inventory read/write belongs inside placement search.
@@ -45,7 +45,7 @@ Source: [local-database.ts](../src/infrastructure/persistence/local-database.ts)
 
 ## Change stock reconciliation
 
-Read [project-stock-service.ts](../src/application/inventory/project-stock-service.ts), [project-stock-availability.ts](../src/application/inventory/project-stock-availability.ts), [current-result-service.ts](../src/application/plans/current-result-service.ts), legacy [confirmation service](../src/application/inventory/cutting-confirmation-service.ts) and [project-deletion.ts](../src/application/projects/project-deletion.ts) together.
+Read [project-stock-service.ts](../../src/application/inventory/project-stock-service.ts), [project-stock-availability.ts](../../src/application/inventory/project-stock-availability.ts), [current-result-service.ts](../../src/application/plans/current-result-service.ts), legacy [confirmation service](../../src/application/inventory/cutting-confirmation-service.ts) and [project-deletion.ts](../../src/application/projects/project-deletion.ts) together.
 
 1. Define exact source/decision/physical IDs involved. Do not match by name, dimensions alone or temporary `Offcut N` labels.
 2. Preserve live availability versus current-project active consumption. A selected ID/historical event does not prove current allocation, and own-project generated offcuts stay ineligible.
@@ -105,4 +105,4 @@ Run the four required validation commands, inspect the staged diff, create one s
 
 ---
 
-**Continue exploring:** [Validation conventions](testing.md) · [Contribution checklist](getting-started.md#contribution-workflow) · [Documentation home](README.md)
+**Continue exploring:** [Validation conventions](testing.md) · [Contribution checklist](getting-started.md#contribution-workflow) · [Documentation home](../README.md)

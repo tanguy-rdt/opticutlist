@@ -1,6 +1,6 @@
 # Stock JSON exchange
 
-[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Import & compatibility
+[Documentation home](../README.md) / [Developer Guide](README.md) / Import & compatibility
 
 Settings → Stock exports `stock.oclstock.json` as readable UTF-8 JSON. Import accepts this extension or legacy/general `.json` names; contents, not filenames, determine compatibility.
 
@@ -67,4 +67,4 @@ These are presentation preferences, separate from StockItems and movement histor
 
 ---
 
-**Continue exploring:** [Stock lifecycle](stock-management.md) · [Identity rules](json-formats.md#stock-format-exact-identities-and-dependency-preservation) · [Documentation home](README.md)
+**Continue exploring:** [Stock lifecycle](stock-management.md) · [Identity rules](json-formats.md#stock-format-exact-identities-and-dependency-preservation) · [Documentation home](../README.md)

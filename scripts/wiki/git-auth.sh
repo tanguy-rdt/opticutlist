@@ -2,7 +2,7 @@
 # Credentialed Git only: never run the parser or npm in this process.
 set -euo pipefail
 if [[ -z "${WIKI_PUBLISH_TOKEN:-}" ]]; then
-  echo '::error::Missing WIKI_PUBLISH_TOKEN. Follow docs/wiki-publishing.md.'
+  echo '::error::Missing WIKI_PUBLISH_TOKEN. Follow docs/developer-guide/wiki-publishing.md.'
   exit 1
 fi
 askpass="$(mktemp "$RUNNER_TEMP/opticutlist-wiki-askpass.XXXXXX")"

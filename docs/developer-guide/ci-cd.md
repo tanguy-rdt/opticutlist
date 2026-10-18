@@ -1,8 +1,8 @@
 # CI/CD & releases
 
-[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Development & reference
+[Documentation home](../README.md) / [Developer Guide](README.md) / Development & reference
 
-Exactly two native GitHub Actions workflows own automation: [CI](../.github/workflows/ci.yml) validates changes; [CD](../.github/workflows/cd.yml) has four independent jobs for Pages deployment, GHCR images, standalone release archives and Wiki publication. Their triggers, conditions and shell checks are defined directly in YAML.
+Exactly two native GitHub Actions workflows own automation: [CI](../../.github/workflows/ci.yml) validates changes; [CD](../../.github/workflows/cd.yml) has four independent jobs for Pages deployment, GHCR images, standalone release archives and Wiki publication. Their triggers, conditions and shell checks are defined directly in YAML.
 
 ## Event routing
 
@@ -92,4 +92,4 @@ Validate YAML, embedded Bash and event conditions before committing workflow cha
 
 ---
 
-**Continue exploring:** [Wiki authoring & publishing](wiki-publishing.md) · [Testing](testing.md) · [Documentation home](README.md)
+**Continue exploring:** [Wiki authoring & publishing](wiki-publishing.md) · [Testing](testing.md) · [Documentation home](../README.md)

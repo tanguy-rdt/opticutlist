@@ -1,8 +1,8 @@
 # Developer Guide
 
-[Documentation home](README.md) / Developer Guide
+[Documentation home](../README.md) / Developer Guide
 
-Technical reference for contributors and maintainers. For installation and everyday use, start with the [User Guide](user-guide/README.md).
+Technical reference for contributors and maintainers. For installation and everyday use, start with the [User Guide](../user-guide/README.md).
 
 OptiCutList is an open-source, browser-based workspace for planning rectangular panel cuts. It connects materials, finished parts, physically owned stock, optimization and printable fabrication documents. Business data stays in the browser's IndexedDB by default; optional self-hosting uses one shared SQLite database while optimization stays in the browser.
 
@@ -67,7 +67,7 @@ This diagram shows dependency direction, not execution order. For composition an
 
 ## Contribute with confidence
 
-Read [AGENTS.md](../AGENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md) before editing; they remain authoritative. Keep technical claims grounded in source, preserve identities and inventory history, and follow the [safe contribution guide](maintenance.md). Documentation changes follow the same review discipline as code.
+Read [AGENTS.md](../../AGENTS.md) and [ARCHITECTURE.md](../../ARCHITECTURE.md) before editing; they remain authoritative. Keep technical claims grounded in source, preserve identities and inventory history, and follow the [safe contribution guide](maintenance.md). Documentation changes follow the same review discipline as code.
 
 These pages live in `docs/` and are [published automatically](wiki-publishing.md) to the Wiki. Edit the repository source, not generated Wiki pages. Stable page paths keep links working across both views.
 
@@ -79,4 +79,4 @@ Source inspection does not establish real-printer fidelity, browser-native PDF b
 
 ---
 
-**Continue exploring:** [Developer setup](getting-started.md) · [User Guide](user-guide/README.md) · [Documentation home](README.md)
+**Continue exploring:** [Developer setup](getting-started.md) · [User Guide](../user-guide/README.md) · [Documentation home](../README.md)

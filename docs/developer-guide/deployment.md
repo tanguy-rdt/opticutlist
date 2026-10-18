@@ -1,8 +1,8 @@
 # Deployment and operations
 
-[Documentation home](README.md) / [Developer Guide](developer-guide.md)
+[Documentation home](../README.md) / [Developer Guide](README.md)
 
-Operator reference for the existing Node service, standalone archive and Docker image. For beginner installation steps, use [Install OptiCutList](user-guide/installation.md). Storage contracts, SQL migrations, API operations and transaction guarantees remain in [Storage internals](storage.md#self-hosted-storage).
+Operator reference for the existing Node service, standalone archive and Docker image. For beginner installation steps, use [Install OptiCutList](../user-guide/installation.md). Storage contracts, SQL migrations, API operations and transaction guarantees remain in [Storage internals](storage.md#self-hosted-storage).
 
 **On this page:** [Run from source](#run-the-service) · [Standalone archive](#standalone-archive) · [Docker and Portainer](#standalone-docker-deployment) · [Backups](#consistent-backups-and-restoration)
 
@@ -12,11 +12,7 @@ Operator reference for the existing Node service, standalone archive and Docker 
 
 Use Node.js 24 or newer and the existing npm dependencies. The server uses `node:http` and `node:sqlite`; no framework, ORM or additional runtime dependency is required. Node 24.8, used for the initial verification, labels SQLite experimental. Prefer an up-to-date maintained Node 24 runtime; review Node's SQLite compatibility before upgrading production.
 
-```sh
-npm ci
-npm run build:self-hosted
-npm run start:self-hosted
-```
+Build and start from a checkout using [Developer setup](getting-started.md#optional-self-hosted-development).
 
 Open `http://127.0.0.1:3000/opticutlist/`. The frontend retains the existing Vite base and hash routing. `dist-self-hosted/` contains the server-mode frontend; `server-dist/main.js` is the Node entry point. Install dependencies on the host and deploy these two build directories together. Run as an unprivileged OS user with access to the database directory. The service does not require a second web server.
 
@@ -49,15 +45,7 @@ Run OptiCutList without Docker or a source checkout. You need **Node.js 24 or ne
 
 #### Install and start
 
-1. Open [GitHub Releases](https://github.com/tanguy-rdt/opticutlist/releases) and download `opticutlist-VERSION-self-hosted.tar.gz` from the desired stable or prerelease release. `VERSION` is the full tag, including `v` and any prerelease suffix. Assets appear only after a successful archive job; no particular published version is assumed here.
-2. Extract it using your archive manager. Open a terminal in the extracted `opticutlist` folder.
-3. Start the server:
-
-```sh
-node start.mjs
-```
-
-4. Open **http://127.0.0.1:3000/opticutlist/** on that machine. Leave the terminal running; **Ctrl+C** stops the server cleanly.
+Follow [Standalone download](../user-guide/installation.md#standalone-download) for beginner download, extraction and startup steps. Release filenames are `opticutlist-VERSION-self-hosted.tar.gz`, where `VERSION` is the full stable or prerelease tag, including `v`. An asset exists only after the archive job succeeds.
 
 The default database is **`.opticutlist/opticutlist.sqlite` in the home directory of the account running Node**, outside the installation folder. Keep using that same account when updating. The SQLite database and WAL/journal files belong together; never delete this data directory during an upgrade. The application opens existing databases and applies its existing migrations without resetting them.
 
@@ -75,17 +63,13 @@ For a remote server with SSH access, run `ssh -N -L 3000:127.0.0.1:3000 USER@SER
 
 #### Update safely
 
-1. Stop the server with Ctrl+C and ensure no other process is writing to the same database.
-2. Back up the **complete stopped data directory**, including any WAL/journal files. For the default location on macOS/Linux, use:
+For beginner replacement steps, see [Update standalone safely](../user-guide/installation.md#update-standalone-safely). For a scripted offline backup, stop every writer first and copy the complete data directory, including WAL/journal sidecars. With the default macOS/Linux location:
 
 ```sh
 tar -czf "$HOME/opticutlist-backup-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$HOME" .opticutlist
 ```
 
 Check that the backup command succeeded. Use your configured data directory instead if you changed it. Never copy only a live main SQLite file.
-
-3. Extract the newer application into a new folder; keep the old installation and backup until verification succeeds.
-4. Run `node start.mjs` in the new application folder, under the same account and with the same database setting. Open the application and check projects and stock.
 
 To restore, stop all writers and extract a known-good backup into a **fresh data directory**, then start the matching application version with `OCL_DATABASE_PATH` pointing to the restored database. Do not mix unrelated database/WAL files or overwrite a live database. Database migrations can make downgrading unsafe without a matching backup.
 
@@ -95,30 +79,17 @@ The archive contains JavaScript and static assets, not Node itself or native npm
 
 ### Standalone Docker deployment
 
-The [Dockerfile](../docker/Dockerfile) packages the existing self-hosted application as one image, one Node process, port **3000/TCP**, and one persistent **`/data`** volume. No Compose, Stack or additional HTTP server is required. Optimization remains in the browser. The ordinary GitHub Pages build is unchanged.
+The [Dockerfile](../../docker/Dockerfile) packages the existing self-hosted application as one image, one Node process, port **3000/TCP**, and one persistent **`/data`** volume. No Compose, Stack or additional HTTP server is required. Optimization remains in the browser. The ordinary GitHub Pages build is unchanged.
 
 **Requirements:** Docker Engine/Desktop with Linux containers, or Portainer connected to such a Docker host. Published images require no Git, Node.js installation or local compilation.
 
-Stable and SemVer prerelease tags publish **`ghcr.io/tanguy-rdt/opticutlist:VERSION`**, without the leading `v` (for example, `v1.1.0-beta.2` becomes `1.1.0-beta.2`). The examples below use `1.2.3` as an example version, not a claim that this version has already been published. Choose a version from a successful [release publication](ci-cd.md#docker-image-publication). There are no `latest`, `stable`, major-only or minor-only aliases. The workflow targets `linux/amd64` and `linux/arm64`; it publishes the versioned multi-platform image only after both platform builds succeed. Local Docker/multi-platform verification depends on an available daemon; configuration alone is not proof of a successful image build.
+Stable and SemVer prerelease tags publish **`ghcr.io/tanguy-rdt/opticutlist:VERSION`**, without the leading `v` (for example, `v1.1.0-beta.2` becomes `1.1.0-beta.2`). The restore example below uses `1.2.3` as an example version, not a claim that this version has already been published. Choose a version from a successful [release publication](ci-cd.md#docker-image-publication). There are no `latest`, `stable`, major-only or minor-only aliases. The workflow targets `linux/amd64` and `linux/arm64`; it publishes the versioned multi-platform image only after both platform builds succeed. Local Docker/multi-platform verification depends on an available daemon; configuration alone is not proof of a successful image build.
 
 A maintainer must set the GHCR package visibility to **Public** before anonymous Docker or Portainer pulls work. GitHub initially creates container packages as private; no GitHub login or personal access token is required to pull a public package. See [registry visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
 #### Pull and start
 
-Choose an available explicit version:
-
-```sh
-docker pull ghcr.io/tanguy-rdt/opticutlist:1.2.3
-docker volume create opticutlist-data
-docker run -d \
-  --name opticutlist \
-  --restart unless-stopped \
-  --stop-timeout 30 \
-  -p 127.0.0.1:8080:3000 \
-  -e OCL_ORIGIN=http://127.0.0.1:8080 \
-  -v opticutlist-data:/data \
-  ghcr.io/tanguy-rdt/opticutlist:1.2.3
-```
+Use the [Docker installation steps](../user-guide/installation.md#docker) for the full pull/start command. The runtime settings and constraints below apply equally to Docker CLI and Portainer deployments.
 
 Open **`http://127.0.0.1:8080/opticutlist/`**. Use that exact hostname: `localhost` is a different origin. Publishing to host loopback restricts access to the Docker host; the backend still listens on `0.0.0.0` inside its bridge-network container. No host networking, privileged mode or Docker socket mount is used.
 
@@ -157,24 +128,13 @@ docker start opticutlist
 docker restart --time 30 opticutlist
 ```
 
-[Readiness regression tests](../server/__tests__/health.spec.ts) exercise the actual Dockerfile probe against a local Node service, including database failure, recovery and external-Host handling. These are not a substitute for running the image on a Docker daemon. `GET /api/v1/health` performs a serialized SQLite transaction that reads migration metadata. Database failure returns a sanitized **503**; healthy responses retain the existing public service/schema identity. The image probe calls the internal loopback listener with the configured external Host header, so custom host ports and HTTPS origins do not bypass or break origin checks. It uses Node, not curl/wget, with a four-second socket timeout. Docker runs it every 30 seconds with a five-second limit, a 15-second startup grace period and three failure retries.
+[Readiness regression tests](../../server/__tests__/health.spec.ts) exercise the actual Dockerfile probe against a local Node service, including database failure, recovery and external-Host handling. These are not a substitute for running the image on a Docker daemon. `GET /api/v1/health` performs a serialized SQLite transaction that reads migration metadata. Database failure returns a sanitized **503**; healthy responses retain the existing public service/schema identity. The image probe calls the internal loopback listener with the configured external Host header, so custom host ports and HTTPS origins do not bypass or break origin checks. It uses Node, not curl/wget, with a four-second socket timeout. Docker runs it every 30 seconds with a five-second limit, a 15-second startup grace period and three failure retries.
 
 An unhealthy result does not itself trigger Docker's restart policy. Inspect logs and health details; fix the cause, then restart. Missing/incorrect `OCL_ORIGIN` prevents startup or causes 403 responses. `EACCES` indicates volume ownership or permissions. Do not delete a database to fix an upgrade failure; retain the file and restore a compatible backup or use the matching application version.
 
 #### Portainer: create a container
 
-Use the target Docker environment's **Containers → Add container** interface, not a Stack. Enter the explicit GHCR version below and enable **Always pull the image** for this public image. No registry credentials, Git checkout, Node.js or local build is needed. For a locally built `opticutlist:local` image instead, it must already exist on that Docker host and **Always pull** must be disabled.
-
-| Portainer field | Value |
-| --- | --- |
-| Name | `opticutlist` |
-| Image | `ghcr.io/tanguy-rdt/opticutlist:1.2.3` (choose an available release version) |
-| Manual port publishing | Host `8080` → container `3000`, TCP; disable automatic publication of all exposed ports |
-| Environment | `OCL_ORIGIN=http://127.0.0.1:8080` for Docker-host loopback access; otherwise the exact approved HTTPS origin |
-| Volumes | Create/select named volume `opticutlist-data`, mount at `/data`, writable |
-| Restart policy | Unless stopped |
-| Command / entrypoint / user | Keep image defaults |
-| Network / privileged | Default bridge; privileged disabled |
+Follow the [Portainer installation steps](../user-guide/installation.md#portainer) for the container form fields. Use the same runtime settings above: default bridge network, image command/user, writable `/data` volume, `OCL_ORIGIN` and restart policy `unless-stopped`; do not enable privileged mode. Locally built `opticutlist:local` images must already exist on that host with **Always pull** disabled.
 
 Restrict the published Host IP to `127.0.0.1` when the interface supports it. If your Portainer version cannot express that binding, use the loopback Docker CLI command above or arrange Docker-aware network access restrictions **before** deployment; a plain `8080:3000` mapping publishes on all host interfaces. Portainer on another computer does not make `127.0.0.1` refer to the Docker host. Portainer's own login protects its management interface, not OptiCutList. See Portainer's [container creation](https://docs.portainer.io/user/docker/containers/add) and [advanced settings](https://docs.portainer.io/user/docker/containers/advanced).
 
@@ -220,29 +180,7 @@ Verify health, projects and physical inventory before choosing the restored inst
 
 #### Updating the image
 
-1. Take and verify a [consistent SQLite backup](#consistent-backups-and-restoration).
-2. Pull the desired available newer version (the example below uses `1.2.4`).
-3. Stop and remove only the old **container**.
-4. Recreate it with the new version, the **same named volume**, and the same ports/environment.
-5. Verify health, projects and inventory before accepting the upgrade.
-
-```sh
-docker pull ghcr.io/tanguy-rdt/opticutlist:1.2.4
-docker stop --time 30 opticutlist
-docker rm opticutlist
-docker run -d \
-  --name opticutlist \
-  --restart unless-stopped \
-  --stop-timeout 30 \
-  -p 127.0.0.1:8080:3000 \
-  -e OCL_ORIGIN=http://127.0.0.1:8080 \
-  -v opticutlist-data:/data \
-  ghcr.io/tanguy-rdt/opticutlist:1.2.4
-docker inspect --format '{{.State.Health.Status}}' opticutlist
-docker logs --tail 100 opticutlist
-```
-
-In Portainer, stop the container, use **Duplicate/Edit** to change the image version, pull/redeploy and replace the container, preserving the existing volume, environment, published port and restart policy. Inspect the replacement's health and logs. Do not select any option that deletes the persistent volume.
+Follow [Docker or Portainer updates](../user-guide/installation.md#docker-or-portainer) after taking and verifying a [consistent SQLite backup](#consistent-backups-and-restoration). Preserve the exact volume, origin and port settings. Inspect health and logs using the commands above before accepting the upgrade.
 
 For local-source images, rebuild with `docker build --pull -f docker/Dockerfile -t opticutlist:local .` and recreate using that local image instead. Pulling or rebuilding alone does not update a running container; there is no automatic updater.
 
@@ -252,4 +190,4 @@ Never remove the volume as part of an update. Startup migrations run before HTTP
 
 ---
 
-**Continue exploring:** [Storage internals](storage.md#self-hosted-storage) · [Release automation](ci-cd.md) · [Documentation home](README.md)
+**Continue exploring:** [Storage internals](storage.md#self-hosted-storage) · [Release automation](ci-cd.md) · [Documentation home](../README.md)

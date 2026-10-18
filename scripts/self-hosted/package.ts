@@ -23,13 +23,13 @@ if (dependencies.some(name => !isBuiltin(name) && name !== 'zod')) {
 if ((await readFile(join(repository, 'dist-self-hosted/storage-mode.txt'), 'utf8')).trim() !== 'server') {
   throw new Error('Build the self-hosted frontend before packaging.')
 }
-const guide = await readFile(join(repository, 'docs/deployment.md'), 'utf8')
-const heading = '### Standalone archive\n'
+const guide = await readFile(join(repository, 'docs/user-guide/installation.md'), 'utf8')
+const heading = '## Standalone download\n'
 const guideStart = guide.indexOf(heading)
 if (guideStart === -1) {
   throw new Error('Missing standalone installation guide.')
 }
-const guideEnd = guide.indexOf('\n### ', guideStart + heading.length)
+const guideEnd = guide.indexOf('\n## ', guideStart + heading.length)
 const instructions = guide.slice(guideStart + heading.length, guideEnd === -1 ? undefined : guideEnd)
 
 const temporary = await mkdtemp(join(tmpdir(), 'opticutlist-package-'))
@@ -52,7 +52,7 @@ try {
   }, null, 2) + '\n')
   await cp(join(repository, 'LICENSE'), join(application, 'LICENSE'))
   await writeFile(join(application, 'VERSION'), version + '\n')
-  await writeFile(join(application, 'README.md'), '# OptiCutList standalone\n' + instructions.replace(/^#### /gm, '## '))
+  await writeFile(join(application, 'README.md'), '# OptiCutList standalone\n' + instructions.replace(/^### /gm, '## '))
   await mkdir(resolve(output), { recursive: true })
   const archive = join(resolve(output), `opticutlist-${version}-self-hosted.tar.gz`)
   await execute('tar', ['-czf', archive, '-C', temporary, 'opticutlist'])

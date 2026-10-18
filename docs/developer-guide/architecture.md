@@ -1,8 +1,8 @@
 # Architecture
 
-[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Architecture & domain
+[Documentation home](../README.md) / [Developer Guide](README.md) / Architecture & domain
 
-The authoritative decisions remain in [ARCHITECTURE.md](../ARCHITECTURE.md) and [AGENTS.md](../AGENTS.md). This guide maps those decisions to current code.
+The authoritative decisions remain in [ARCHITECTURE.md](../../ARCHITECTURE.md) and [AGENTS.md](../../AGENTS.md). This guide maps those decisions to current code.
 
 **On this page:** [Runtime system context](#runtime-system-context) · [Layers and dependency direction](#layers-and-dependency-direction) · [Module dependency map and public interfaces](#module-dependency-map-and-public-interfaces) · [Data flow and state lifetime](#data-flow-and-state-lifetime) · [Routing](#routing) · [Guidance and implementation discrepancies](#guidance-and-implementation-discrepancies)
 
@@ -50,13 +50,13 @@ flowchart TD
   UI --> Presentation[Konva and shared presentation controls]
 ```
 
-- **Domain:** [models](../src/domain/model/), [geometry](../src/domain/geometry/), [cutting-tree](../src/domain/cutting-tree/) and [optimizer](../src/domain/optimizer/). Pure TypeScript; Zod is its only third-party runtime dependency. Schema types are inferred, not maintained as parallel entity interfaces.
-- **Application:** [repository ports](../src/application/persistence/repositories.ts), guarded entity services, transfers, result persistence, inventory reconciliation, worker service and PDF orchestration. These modules coordinate identities and transactions; they do not render Vue or create Dexie databases.
-- **Infrastructure:** [local-database.ts](../src/infrastructure/persistence/local-database.ts), [project-json.ts](../src/infrastructure/projects/project-json.ts) and [PDF renderers](../src/infrastructure/pdf/). These implement ports using concrete browser/storage/document libraries.
-- **UI:** Vue components and typed injection helpers under [UI](../src/ui/). Konva and PDF.js belong to presentation, not to domain algorithms. The UI `use-project-service.ts` is a Vue injection helper; `application/projects/project-service.ts` owns business coordination.
-- **Workers:** [handle-optimization-request.ts](../src/infrastructure/optimization/handle-optimization-request.ts) validates messages and delegates to domain code. It has no inventory side effects.
+- **Domain:** [models](../../src/domain/model/), [geometry](../../src/domain/geometry/), [cutting-tree](../../src/domain/cutting-tree/) and [optimizer](../../src/domain/optimizer/). Pure TypeScript; Zod is its only third-party runtime dependency. Schema types are inferred, not maintained as parallel entity interfaces.
+- **Application:** [repository ports](../../src/application/persistence/repositories.ts), guarded entity services, transfers, result persistence, inventory reconciliation, worker service and PDF orchestration. These modules coordinate identities and transactions; they do not render Vue or create Dexie databases.
+- **Infrastructure:** [local-database.ts](../../src/infrastructure/persistence/local-database.ts), [project-json.ts](../../src/infrastructure/projects/project-json.ts) and [PDF renderers](../../src/infrastructure/pdf/). These implement ports using concrete browser/storage/document libraries.
+- **UI:** Vue components and typed injection helpers under [UI](../../src/ui/). Konva and PDF.js belong to presentation, not to domain algorithms. The UI `use-project-service.ts` is a Vue injection helper; `application/projects/project-service.ts` owns business coordination.
+- **Workers:** [handle-optimization-request.ts](../../src/infrastructure/optimization/handle-optimization-request.ts) validates messages and delegates to domain code. It has no inventory side effects.
 
-[main.ts](../src/app/main.ts) selects service execution once through [createConfiguredStorage](../src/app/persistence.ts), supplies typed injection keys, creates router/Pinia and lazily imports the PDF renderer. Browser mode closes its database on unmount; server mode calls a fixed HTTP operation whitelist. The existing [Persistence contract](../src/application/persistence/repositories.ts) remains an in-process transaction boundary; `LocalPersistence` is a compatibility alias. Unset/`browser` build-time `VITE_STORAGE_MODE` selects Dexie; `server` selects the optional shared SQLite service, with no fallback or automatic migration. See [Self-hosting](storage.md#self-hosted-storage) for API, transactions and deployment security.
+[main.ts](../../src/app/main.ts) selects service execution once through [createConfiguredStorage](../../src/app/persistence.ts), supplies typed injection keys, creates router/Pinia and lazily imports the PDF renderer. Browser mode closes its database on unmount; server mode calls a fixed HTTP operation whitelist. The existing [Persistence contract](../../src/application/persistence/repositories.ts) remains an in-process transaction boundary; `LocalPersistence` is a compatibility alias. Unset/`browser` build-time `VITE_STORAGE_MODE` selects Dexie; `server` selects the optional shared SQLite service, with no fallback or automatic migration. See [Self-hosting](storage.md#self-hosted-storage) for API, transactions and deployment security.
 
 ## UI organization and migration
 
@@ -98,14 +98,14 @@ This graph abstracts individual imports; e.g. project transfers also use saved-p
 
 | Module | Public contracts / entry symbols | Important responsibility |
 | --- | --- | --- |
-| [application/projects/project-service.ts](../src/application/projects/project-service.ts) | `ProjectService`, `ProjectPartsRepository`, `createProjectService` | Project CRUD/selection validation, scoped Part ownership, adoption, deletion orchestration |
-| [application/catalog/catalog-repositories.ts](../src/application/catalog/catalog-repositories.ts) | `CatalogProductRepository`, `createCatalogRepositories` | Supplier/material/product reference guards and product ordering |
-| [application/inventory/stock-repository.ts](../src/application/inventory/stock-repository.ts) | `StockRepository`, `createStockRepository` | Manual inventory, exact product additions, contextual availability, ordering, receipt history |
-| [application/inventory/project-stock-service.ts](../src/application/inventory/project-stock-service.ts) | `createProjectStockService`, `reconcileProjectStock`, `ProjectStockPreview` | Derived offcut rows, Keep decisions and physical source reconciliation |
-| [application/plans/current-result-service.ts](../src/application/plans/current-result-service.ts) | `createCurrentResultService`, `CurrentResultState` | Current pointer, safe replacement and legacy adoption |
-| [application/plans/saved-plan-service.ts](../src/application/plans/saved-plan-service.ts) | `SavePlanInput`, `OpenedSavedPlan`, `prepareSavedPlan`, `readSavedPlan` | Validated snapshot preparation/reconstruction, retained legacy API |
-| [application/optimization/optimization-service.ts](../src/application/optimization/optimization-service.ts) | `OptimizationService`, `OptimizationWorkerPort` | Typed worker lifecycle and main-thread revalidation |
-| [application/export/cutting-plan-pdf-service.ts](../src/application/export/cutting-plan-pdf-service.ts) | `CuttingPlanPdfPort`, `prepareProjectPdfDocument`, `createCuttingPlanPdfService` | Detached validated documents and renderer boundary |
+| [application/projects/project-service.ts](../../src/application/projects/project-service.ts) | `ProjectService`, `ProjectPartsRepository`, `createProjectService` | Project CRUD/selection validation, scoped Part ownership, adoption, deletion orchestration |
+| [application/catalog/catalog-repositories.ts](../../src/application/catalog/catalog-repositories.ts) | `CatalogProductRepository`, `createCatalogRepositories` | Supplier/material/product reference guards and product ordering |
+| [application/inventory/stock-repository.ts](../../src/application/inventory/stock-repository.ts) | `StockRepository`, `createStockRepository` | Manual inventory, exact product additions, contextual availability, ordering, receipt history |
+| [application/inventory/project-stock-service.ts](../../src/application/inventory/project-stock-service.ts) | `createProjectStockService`, `reconcileProjectStock`, `ProjectStockPreview` | Derived offcut rows, Keep decisions and physical source reconciliation |
+| [application/plans/current-result-service.ts](../../src/application/plans/current-result-service.ts) | `createCurrentResultService`, `CurrentResultState` | Current pointer, safe replacement and legacy adoption |
+| [application/plans/saved-plan-service.ts](../../src/application/plans/saved-plan-service.ts) | `SavePlanInput`, `OpenedSavedPlan`, `prepareSavedPlan`, `readSavedPlan` | Validated snapshot preparation/reconstruction, retained legacy API |
+| [application/optimization/optimization-service.ts](../../src/application/optimization/optimization-service.ts) | `OptimizationService`, `OptimizationWorkerPort` | Typed worker lifecycle and main-thread revalidation |
+| [application/export/cutting-plan-pdf-service.ts](../../src/application/export/cutting-plan-pdf-service.ts) | `CuttingPlanPdfPort`, `prepareProjectPdfDocument`, `createCuttingPlanPdfService` | Detached validated documents and renderer boundary |
 | Transfer modules | `createProjectTransferService`, `createPartsTransferService`, `createCatalogTransferService`, `createStockTransferService` | Preview, confirmation, revalidation and atomic transfer-specific policy |
 
 ### Dependency injection wiring
@@ -114,7 +114,7 @@ The composition root supplies **guarded** catalog materials/suppliers/products a
 
 UI composables export a typed `InjectionKey` plus `use...` helper. Required project/Part services throw on missing setup where their helper requires it; optional services expose unavailable states in the consuming UI. Do not replace a missing injected service with a database singleton.
 
-[ProjectWorkspace.vue](../src/ui/layouts/ProjectWorkspace.vue) validates route identity, then supplies `projectIdKey`, project-scoped `partRepositoryKey` and `cuttingWorkspaceStateKey` to children. These scopes prevent a global Part page from accidentally editing another project's entities.
+[ProjectWorkspace.vue](../../src/ui/layouts/ProjectWorkspace.vue) validates route identity, then supplies `projectIdKey`, project-scoped `partRepositoryKey` and `cuttingWorkspaceStateKey` to children. These scopes prevent a global Part page from accidentally editing another project's entities.
 
 ```mermaid
 flowchart TD
@@ -167,7 +167,7 @@ sequenceDiagram
 | Theme preference | LocalStorage; resolved theme on document root |
 | Last intentional Projects destination and per-project tab | Injected reactive session state |
 
-[cutting-workspace-state.ts](../src/ui/state/cutting-workspace-state.ts) shares transient document-readiness/invalidation flags, not the cutting result itself. The shell's [App.vue](../src/ui/layouts/App.vue) uses KeepAlive for selected views, preserving their component-owned workspace state across supported navigation. Caching must not cause a stale worker response or queued write to enter another project. Views use revisions/cancellation signals and dispose observers, worker services, PDF previews and canvas stages.
+[cutting-workspace-state.ts](../../src/ui/state/cutting-workspace-state.ts) shares transient document-readiness/invalidation flags, not the cutting result itself. The shell's [App.vue](../../src/ui/layouts/App.vue) uses KeepAlive for selected views, preserving their component-owned workspace state across supported navigation. Caching must not cause a stale worker response or queued write to enter another project. Views use revisions/cancellation signals and dispose observers, worker services, PDF previews and canvas stages.
 
 ## Loading and editing a project: actual sequence
 
@@ -201,7 +201,7 @@ sequenceDiagram
 
 ## Persistent changes and reactive drafts
 
-Pinia is available but the only current `defineStore` is [useToastStore](../src/ui/stores/toast-store.ts). Most UI state is component-owned `ref`, `shallowRef`, `computed` or injected `reactive` state. There is no global entity cache or automatic Dexie liveQuery subscription.
+Pinia is available but the only current `defineStore` is [useToastStore](../../src/ui/stores/toast-store.ts). Most UI state is component-owned `ref`, `shallowRef`, `computed` or injected `reactive` state. There is no global entity cache or automatic Dexie liveQuery subscription.
 
 Materials autosave illustrates the distinction: selected ID arrays are drafts; saved arrays are the last confirmed snapshot; `dirty` is derived. `save()` serializes through one `pendingSave` Promise, while `persistSelections()` loops until the newest draft is stored. It rereads the project before each full-record update to preserve new Part ownership. A later draft is not overwritten by an earlier completion. Lifecycle/window-focus and Settings import revisions trigger explicit refreshes, not polling.
 
@@ -236,7 +236,7 @@ Read and update in the View above are separate calls; the service repeats author
 
 ## Routing
 
-[createAppRouter](../src/app/router/index.ts) accepts an injected history for tests; production defaults to hash history.
+[createAppRouter](../../src/app/router/index.ts) accepts an injected history for tests; production defaults to hash history.
 
 | Route | Current role |
 | --- | --- |
@@ -250,15 +250,15 @@ Read and update in the View above are separate calls; the service repeats author
 | `export` child alias | Cutting Plans compatibility link |
 | `/parts`, `/materials` | Redirect to Projects |
 
-Settings is a shell modal, **not a Settings route**. Project IDs are schema-validated and loaded through [ProjectWorkspace.vue](../src/ui/layouts/ProjectWorkspace.vue). Its compact context/navigation header derives active state from RouterLink; it is neither a completion wizard nor global breadcrumbs. All tabs are directly navigable; the document view itself requires a valid current result.
+Settings is a shell modal, **not a Settings route**. Project IDs are schema-validated and loaded through [ProjectWorkspace.vue](../../src/ui/layouts/ProjectWorkspace.vue). Its compact context/navigation header derives active state from RouterLink; it is neither a completion wizard nor global breadcrumbs. All tabs are directly navigable; the document view itself requires a valid current result.
 
 ## Shared UI and assets
 
-Use [AppButton](../src/ui/components/common/AppButton.vue) for ordinary actions: primary, secondary, ghost or destructive; default/small sizes; labeled icon-only and guarded loading states. [AppDialog](../src/ui/components/common/AppDialog.vue) uses native modal dialog behavior, a shared close control, accessible heading, busy dismissal guard and focus restoration. [AppSplitButton](../src/ui/components/common/AppSplitButton.vue) centralizes independent action/menu targets and keyboard dismissal/navigation.
+Use [AppButton](../../src/ui/components/common/AppButton.vue) for ordinary actions: primary, secondary, ghost or destructive; default/small sizes; labeled icon-only and guarded loading states. [AppDialog](../../src/ui/components/common/AppDialog.vue) uses native modal dialog behavior, a shared close control, accessible heading, busy dismissal guard and focus restoration. [AppSplitButton](../../src/ui/components/common/AppSplitButton.vue) centralizes independent action/menu targets and keyboard dismissal/navigation.
 
-[FormField](../src/ui/components/common/FormField.vue) associates labels, hints and errors. Atelier Light/Dark palette roles live in [styles.css](../src/ui/styles.css): canvas/sidebar/card surfaces, neutral hover, green selection, accessible control borders and state colors. Root-only `cutting-*` inks keep material drawings stable across themes. Inputs/selects/textareas use semantic classes in [styles.css](../src/ui/styles.css); there is no dedicated shared textarea component. [AppCheckbox](../src/ui/components/common/AppCheckbox.vue) exposes native indeterminate state and `aria-checked="mixed"`. [toast-store.ts](../src/ui/stores/toast-store.ts) deduplicates active messages; one shell host renders them. Success timers default to four seconds; persistent errors require dismissal. Toast progress pauses on hover/focus and respects reduced motion.
+[FormField](../../src/ui/components/common/FormField.vue) associates labels, hints and errors. Atelier Light/Dark palette roles live in [styles.css](../../src/ui/styles.css): canvas/sidebar/card surfaces, neutral hover, green selection, accessible control borders and state colors. Root-only `cutting-*` inks keep material drawings stable across themes. Inputs/selects/textareas use semantic classes in [styles.css](../../src/ui/styles.css); there is no dedicated shared textarea component. [AppCheckbox](../../src/ui/components/common/AppCheckbox.vue) exposes native indeterminate state and `aria-checked="mixed"`. [toast-store.ts](../../src/ui/stores/toast-store.ts) deduplicates active messages; one shell host renders them. Success timers default to four seconds; persistent errors require dismissal. Toast progress pauses on hover/focus and respects reduced motion.
 
-Material thumbnails come from preset identity and the validated [materials.json](../public/materials/materials.json) manifest, using `BASE_URL` through [material-library.ts](../src/ui/utils/material-library.ts). The current manifest is version 2 with preview paths, not per-item textures. [PanelDimensionPreview.vue](../src/ui/components/common/PanelDimensionPreview.vue) uses uniform solid fill and deterministic SVG grain. Supplier logos use only a validated origin's direct favicon via [supplier-favicon.ts](../src/ui/utils/supplier-favicon.ts).
+Material thumbnails come from preset identity and the validated [materials.json](../../public/materials/materials.json) manifest, using `BASE_URL` through [material-library.ts](../../src/ui/utils/material-library.ts). The current manifest is version 2 with preview paths, not per-item textures. [PanelDimensionPreview.vue](../../src/ui/components/common/PanelDimensionPreview.vue) uses uniform solid fill and deterministic SVG grain. Supplier logos use only a validated origin's direct favicon via [supplier-favicon.ts](../../src/ui/utils/supplier-favicon.ts).
 
 ## Error channels and design trade-offs
 
@@ -277,7 +277,7 @@ See [storage reference](storage.md) for physical tables/transactions, [workflow 
 
 ### Concrete adapter exceptions and review scope
 
-UI presentation adapters intentionally depend on PDF.js (`ui/pdf/pdf-preview.ts`) and Konva (`ui/canvas/plan-canvas.ts`). They render documents and scenes; neither accesses persistence. Cover-image decoding now goes through the existing PDF application service's optional `readCoverImage` port. [Bootstrap](../src/app/main.ts) supplies the lazy [infrastructure decoder](../src/infrastructure/pdf/cover-image.ts); UI has no direct infrastructure import. Application inputs use a structural file contract, not a Vue/DOM dependency. No decoder behavior or PDF output changes.
+UI presentation adapters intentionally depend on PDF.js (`ui/pdf/pdf-preview.ts`) and Konva (`ui/canvas/plan-canvas.ts`). They render documents and scenes; neither accesses persistence. Cover-image decoding now goes through the existing PDF application service's optional `readCoverImage` port. [Bootstrap](../../src/app/main.ts) supplies the lazy [infrastructure decoder](../../src/infrastructure/pdf/cover-image.ts); UI has no direct infrastructure import. Application inputs use a structural file contract, not a Vue/DOM dependency. No decoder behavior or PDF output changes.
 
 
 Authoritative guidance and code should be read together. In particular, project-aware planning availability does not imply every legacy consumer uses the same query; the [stock call-path note](stock-management.md#call-path-difference-worth-reviewing) records one area for targeted regression review. Likewise transaction atomicity does not imply all live entity updates use optimistic concurrency or all history displays query every ledger type.
@@ -288,20 +288,20 @@ These are observations, not permission to weaken authoritative rules:
 | Existing statement | Current implementation and evidence |
 | --- | --- |
 | Root README says only shell/tooling exists | Feature directories implement project workflow, inventory, optimizer, transfers and PDF. README status is stale. |
-| Earlier developer guides said Pages deployment was commented out | The current [ci.yml](../.github/workflows/ci.yml) is validation-only; [cd.yml](../.github/workflows/cd.yml) independently owns tag-only Pages deployment and master Wiki publication. Live repository settings remain unverified. |
-| Historical root architecture passages describe manual project panel quantities/default one | [CuttingProject](../src/domain/model/cutting-project.ts) retains `panelQuantities` for compatibility; new runs use demand-bounded catalog supply and actual stock counts. No current manual quantity controls. |
-| Earlier documentation describes Parts exchange downloads | Current AGENTS and [parts-json.md](parts-json.md) correctly say import-only; no exporter remains in [parts-transfer-service.ts](../src/application/projects/parts-transfer-service.ts). |
-| Older broad catalog descriptions exclude inventory creation | Current AGENTS explicitly permits confirmed Add to stock through guarded `StockRepository.addFromProduct`; catalog records remain unchanged. See [stock-repository.ts](../src/application/inventory/stock-repository.ts). |
+| Earlier developer guides said Pages deployment was commented out | The current [ci.yml](../../.github/workflows/ci.yml) is validation-only; [cd.yml](../../.github/workflows/cd.yml) independently owns tag-only Pages deployment and master Wiki publication. Live repository settings remain unverified. |
+| Historical root architecture passages describe manual project panel quantities/default one | [CuttingProject](../../src/domain/model/cutting-project.ts) retains `panelQuantities` for compatibility; new runs use demand-bounded catalog supply and actual stock counts. No current manual quantity controls. |
+| Earlier documentation describes Parts exchange downloads | Current AGENTS and [parts-json.md](parts-json.md) correctly say import-only; no exporter remains in [parts-transfer-service.ts](../../src/application/projects/parts-transfer-service.ts). |
+| Older broad catalog descriptions exclude inventory creation | Current AGENTS explicitly permits confirmed Add to stock through guarded `StockRepository.addFromProduct`; catalog records remain unchanged. See [stock-repository.ts](../../src/application/inventory/stock-repository.ts). |
 | Older entity summary mentions availability metadata as ordinary product UI | `availability` remains required in SupplierProduct for legacy validation/eligibility, but forms hide it and new records use `unknown`. Price is optional. |
 | Guidance names Playwright | No Playwright dependency, configuration or browser test command is currently provided. Vitest/jsdom tests do not establish real-browser layout behavior. |
 | Older root architecture passages gate Cutting Plans navigation | Current AGENTS and header permit all five links; document generation is gated inside the view. |
 
 ## Limitations and maintenance risks
 
-The project optimizer is a bounded heuristic, not an exhaustive solver. Built-in PDF fonts cannot encode arbitrary Unicode. Browser-local data and partial transfers are not a full inventory-audit backup. Large workspace components coordinate substantial async state. [CuttingFinalization.vue](../src/ui/components/optimization/CuttingFinalization.vue), [PdfExportControls.vue](../src/ui/components/optimization/PdfExportControls.vue) and explicit confirmation UI/services remain in source/tests; the current routed document flow uses CuttingPlansWorkspace instead. Do not mistake these older components for the active export interface or delete historical services/receipts on appearance alone.
+The project optimizer is a bounded heuristic, not an exhaustive solver. Built-in PDF fonts cannot encode arbitrary Unicode. Browser-local data and partial transfers are not a full inventory-audit backup. Large workspace components coordinate substantial async state. [CuttingFinalization.vue](../../src/ui/components/optimization/CuttingFinalization.vue), [PdfExportControls.vue](../../src/ui/components/optimization/PdfExportControls.vue) and explicit confirmation UI/services remain in source/tests; the current routed document flow uses CuttingPlansWorkspace instead. Do not mistake these older components for the active export interface or delete historical services/receipts on appearance alone.
 
 **Recommendations:** reconcile the remaining stale root summaries with the already updated AGENTS rules; keep new business decisions in application/domain services, and cover revisions/cancellation when touching large components. An automated architectural import-boundary checker is not configured by the current ESLint rules; dependency discipline relies on review and tests.
 
 ---
 
-**Continue exploring:** [Domain & business rules](domain-model.md) · [Trace a workflow](workflows.md) · [Documentation home](README.md)
+**Continue exploring:** [Domain & business rules](domain-model.md) · [Trace a workflow](workflows.md) · [Documentation home](../README.md)

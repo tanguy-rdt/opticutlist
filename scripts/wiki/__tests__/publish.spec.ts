@@ -261,7 +261,7 @@ describe('Wiki generation and managed synchronization', () => {
   it('builds the actual documentation without publishing or modifying it', () => {
     const output = buildWiki({ source: process.cwd(), destination: '', repository: 'example/opticutlist', branch: 'master' })
     expect(output.has('Home.md')).toBe(true)
-    expect(output.has('Docs-wiki-publishing.md')).toBe(true)
+    expect(output.has('Docs-developer-guide--wiki-publishing.md')).toBe(true)
   })
 
   it('publishes PNG, JPEG and WebP unchanged, including ordinary JPEG metadata', () => {

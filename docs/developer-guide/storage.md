@@ -1,16 +1,16 @@
 # Persistence backends and browser storage
 
-[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Data & persistence
+[Documentation home](../README.md) / [Developer Guide](README.md) / Data & persistence
 
-This is the physical-storage companion to [persistence and JSON](persistence-and-json.md). Exact contracts are [Repositories / Persistence](../src/application/persistence/repositories.ts), [local-database.ts](../src/infrastructure/persistence/local-database.ts) and the linked schemas below. Relationships are application-enforced; IndexedDB has no foreign-key or automatic cascade rules here.
+This is the physical-storage companion to [persistence and JSON](persistence-and-json.md). Exact contracts are [Repositories / Persistence](../../src/application/persistence/repositories.ts), [local-database.ts](../../src/infrastructure/persistence/local-database.ts) and the linked schemas below. Relationships are application-enforced; IndexedDB has no foreign-key or automatic cascade rules here.
 
 **On this page:** [Deployment & operations](deployment.md) · [Self-hosted API & SQLite](#self-hosted-storage) · [Storage deployment modes](#storage-deployment-modes) · [Adapter construction and transaction architecture](#adapter-construction-and-transaction-architecture) · [Complete table catalog](#complete-table-catalog) · [CRUD read/write mechanics](#crud-readwrite-mechanics) · [Atomic write sets](#atomic-write-sets) · [Versions: three separate axes](#versions-three-separate-axes) · [Deletion and recovery boundaries](#deletion-and-recovery-boundaries)
 
 ## Storage deployment modes
 
-The default browser adapter is unchanged: IndexedDB database `opticutlist`, schema v8, existing keys and strict domain validation. Application services use [Persistence / Repositories](../src/application/persistence/repositories.ts), not Dexie. `LocalPersistence` remains a compatibility alias.
+The default browser adapter is unchanged: IndexedDB database `opticutlist`, schema v8, existing keys and strict domain validation. Application services use [Persistence / Repositories](../../src/application/persistence/repositories.ts), not Dexie. `LocalPersistence` remains a compatibility alias.
 
-[createConfiguredStorage](../src/app/persistence.ts) selects service execution at bootstrap. Unset/`browser` `VITE_STORAGE_MODE` uses local services and Dexie; `server` uses HTTP adapters to the same guarded services running beside SQLite. Unknown configuration and server failures never fall back to browser storage. `npm run build` remains the static application; `npm run build:self-hosted` explicitly builds the server deployment. There is no hostname detection or user toggle.
+[createConfiguredStorage](../../src/app/persistence.ts) selects service execution at bootstrap. Unset/`browser` `VITE_STORAGE_MODE` uses local services and Dexie; `server` uses HTTP adapters to the same guarded services running beside SQLite. Unknown configuration and server failures never fall back to browser storage. `npm run build` remains the static application; `npm run build:self-hosted` explicitly builds the server deployment. There is no hostname detection or user toggle.
 
 The optional Node service, SQLite schema, transaction scopes, shared ownership, backup procedure and no-auth security restrictions are documented in [Self-hosting](storage.md#self-hosted-storage). Browser data is still origin/profile-local. Switching modes does not upload or synchronize it. Existing JSON transfers remain partial exchanges, not complete inventory/audit backups.
 
@@ -18,7 +18,7 @@ Theme preferences remain device-local; navigation and editor state remain transi
 
 ## Adapter construction and transaction architecture
 
-`createLocalPersistence(name = DATABASE_NAME, options?: DexieOptions)` constructs an independent Dexie connection; it is not a singleton. Options allow isolated IndexedDB factories in tests. [Startup selection](../src/app/persistence.ts) creates the production browser instance for `main.ts`; `main.ts` closes it when the app unmounts. Repositories can cause Dexie to open lazily; `open()` is an explicit typed-result API, not a mandatory call before every method.
+`createLocalPersistence(name = DATABASE_NAME, options?: DexieOptions)` constructs an independent Dexie connection; it is not a singleton. Options allow isolated IndexedDB factories in tests. [Startup selection](../../src/app/persistence.ts) creates the production browser instance for `main.ts`; `main.ts` closes it when the app unmounts. Repositories can cause Dexie to open lazily; `open()` is an explicit typed-result API, not a mandatory call before every method.
 
 ```mermaid
 flowchart TD
@@ -41,19 +41,19 @@ Every key is the record's `id`, with no auto-increment or compound primary key. 
 
 | Table | Primary key | Secondary indexes | Record and purpose | Lifecycle |
 | --- | --- | --- | --- | --- |
-| `materials` | MaterialId | None | [Material](../src/domain/model/material.ts), compatibility identity and optional preset | Shared; deletion checks selected materials, Parts, products and stock |
-| `parts` | PartId | None | [Part](../src/domain/model/part.ts), finished demand | Owned through `projects.partIds`; legacy unassigned records remain |
-| `suppliers` | SupplierId | None | [Supplier](../src/domain/model/supplier.ts), supplier metadata | Shared; products block deletion |
-| `supplierProducts` | SupplierProductId | None | [SupplierProduct](../src/domain/model/supplier-product.ts), external planning reference | Shared; project choices and purchase-stock provenance block deletion |
-| `stockItems` | StockItemId | None | [StockItem](../src/domain/model/stock-item.ts), currently owned available quantity | Depleted records may be deleted; exact historical snapshots remain elsewhere |
-| `projects` | CuttingProjectId | None | [CuttingProject](../src/domain/model/cutting-project.ts), ownership, selections, settings | Guarded create/update; coordinated deletion |
-| `savedPlanSummaries` | SavedCuttingPlanId | `projectId` | [SavedPlanSummary](../src/domain/model/saved-cutting-plan.ts), name/owner/date | Current, legacy and audited origins |
-| `savedPlanContents` | SavedCuttingPlanId | None | [SavedPlanContents](../src/domain/model/saved-cutting-plan.ts), compact validated historical payload | Same identity as summary; deleted together where safe |
-| `cuttingConfirmations` | SavedCuttingPlanId | `projectId` | [CuttingConfirmation](../src/domain/model/cutting-confirmation.ts), immutable legacy receipt | Retained across project deletion |
-| `currentCuttingResults` | CuttingProjectId | None | [CurrentCuttingResult](../src/domain/model/current-cutting-result.ts), planId and preserveLegacy | At most one pointer per project |
-| `projectStock` | CuttingProjectId | None | [ProjectStock](../src/domain/model/project-stock.ts), decisions, active consumption, embedded movements/audit | Preserved as named audit after deletion |
-| `stockOrders` | MaterialId | None | [StockOrder](../src/application/inventory/stock-order.ts), ranked Stock IDs | Presentation metadata; stale IDs ignored by sorting |
-| `catalogOrders` | SupplierId | None | [CatalogOrder](../src/application/catalog/catalog-order.ts), ranked product IDs | Presentation metadata; per-material views filter supplier-wide order |
+| `materials` | MaterialId | None | [Material](../../src/domain/model/material.ts), compatibility identity and optional preset | Shared; deletion checks selected materials, Parts, products and stock |
+| `parts` | PartId | None | [Part](../../src/domain/model/part.ts), finished demand | Owned through `projects.partIds`; legacy unassigned records remain |
+| `suppliers` | SupplierId | None | [Supplier](../../src/domain/model/supplier.ts), supplier metadata | Shared; products block deletion |
+| `supplierProducts` | SupplierProductId | None | [SupplierProduct](../../src/domain/model/supplier-product.ts), external planning reference | Shared; project choices and purchase-stock provenance block deletion |
+| `stockItems` | StockItemId | None | [StockItem](../../src/domain/model/stock-item.ts), currently owned available quantity | Depleted records may be deleted; exact historical snapshots remain elsewhere |
+| `projects` | CuttingProjectId | None | [CuttingProject](../../src/domain/model/cutting-project.ts), ownership, selections, settings | Guarded create/update; coordinated deletion |
+| `savedPlanSummaries` | SavedCuttingPlanId | `projectId` | [SavedPlanSummary](../../src/domain/model/saved-cutting-plan.ts), name/owner/date | Current, legacy and audited origins |
+| `savedPlanContents` | SavedCuttingPlanId | None | [SavedPlanContents](../../src/domain/model/saved-cutting-plan.ts), compact validated historical payload | Same identity as summary; deleted together where safe |
+| `cuttingConfirmations` | SavedCuttingPlanId | `projectId` | [CuttingConfirmation](../../src/domain/model/cutting-confirmation.ts), immutable legacy receipt | Retained across project deletion |
+| `currentCuttingResults` | CuttingProjectId | None | [CurrentCuttingResult](../../src/domain/model/current-cutting-result.ts), planId and preserveLegacy | At most one pointer per project |
+| `projectStock` | CuttingProjectId | None | [ProjectStock](../../src/domain/model/project-stock.ts), decisions, active consumption, embedded movements/audit | Preserved as named audit after deletion |
+| `stockOrders` | MaterialId | None | [StockOrder](../../src/application/inventory/stock-order.ts), ranked Stock IDs | Presentation metadata; stale IDs ignored by sorting |
+| `catalogOrders` | SupplierId | None | [CatalogOrder](../../src/application/catalog/catalog-order.ts), ranked product IDs | Presentation metadata; per-material views filter supplier-wide order |
 
 A `StockMovement` concept exists as embedded ProjectStock movement records and receipt arrays; there is **no standalone stockMovements table**. Similarly, offcut decisions are embedded entries, not an independent offcuts store. Do not add direct table lookups for conceptual entities that are stored as snapshots.
 
@@ -281,7 +281,7 @@ The ready hook rejects native versions greater than `DATABASE_VERSION * 10`; und
 
 Generic delete has no cascade. Guarded supplier deletion refuses existing products; product deletion refuses selected project references or live purchase-linked stock; material deletion refuses direct project choices and live Part/product/stock references. Historical snapshot references intentionally do not always block live catalog deletion.
 
-Scoped Part delete removes its ID from the owner atomically. Project deletion is coordinated by [project-deletion.ts](../src/application/projects/project-deletion.ts), including a transaction-time replay of inventory history before optional restoration. It retains receipts and an archived named ledger, not a hidden active project. Order records are not a replacement for referential ownership: stale ranks are tolerated/ignored and export filters stale IDs.
+Scoped Part delete removes its ID from the owner atomically. Project deletion is coordinated by [project-deletion.ts](../../src/application/projects/project-deletion.ts), including a transaction-time replay of inventory history before optional restoration. It retains receipts and an archived named ledger, not a hidden active project. Order records are not a replacement for referential ownership: stale ranks are tolerated/ignored and export filters stale IDs.
 
 There is no automatic corrupt-record quarantine, repair UI, full application backup or cross-tab revision conflict protocol. On `invalidRecord`, preserve the original storage and inspect the reported path/schema. `notFound` can be a real dependency issue; do not create replacements with matching names. Browser quota, permission or IndexedDB errors become storage failures; Retry does not promise the underlying condition is resolved. Storage eviction/privacy behavior and concurrent-tab UX remain browser-level risks.
 
@@ -362,15 +362,15 @@ flowchart TD
   UI --> Worker[Browser optimization worker]
 ```
 
-[createConfiguredStorage](../src/app/persistence.ts) composes the service interfaces injected by [main.ts](../src/app/main.ts). Unset/`browser` `VITE_STORAGE_MODE` constructs the unchanged Dexie adapter and local services. `server` constructs [HTTP service adapters](../src/infrastructure/http/storage-services.ts). Unknown modes fail; unavailable server storage returns a clear typed failure and never falls back to IndexedDB.
+[createConfiguredStorage](../../src/app/persistence.ts) composes the service interfaces injected by [main.ts](../../src/app/main.ts). Unset/`browser` `VITE_STORAGE_MODE` constructs the unchanged Dexie adapter and local services. `server` constructs [HTTP service adapters](../../src/infrastructure/http/storage-services.ts). Unknown modes fail; unavailable server storage returns a clear typed failure and never falls back to IndexedDB.
 
-[createStorageServices](../src/application/storage/services.ts) is shared browser/server composition for the existing catalog, project, Parts, stock, current-result, offcut, confirmation and transfer use cases. The backend executes these operations, not a separate copy of their business rules. The existing [Persistence contract](../src/application/persistence/repositories.ts) remains an **in-process** transaction boundary. A callback is never sent over HTTP.
+[createStorageServices](../../src/application/storage/services.ts) is shared browser/server composition for the existing catalog, project, Parts, stock, current-result, offcut, confirmation and transfer use cases. The backend executes these operations, not a separate copy of their business rules. The existing [Persistence contract](../../src/application/persistence/repositories.ts) remains an **in-process** transaction boundary. A callback is never sent over HTTP.
 
 Theme and navigation preferences remain browser-local. Business records, project settings, cover images and accepted plans are shared through SQLite in server mode. There is no live synchronization of already-open screens; reloading/rereading is needed to see other clients' changes.
 
 ### API contract
 
-[api-contract.ts](../src/application/storage/api-contract.ts) defines every supported method, argument tuple and response codec. [operations.ts](../server/operations.ts) maps the fixed whitelist to guarded application operations. The paths below are prefixed by `/api/v1/`; dots in contract names become slashes.
+[api-contract.ts](../../src/application/storage/api-contract.ts) defines every supported method, argument tuple and response codec. [operations.ts](../../server/operations.ts) maps the fixed whitelist to guarded application operations. The paths below are prefixed by `/api/v1/`; dots in contract names become slashes.
 
 | Paths | Methods and operations |
 | --- | --- |
@@ -401,7 +401,7 @@ The host/origin checks, non-simple application header, JSON content type and lac
 
 ### SQLite model and migrations
 
-[sqlite.ts](../server/sqlite.ts) implements the existing repositories. Migration **1** creates thirteen strict entity tables with stable text IDs and schema-validated JSON records:
+[sqlite.ts](../../server/sqlite.ts) implements the existing repositories. Migration **1** creates thirteen strict entity tables with stable text IDs and schema-validated JSON records:
 
 | Tables | Ownership and additional database constraints |
 | --- | --- |
@@ -449,13 +449,13 @@ Browser data remains in its original origin/profile. There is no automatic brows
 
 `npm run test:server` runs the new Node-environment tests under `server/__tests__/`, using real temporary file databases and HTTP listeners. They cover migrations/restart, ignored-operation rollback, foreign keys, expired scopes, request validation, concurrent stock changes, deduplication, JSON workflows, unavailable storage and idempotent current-result/offcut reconciliation. `npm run test:unit` also includes them. Existing browser tests remain unchanged.
 
-The integration audit adds paired real-storage workflows in [storage-integration.spec.ts](../server/__tests__/storage-integration.spec.ts): isolated fake-indexeddb connections use the unchanged Dexie adapter, while independent HTTP service clients use a temporary SQLite file. The same assertions cover project/material selections, scoped Parts, catalog and stock CRUD/presets/ordering, all JSON transfers, cutting/PDF settings and cover persistence, accepted plans, real vector PDF bytes, offcuts, restart and safe deletion/restoration. Browser optimizer functions supply the fixture plan; these tests do not run a browser Web Worker or click through a browser UI.
+The integration audit adds paired real-storage workflows in [storage-integration.spec.ts](../../server/__tests__/storage-integration.spec.ts): isolated fake-indexeddb connections use the unchanged Dexie adapter, while independent HTTP service clients use a temporary SQLite file. The same assertions cover project/material selections, scoped Parts, catalog and stock CRUD/presets/ordering, all JSON transfers, cutting/PDF settings and cover persistence, accepted plans, real vector PDF bytes, offcuts, restart and safe deletion/restoration. Browser optimizer functions supply the fixture plan; these tests do not run a browser Web Worker or click through a browser UI.
 
-[http-boundaries.spec.ts](../server/__tests__/http-boundaries.spec.ts) checks malformed/chunked/oversized requests, invalid references, parameterized lookup and a real mid-write SQL failure. A temporary trigger forces the second stock insert to fail: both the first insert and the request receipt must roll back, and database details must stay out of the API response. [Transport tests](../src/infrastructure/http/__tests__/storage-services.spec.ts) cover timeout, invalid responses and validation classification; [composition tests](../src/app/__tests__/storage-configuration.spec.ts) verify backend-free default operation and no fallback. Existing tests/fixtures remain unchanged.
+[http-boundaries.spec.ts](../../server/__tests__/http-boundaries.spec.ts) checks malformed/chunked/oversized requests, invalid references, parameterized lookup and a real mid-write SQL failure. A temporary trigger forces the second stock insert to fail: both the first insert and the request receipt must roll back, and database details must stay out of the API response. [Transport tests](../../src/infrastructure/http/__tests__/storage-services.spec.ts) cover timeout, invalid responses and validation classification; [composition tests](../../src/app/__tests__/storage-configuration.spec.ts) verify backend-free default operation and no fallback. Existing tests/fixtures remain unchanged.
 
 The ordinary `npm run build` still produces the backend-free GitHub Pages application. Self-hosted builds and startup do not modify IndexedDB schemas or release tags. No accounts, automatic migration, cloud sync, network optimization, live updates or multi-tenant isolation are implemented. Public hosting requires a separately designed access-control boundary; do not interpret a working shared API as approval for unauthenticated public exposure.
 
 
 ---
 
-**Continue exploring:** [Inventory lifecycle](stock-management.md) · [Migration recipe](maintenance.md#add-a-dexie-table-or-migration) · [Documentation home](README.md)
+**Continue exploring:** [Inventory lifecycle](stock-management.md) · [Migration recipe](maintenance.md#add-a-dexie-table-or-migration) · [Documentation home](../README.md)

@@ -1,4 +1,4 @@
-/** Editorial order and short labels; existing technical paths keep their public Wiki URLs. */
+/** Editorial order and short labels for the two documentation trees. */
 export const WIKI_NAVIGATION = [
   {
     title: 'User Guide',
@@ -17,25 +17,25 @@ export const WIKI_NAVIGATION = [
   {
     title: 'Developer Guide',
     pages: [
-      ['developer-guide.md', 'Reference index'],
-      ['getting-started.md', 'Developer setup'],
-      ['architecture.md', 'Architecture'],
-      ['domain-model.md', 'Domain & business rules'],
-      ['features.md', 'Application & UI'],
-      ['workflows.md', 'Workflow traces'],
-      ['optimization.md', 'Optimization engine'],
-      ['stock-management.md', 'Stock lifecycle'],
-      ['persistence-and-json.md', 'Persistence overview'],
-      ['storage.md', 'Storage internals & API'],
-      ['deployment.md', 'Deployment & operations'],
-      ['json-formats.md', 'JSON compatibility'],
-      ['parts-json.md', 'Parts file reference'],
-      ['stock-json-format.md', 'Stock file reference'],
-      ['pdf-generation.md', 'PDF rendering'],
-      ['testing.md', 'Testing'],
-      ['maintenance.md', 'Safe contributions'],
-      ['ci-cd.md', 'CI & releases'],
-      ['wiki-publishing.md', 'Wiki publishing'],
+      ['developer-guide/README.md', 'Reference index'],
+      ['developer-guide/getting-started.md', 'Developer setup'],
+      ['developer-guide/architecture.md', 'Architecture'],
+      ['developer-guide/domain-model.md', 'Domain & business rules'],
+      ['developer-guide/features.md', 'Application & UI'],
+      ['developer-guide/workflows.md', 'Workflow traces'],
+      ['developer-guide/optimization.md', 'Optimization engine'],
+      ['developer-guide/stock-management.md', 'Stock lifecycle'],
+      ['developer-guide/persistence-and-json.md', 'Persistence overview'],
+      ['developer-guide/storage.md', 'Storage internals & API'],
+      ['developer-guide/deployment.md', 'Deployment & operations'],
+      ['developer-guide/json-formats.md', 'JSON compatibility'],
+      ['developer-guide/parts-json.md', 'Parts file reference'],
+      ['developer-guide/stock-json-format.md', 'Stock file reference'],
+      ['developer-guide/pdf-generation.md', 'PDF rendering'],
+      ['developer-guide/testing.md', 'Testing'],
+      ['developer-guide/maintenance.md', 'Safe contributions'],
+      ['developer-guide/ci-cd.md', 'CI & releases'],
+      ['developer-guide/wiki-publishing.md', 'Wiki publishing'],
     ]
   },
 ] as const
