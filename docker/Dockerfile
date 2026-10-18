@@ -13,6 +13,7 @@ FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     OCL_HOST=0.0.0.0 \
     OCL_PORT=3000 \
+    OCL_ORIGIN=http://localhost:3000 \
     OCL_DATABASE_PATH=/data/opticutlist.sqlite \
     OCL_FRONTEND_PATH=/app/dist-self-hosted
 WORKDIR /app

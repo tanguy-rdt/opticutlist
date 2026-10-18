@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { get } from 'node:http'
+import { get, type IncomingMessage } from 'node:http'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { DatabaseSync } from 'node:sqlite'
@@ -14,17 +14,55 @@ import { createSqlitePersistence } from '../sqlite'
 const execute = promisify(execFile)
 
 // Exercise the actual image probe, including its internal-port/external-Host handling.
-async function dockerProbe(port: number, origin: string) {
+async function dockerProbe(port: number, origin?: string) {
   const dockerfile = await readFile('docker/Dockerfile', 'utf8')
+  const configuredOrigin = origin ?? dockerfile.match(/OCL_ORIGIN=(\S+)/)?.[1]
+  if (!configuredOrigin) throw new Error('Missing Docker default origin')
   const command = dockerfile.match(/HEALTHCHECK[^\n]*\\\n\s+CMD (\[[^\n]+\])/)
   if (!command?.[1]) throw new Error('Missing Docker healthcheck')
   const args = z.tuple([z.literal('node'), z.literal('--input-type=module'), z.literal('-e'), z.string()]).parse(JSON.parse(command[1]))
   return execute(process.execPath, args.slice(1), {
-    env: { OCL_PORT: String(port), OCL_ORIGIN: origin }, timeout: 6000,
+    env: { OCL_PORT: String(port), OCL_ORIGIN: configuredOrigin }, timeout: 6000,
   })
 }
 
 describe('SQLite-backed readiness', () => {
+  it('supports the image defaults without user environment variables and keeps origin protection', async () => {
+    const dockerfile = await readFile('docker/Dockerfile', 'utf8')
+    expect(dockerfile).toContain('OCL_PORT=3000')
+    expect(dockerfile).toContain('OCL_DATABASE_PATH=/data/opticutlist.sqlite')
+    expect(dockerfile).toContain('USER node')
+    const origin = dockerfile.match(/OCL_ORIGIN=(\S+)/)?.[1]
+    expect(origin).toBe('http://localhost:3000')
+    if (!origin) throw new Error('Missing Docker default origin')
+    const directory = await mkdtemp(join(tmpdir(), 'ocl-default-health-'))
+    const frontendPath = join(directory, 'frontend')
+    await mkdir(frontendPath)
+    const app = createSelfHostedServer({ databasePath: join(directory, 'data/opticutlist.sqlite'), frontendPath, origin })
+    try {
+      await new Promise<void>(resolve => { app.server.listen(0, '127.0.0.1', resolve) })
+      const address = app.server.address()
+      if (!address || typeof address === 'string') throw new Error('Missing listener')
+      await expect(dockerProbe(address.port)).resolves.toMatchObject({ stdout: '' })
+      const url = `http://127.0.0.1:${String(address.port)}/api/v1/health`
+      expect((await fetch(url)).status).toBe(403)
+      for (const headers of [{ Origin: 'https://untrusted.invalid' }, { 'Sec-Fetch-Site': 'cross-site' }]) {
+        const crossOrigin = await new Promise<IncomingMessage>((resolve, reject) => {
+          const request = get(url, { headers: { Host: 'localhost:3000', ...headers } }, response => {
+            response.resume()
+            resolve(response)
+          })
+          request.on('error', reject)
+        })
+        expect(crossOrigin.statusCode).toBe(403)
+        expect(crossOrigin.headers['access-control-allow-origin']).toBeUndefined()
+      }
+    } finally {
+      await app.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('returns a typed storage failure after the database closes', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'ocl-closed-health-'))
     const storage = createSqlitePersistence(join(directory, 'data.sqlite'))

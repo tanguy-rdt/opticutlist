@@ -13,41 +13,47 @@ Create a project, select materials and panels, add your parts, then click **Opti
 
 Your data stays in this browser on this device. It is not shared with other browsers or installations. Export your projects, catalog and stock separately before clearing browser data. These exports are not a complete backup of stock history.
 
-**Self-hosting safety:** Docker, Portainer and standalone installations have no built-in login. Anyone who can reach the application can access the same data. The examples above keep access on one computer. Access from other devices needs a trusted network and properly protected HTTPS access set up by someone who manages that network. Do not expose OptiCutList directly to the Internet.
+**Self-hosting safety:** Docker, Portainer and standalone installations have no built-in login. Anyone who can reach the application can access the same data. The Docker command below keeps access on one computer. Access from other devices needs a trusted network and properly protected HTTPS access set up by someone who manages that network. Do not expose OptiCutList directly to the Internet.
 
 ## Docker
 
 Docker runs the application in a small, separate environment called a container. You need Docker installed and running on the computer where you want to use OptiCutList.
 
 1. Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/) if needed. Open it and wait until it is running. Use Linux containers if asked.
-2. Open **Terminal** on macOS/Linux, or **PowerShell** on Windows. This is the window where you paste commands. Paste each line below and press Enter. The first command downloads OptiCutList; it may take a few minutes. The available image below is a **beta**, a preview version that may still have problems.
+2. Choose an available version from the [published image versions](https://github.com/tanguy-rdt/opticutlist/pkgs/container/opticutlist). In the command below, replace **VERSION** with that exact version. There is no `latest` tag. These defaults apply to images containing the simplified local setup; see the older-image note below.
+3. Open **Terminal** on macOS/Linux, or **PowerShell** on Windows. Paste the command and press Enter:
 
    ```sh
-   docker pull ghcr.io/tanguy-rdt/opticutlist:1.1.0-beta
-   docker volume create opticutlist-data
-   docker run -d --name opticutlist --restart unless-stopped --stop-timeout 30 -p 127.0.0.1:8080:3000 -e OCL_ORIGIN=http://127.0.0.1:8080 -v opticutlist-data:/data ghcr.io/tanguy-rdt/opticutlist:1.1.0-beta
+   docker run -d --name opticutlist --restart unless-stopped --stop-timeout 30 -p 127.0.0.1:3000:3000 -v opticutlist-data:/data ghcr.io/tanguy-rdt/opticutlist:VERSION
    ```
 
-3. On that same computer, open [http://127.0.0.1:8080/opticutlist/](http://127.0.0.1:8080/opticutlist/). Use this exact address, including `127.0.0.1`.
+4. On that same computer, open [http://localhost:3000/opticutlist/](http://localhost:3000/opticutlist/). Use **localhost**, as written.
 
-Data is saved in `opticutlist-data`, a Docker volume: a storage area kept separately from the application. The data files are kept under `/data` inside the container. Keep this volume when replacing the application.
+Docker downloads the image and creates `opticutlist-data` automatically. This volume is a separate storage area for your work. The application creates its database on first startup. No database setup or environment variables are needed with the new defaults.
 
 To stop or start OptiCutList later, use `docker stop opticutlist` or `docker start opticutlist`.
 
+**Keep your volume:** stopping or restarting the container keeps your work. When replacing the container, always include the same `-v opticutlist-data:/data`. Deleting and recreating a container without reattaching its volume can make your saved data appear lost, even if the old volume still exists. Never delete that volume unless you intend to erase its data.
+
+**Older images:** this change must be included in a published image before the simpler setup works there. If an older image reports that `OCL_ORIGIN` is required, add `-e OCL_ORIGIN=http://localhost:3000` before the image name. Your existing explicit settings and volumes remain supported. If you already use another port or address, keep its matching settings when updating.
+
+### If port 3000 is already in use
+
+Use `-p 127.0.0.1:8080:3000` and add `-e OCL_ORIGIN=http://localhost:8080` before the image name. Then open **http://localhost:8080/opticutlist/**. The address must match the setting exactly.
+
 ## Portainer
 
-Portainer is a web interface for managing Docker. You need Portainer already installed and connected to a Docker computer. These settings let you open OptiCutList **on that computer**, not from another device.
+Portainer is a web interface for managing Docker. You need Portainer already installed and connected to a Docker computer. These steps provide local access **on that computer**.
 
 1. Sign in to Portainer and select your Docker environment from **Home**.
-2. Open **Volumes → Add volume**. Enter `opticutlist-data` as the name and click **Create the volume**. If it already exists, keep it.
-3. Open **Containers → Add container**. Enter `opticutlist` for **Name** and `ghcr.io/tanguy-rdt/opticutlist:1.1.0-beta` for **Image**. Enable **Always pull the image**. This is the same beta version as above.
-4. Under **Network ports configuration**, leave **Publish all exposed network ports** off. Click **Publish a new network port**. Enter host port `8080`, container port `3000`, and select **TCP**. Set the host IP to `127.0.0.1`. If your Portainer version has no host IP field, use the Docker instructions above instead to keep access local.
-5. Under **Advanced container settings → Volumes**, click **Map additional volume**. Select **Volume**, choose `opticutlist-data`, and enter `/data` for **Container**. Leave it writable.
-6. Open **Env → Add environment variable**. Enter `OCL_ORIGIN` as the name and `http://127.0.0.1:8080` as its value.
-7. Under **Restart policy**, choose **Unless stopped**. Leave the other settings unchanged and click **Deploy the container**. Do not use **Stacks**.
-8. On the Docker computer, open [http://127.0.0.1:8080/opticutlist/](http://127.0.0.1:8080/opticutlist/).
+2. Open **Containers → Add container**. Enter `opticutlist` for **Name** and `ghcr.io/tanguy-rdt/opticutlist:VERSION` for **Image**, replacing **VERSION** with an available image version. Enable **Always pull the image**.
+3. Under **Network ports configuration**, leave **Publish all exposed network ports** off. Click **Publish a new network port**. Enter host port `3000`, container port `3000`, and select **TCP**. Set the host IP to `127.0.0.1` if your version offers that field. Otherwise restrict network access with your firewall, or use the local-only Docker command above.
+4. For a first installation, no manual volume creation is needed: the image declares `/data`, and Docker creates a persistent volume for it when you deploy. For an existing installation, go to **Advanced container settings → Volumes → Map additional volume**, select the existing data volume and mount it writable at `/data`.
+5. Under **Restart policy**, choose **Unless stopped**, then click **Deploy the container**. No environment variables are required with the new image defaults. For an older image, add `OCL_ORIGIN` with value `http://localhost:3000` under **Env** before deploying.
+6. Open the container's details and find its `/data` volume under **Volumes**. Note the volume name; an automatically created name may be a long string. Keep it when replacing the container.
+7. On the Docker computer, open [http://localhost:3000/opticutlist/](http://localhost:3000/opticutlist/).
 
-Data stays in the `opticutlist-data` volume. Portainer's own login does not protect OptiCutList.
+Portainer's own login does not protect OptiCutList. Do not use **Stacks**. A fresh volume creates an empty database; it does not recover data from a previous container. Always reattach the original `/data` volume during updates.
 
 ## Standalone download
 
@@ -97,7 +103,7 @@ Reopen the online application to use the deployed version. Keep the same browser
    Use Terminal or PowerShell 7.4 or newer for the backup command; older Windows PowerShell can damage binary backups. Check that it succeeds and keep the backup somewhere safe. Move any older backup out of the way first: this command replaces a file with the same name.
 
 2. Choose an available newer version from the [published image versions](https://github.com/tanguy-rdt/opticutlist/pkgs/container/opticutlist). Its image name starts with `ghcr.io/tanguy-rdt/opticutlist:` followed by that exact version. There is no `latest` version.
-3. For Docker, run `docker rm opticutlist`, then repeat the Docker installation commands with the new version in both image names. Keep `opticutlist-data` unchanged. For Portainer, choose the stopped container, click **Duplicate/Edit**, change **Image** to the new version, and deploy it with **Always pull the image** enabled. Keep the same volume, ports and environment variable.
+3. For Docker, run `docker rm opticutlist`, then repeat the Docker run command with the new image version. Keep `opticutlist-data` unchanged. For Portainer, choose the stopped container, click **Duplicate/Edit**, change **Image** to the new version, and deploy it with **Always pull the image** enabled. Before deploying the replacement, check **Volumes** and explicitly reattach the original volume at `/data` if it is not already listed. Keep the existing port and any custom environment settings.
 4. Open the application and check your projects and stock. **Never delete the data volume during an update.**
 
 ### Standalone

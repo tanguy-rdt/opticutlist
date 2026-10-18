@@ -91,11 +91,11 @@ A maintainer must set the GHCR package visibility to **Public** before anonymous
 
 Use the [Docker installation steps](../user-guide/installation.md#docker) for the full pull/start command. The runtime settings and constraints below apply equally to Docker CLI and Portainer deployments.
 
-Open **`http://127.0.0.1:8080/opticutlist/`**. Use that exact hostname: `localhost` is a different origin. Publishing to host loopback restricts access to the Docker host; the backend still listens on `0.0.0.0` inside its bridge-network container. No host networking, privileged mode or Docker socket mount is used.
+Open **`http://localhost:3000/opticutlist/`** with the image defaults. Use that exact hostname: `127.0.0.1` is a different origin. Publishing to host loopback restricts access to the Docker host; the backend still listens on `0.0.0.0` inside its bridge-network container. No host networking, privileged mode or Docker socket mount is used.
 
 | Setting | Image default / required value |
 | --- | --- |
-| `OCL_ORIGIN` | **Required:** exact browser-facing HTTP(S) origin, with port when nonstandard, without path/trailing slash |
+| `OCL_ORIGIN` | Optional; image default `http://localhost:3000`. Override with the exact browser-facing HTTP(S) origin for a different host or published port, without path/trailing slash |
 | `OCL_HOST` | `0.0.0.0`; leave unchanged in the container |
 | `OCL_PORT` | `3000`; normally change the published host port instead |
 | `OCL_DATABASE_PATH` | `/data/opticutlist.sqlite`; keep databases under the mounted `/data` directory |
@@ -105,7 +105,7 @@ Open **`http://127.0.0.1:8080/opticutlist/`**. Use that exact hostname: `localho
 
 The builder uses `npm ci` with the lockfile and `npm run build:self-hosted`, which explicitly selects server storage. The runtime contains only compiled frontend/backend files, package/license metadata and the SSR backend's external Zod package. SQLite is built into Node; no compiler or SQLite addon is installed. If the backend gains another external package, update the runtime dependency copies in the Dockerfile. The build context allowlist excludes unrelated repository files, databases, secrets, caches and tests.
 
-An empty named volume receives the image's writable `/data` directory. SQLite and its WAL/journal sidecars stay together there; the image contains no database. Existing databases are opened and checked with the current transactional migrations, never reset. Migration/permission failures stop startup. For a bind mount or an imported volume, the directory and database must be writable by UID/GID `1000:1000`; configure ownership deliberately while stopped rather than running the application as root. See [Docker volumes](https://docs.docker.com/engine/storage/volumes/).
+The user-facing Docker command creates its named volume automatically; `docker volume create` is not required. The image's declared `/data` volume also causes Docker to allocate a persistent anonymous volume if no mapping is supplied (including a new Portainer container). Record that volume's name and explicitly reattach it on replacement; an anonymous volume is not a reliable implicit attachment across recreations. An empty volume receives the image's writable `/data` directory. SQLite and its WAL/journal sidecars stay together there; the image contains no database. Existing databases are opened and checked with the current transactional migrations, never reset. Migration/permission failures stop startup. For a bind mount or an imported volume, the directory and database must be writable by UID/GID `1000:1000`; configure ownership deliberately while stopped rather than running the application as root. See [Docker volumes](https://docs.docker.com/engine/storage/volumes/).
 
 #### Optional local build
 
@@ -130,19 +130,19 @@ docker restart --time 30 opticutlist
 
 [Readiness regression tests](../../server/__tests__/health.spec.ts) exercise the actual Dockerfile probe against a local Node service, including database failure, recovery and external-Host handling. These are not a substitute for running the image on a Docker daemon. `GET /api/v1/health` performs a serialized SQLite transaction that reads migration metadata. Database failure returns a sanitized **503**; healthy responses retain the existing public service/schema identity. The image probe calls the internal loopback listener with the configured external Host header, so custom host ports and HTTPS origins do not bypass or break origin checks. It uses Node, not curl/wget, with a four-second socket timeout. Docker runs it every 30 seconds with a five-second limit, a 15-second startup grace period and three failure retries.
 
-An unhealthy result does not itself trigger Docker's restart policy. Inspect logs and health details; fix the cause, then restart. Missing/incorrect `OCL_ORIGIN` prevents startup or causes 403 responses. `EACCES` indicates volume ownership or permissions. Do not delete a database to fix an upgrade failure; retain the file and restore a compatible backup or use the matching application version.
+An unhealthy result does not itself trigger Docker's restart policy. Inspect logs and health details; fix the cause, then restart. The image supplies `OCL_ORIGIN=http://localhost:3000` when the operator does not override it. A deliberately empty override still prevents startup; an incorrect origin causes 403 responses. Earlier published images without this default still require an explicit value. `EACCES` indicates volume ownership or permissions. Do not delete a database to fix an upgrade failure; retain the file and restore a compatible backup or use the matching application version.
 
 #### Portainer: create a container
 
-Follow the [Portainer installation steps](../user-guide/installation.md#portainer) for the container form fields. Use the same runtime settings above: default bridge network, image command/user, writable `/data` volume, `OCL_ORIGIN` and restart policy `unless-stopped`; do not enable privileged mode. Locally built `opticutlist:local` images must already exist on that host with **Always pull** disabled.
+Follow the [Portainer installation steps](../user-guide/installation.md#portainer) for the container form fields. Use the same runtime settings above: default bridge network, image command/user, writable `/data` volume and restart policy `unless-stopped`; do not enable privileged mode. Locally built `opticutlist:local` images must already exist on that host with **Always pull** disabled.
 
 Restrict the published Host IP to `127.0.0.1` when the interface supports it. If your Portainer version cannot express that binding, use the loopback Docker CLI command above or arrange Docker-aware network access restrictions **before** deployment; a plain `8080:3000` mapping publishes on all host interfaces. Portainer on another computer does not make `127.0.0.1` refer to the Docker host. Portainer's own login protects its management interface, not OptiCutList. See Portainer's [container creation](https://docs.portainer.io/user/docker/containers/add) and [advanced settings](https://docs.portainer.io/user/docker/containers/advanced).
 
 #### Changing ports and enabling remote access
 
-To use host port `9090`, recreate the container with `-p 127.0.0.1:9090:3000` and `-e OCL_ORIGIN=http://127.0.0.1:9090`. Retain the same named volume. Restarting alone cannot change an existing container's ports, environment or image.
+To use host port `9090`, recreate the container with `-p 127.0.0.1:9090:3000` and `-e OCL_ORIGIN=http://localhost:9090`. Retain the same named volume. Restarting alone cannot change an existing container's ports, environment or image.
 
-For explicit LAN access, bind only the chosen private host address, for example `-p 192.168.1.20:8080:3000`, instead of loopback, and set `OCL_ORIGIN` to the **actual HTTPS browser origin**, such as `https://cutting.lan`. Use existing access-controlled TLS infrastructure and restrict access to the trusted LAN/VPN. The proxy must preserve Host and Origin. The image does not provide TLS or a proxy. Plain HTTP to a remote LAN IP is insufficient for existing secure-context browser APIs; loopback HTTP remains supported.
+For explicit LAN access, bind only the chosen private host address, for example `-p 192.168.1.20:8080:3000`, instead of loopback, and set `OCL_ORIGIN` to the **actual HTTPS browser origin**, such as `https://cutting.lan`. Use existing access-controlled TLS infrastructure and restrict access to the trusted LAN/VPN. The proxy must preserve Host and Origin. The image does not provide TLS or a proxy. The local default is a fixed allowlisted origin, never derived from untrusted Host/Origin or forwarded headers; a remote URL still requires an explicit override. Plain HTTP to a remote LAN IP is insufficient for existing secure-context browser APIs; loopback HTTP remains supported.
 
 **No authentication is provided. Everyone who can reach the application shares the entire database. Do not expose this image directly to the public Internet.** There is no wildcard CORS or automatic browser-data migration.
 
@@ -163,7 +163,6 @@ Use a fresh backup filename. Check that the copy command succeeded before relyin
 Restore into a **new, empty volume** and a new container name, keeping the original dataset untouched. Set `backup_file` to the completed archive if using a new shell. The example uses port 8081 so the original container can remain intact. Use the application image version corresponding to the backup:
 
 ```sh
-docker volume create opticutlist-restored-data
 docker create \
   --name opticutlist-restored \
   --restart unless-stopped \
