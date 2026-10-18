@@ -51,13 +51,23 @@ describe('Wiki documentation portal', () => {
     expect(sidebar).not.toContain('More reference')
   })
 
-  it('keeps Home focused and converts its task navigation to real Wiki destinations', () => {
-    const home = output().get('Home.md')?.toString() ?? ''
-    for (const heading of ['Start here', 'Explore the documentation', 'Architecture at a glance', 'Where do I find…?', 'Contribute with confidence']) expect(home).toContain(`## ${heading}`)
-    expect(home).toContain('/wiki/Docs-getting-started#environment')
-    expect(home).toContain('/wiki/Docs-stock-management#availability-is-contextual')
-    expect(home).not.toContain('### Development & reference')
+  it('keeps Home focused on the two guides and preserves existing technical page URLs', () => {
+    const wiki = output()
+    const home = wiki.get('Home.md')?.toString() ?? ''
+    expect(home).toContain('## User Guide')
+    expect(home).toContain('## Developer Guide')
+    expect(home).toContain('/wiki/Docs-user-guide--README')
+    expect(home).toContain('/wiki/Docs-developer-guide')
+    expect(home).not.toContain('```')
     expect(home.match(/^# /gm)).toHaveLength(1)
+    expect(WIKI_NAVIGATION.map(group => group.title)).toEqual(['User Guide', 'Developer Guide'])
+    for (const path of ['architecture', 'storage', 'getting-started', 'optimization', 'pdf-generation']) {
+      expect(wiki.has(`Docs-${path}.md`)).toBe(true)
+    }
+    const storage = wiki.get('Docs-storage.md')?.toString() ?? ''
+    expect(storage).toContain('### Standalone archive')
+    expect(storage).toContain('/wiki/Docs-deployment#standalone-archive')
+    expect(wiki.get('Docs-deployment.md')?.toString()).toContain('node start.mjs')
   })
 
   it('resolves documentation and source links, including heading fragments', () => {

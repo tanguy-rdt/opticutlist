@@ -1,6 +1,6 @@
 # Stock lifecycle & reconciliation
 
-[Documentation home](README.md) / Optimization & inventory
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Optimization & inventory
 
 Physical stock is an identity-based inventory system, not a collection of catalog availability estimates. Start with [StockItem](../src/domain/model/stock-item.ts), [ProjectStock](../src/domain/model/project-stock.ts), the [guarded stock repository](../src/application/inventory/stock-repository.ts) and [project-stock-service.ts](../src/application/inventory/project-stock-service.ts).
 

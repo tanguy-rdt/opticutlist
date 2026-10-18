@@ -1,6 +1,6 @@
 # Safe contribution guide
 
-[Documentation home](README.md) / Development & reference
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Development & reference
 
 These are developer procedures, not implemented new features. They apply the current [AGENTS.md](../AGENTS.md) constraints to the audited code. Start with [architecture](architecture.md), then identify the owning service and test boundary before editing. Obtain approval before changing fundamental architecture or domain invariants.
 

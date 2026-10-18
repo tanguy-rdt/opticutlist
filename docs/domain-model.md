@@ -1,6 +1,6 @@
 # Domain model & business rules
 
-[Documentation home](README.md) / Architecture & domain
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Architecture & domain
 
 The runtime contracts are the strict Zod schemas in [src/domain/model](../src/domain/model/). This guide describes relationships; source schemas remain the exact field-level reference. See [persistence and JSON](persistence-and-json.md) for how records cross storage boundaries.
 

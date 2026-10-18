@@ -1,6 +1,6 @@
 # Application & UI
 
-[Documentation home](README.md) / Start here
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Start here
 
 This guide describes current screens, not a future product roadmap. [Architecture](architecture.md) maps routes and layers; [stock management](stock-management.md) explains inventory rules.
 

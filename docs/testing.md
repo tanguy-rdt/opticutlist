@@ -1,6 +1,6 @@
 # Testing & validation
 
-[Documentation home](README.md) / Development & reference
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Development & reference
 
 The required checks are defined in [AGENTS.md](../AGENTS.md) and [package.json](../package.json):
 

@@ -23,7 +23,7 @@ if (dependencies.some(name => !isBuiltin(name) && name !== 'zod')) {
 if ((await readFile(join(repository, 'dist-self-hosted/storage-mode.txt'), 'utf8')).trim() !== 'server') {
   throw new Error('Build the self-hosted frontend before packaging.')
 }
-const guide = await readFile(join(repository, 'docs/storage.md'), 'utf8')
+const guide = await readFile(join(repository, 'docs/deployment.md'), 'utf8')
 const heading = '### Standalone archive\n'
 const guideStart = guide.indexOf(heading)
 if (guideStart === -1) {

@@ -1,6 +1,6 @@
 # Optimization engine
 
-[Documentation home](README.md) / Optimization & inventory
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Optimization & inventory
 
 Read the authoritative [algorithm rules](../AGENTS.md), especially the stable `largestAreaFirst` baseline. Optimization is pure and inventory-independent; persisting its accepted result is a separate inventory-affecting operation.
 

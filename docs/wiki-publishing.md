@@ -1,6 +1,6 @@
 # Wiki authoring & publishing
 
-[Documentation home](README.md) / Development & reference
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Development & reference
 
 The main repository's `docs/` directory is the only source of truth. [cd.yml](../.github/workflows/cd.yml) generates a separate Wiki checkout; it never moves/deletes source documentation or changes the application. Publication requires the one-time GitHub setup below. No publication is performed by local generation/tests.
 
@@ -68,11 +68,11 @@ Do not delete or hand-edit the manifest. If it is lost, the publisher refuses ex
 
 ## Navigation and page design
 
-Home is authored in [docs/README.md](README.md); the publisher does not append a duplicate index. Keep its introduction, contributor journey and task links concise. The Wiki sidebar is generated from [navigation.ts](../scripts/wiki/navigation.ts), which defines the topic order and short labels. It uses the existing path-to-page mapping; changing a display title does not rename a Wiki page.
+Home is authored in [docs/README.md](README.md); the publisher does not append a duplicate index. Keep it a short introduction linking to the User Guide and Developer Guide. The sidebar has exactly those two curated groups and is generated from [navigation.ts](../scripts/wiki/navigation.ts), which defines the topic order and short labels. It uses the existing path-to-page mapping; changing a display title does not rename a Wiki page.
 
 When adding a page, link it from related guides and add its relative docs path to an appropriate sidebar group. Unlisted pages remain discoverable automatically under **More reference** or their nested directory heading, so new documentation is not silently orphaned. Empty curated groups are omitted. Keep filenames stable; reorder display links rather than moving files merely to change navigation.
 
-Technical pages begin with a link home and a short overview. Longer guides provide section jump links; related reading at the bottom connects the next useful topic. Preserve existing heading anchors when reorganizing content. The [getting-started guide](getting-started.md) is introductory, while [storage](storage.md), [JSON contracts](json-formats.md) and [workflow traces](workflows.md) retain detailed implementation references.
+Technical pages link to the Developer Guide and documentation home; beginner pages link to the User Guide and use task-oriented instructions. Longer guides provide section jump links; related reading at the bottom connects the next useful topic. Preserve existing heading anchors when reorganizing content. The Wiki homepage separates the beginner [User Guide](user-guide/README.md) from the [Developer Guide](developer-guide.md). The [developer setup guide](getting-started.md) introduces contributor tooling, while [storage](storage.md), [JSON contracts](json-formats.md) and [workflow traces](workflows.md) retain detailed implementation references.
 
 Use native Markdown headings, compact tables and fenced code. Mermaid diagrams should stay readable at ordinary Wiki widths; use top-to-bottom flow for long pipelines. No HTML layout, custom styles, decorative image banners or external documentation site is needed.
 

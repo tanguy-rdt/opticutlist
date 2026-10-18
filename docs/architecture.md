@@ -1,6 +1,6 @@
 # Architecture
 
-[Documentation home](README.md) / Architecture & domain
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Architecture & domain
 
 The authoritative decisions remain in [ARCHITECTURE.md](../ARCHITECTURE.md) and [AGENTS.md](../AGENTS.md). This guide maps those decisions to current code.
 

@@ -1,6 +1,6 @@
 # CI/CD & releases
 
-[Documentation home](README.md) / Development & reference
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Development & reference
 
 Exactly two native GitHub Actions workflows own automation: [CI](../.github/workflows/ci.yml) validates changes; [CD](../.github/workflows/cd.yml) has four independent jobs for Pages deployment, GHCR images, standalone release archives and Wiki publication. Their triggers, conditions and shell checks are defined directly in YAML.
 
@@ -43,7 +43,7 @@ The build targets `linux/amd64` and `linux/arm64` in one Buildx publication, wit
 
 To make releases anonymously installable, open the owner's **Packages → opticutlist → Package settings → Change visibility → Public** after first publication. Packages may initially be private even for a public source repository. Confirm that the package is connected to this repository and that its Actions access permits this repository to write. Organization package policies can also restrict publication. No personal access token or visibility-changing API script is used. See [GitHub Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
-Existing release tags are not backfilled automatically by adding this workflow. A maintainer must publish a new intended release tag through the established release process; this implementation task does not create/push tags or publish images. Do not repoint a release tag to ship different source under the same version. See [Docker and Portainer installation](storage.md#standalone-docker-deployment) for pulls, configuration, backups and upgrades.
+Existing release tags are not backfilled automatically by adding this workflow. A maintainer must publish a new intended release tag through the established release process; this implementation task does not create/push tags or publish images. Do not repoint a release tag to ship different source under the same version. See [Docker and Portainer installation](deployment.md#standalone-docker-deployment) for pulls, configuration, backups and upgrades.
 
 ## Standalone release archives
 
@@ -51,7 +51,7 @@ The independent `standalone` job reuses `verify-release` for stable and SemVer p
 
 Only this job has `contents: write`. The built-in token reaches only the final release step; no PAT, new workflow or application service is introduced. Pages, GHCR and Wiki have no dependency on archive publication. No release is created/published during local validation.
 
-The packager stages an explicit runtime allowlist in a temporary directory and uses the existing `tar` tool for `.tar.gz`. It includes no Node binary, database, source checkout, dev toolchain or native npm module. It checks compiled imports so a new SSR dependency must be deliberately packaged. Archive tests run independently with only bundled Zod, a writable external home/data directory and the host's Node 24+ runtime. Local verification covers macOS ARM64; the hosted release job gates attachment on the same tests on Linux x64. Windows and other combinations remain unverified. See [installation and upgrades](storage.md#standalone-archive).
+The packager stages an explicit runtime allowlist in a temporary directory and uses the existing `tar` tool for `.tar.gz`. It includes no Node binary, database, source checkout, dev toolchain or native npm module. It checks compiled imports so a new SSR dependency must be deliberately packaged. Archive tests run independently with only bundled Zod, a writable external home/data directory and the host's Node 24+ runtime. Local verification covers macOS ARM64; the hosted release job gates attachment on the same tests on Linux x64. Windows and other combinations remain unverified. See [installation and upgrades](deployment.md#standalone-archive).
 
 For a local artifact (no publication):
 

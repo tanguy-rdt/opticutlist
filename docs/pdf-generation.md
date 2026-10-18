@@ -1,6 +1,6 @@
 # Cutting plans & PDF
 
-[Documentation home](README.md) / Cutting plans & PDF
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Cutting plans & PDF
 
 PDFs are generated locally with pdf-lib and previewed from the actual bytes with PDF.js. Technical drawings remain vector paths, text, arrows and hatching. Cover images are the only optional user-provided raster content. No screenshot concatenation or external rendering service is involved.
 

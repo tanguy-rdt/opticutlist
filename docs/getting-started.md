@@ -1,14 +1,14 @@
-# Getting started
+# Developer setup
 
-[Documentation home](README.md) / Start here
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Start here
 
-Read [AGENTS.md](../AGENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md) before editing. The application is a browser-only Vue/TypeScript modular monolith, targeting a first stable 1.0 release. There is no backend, account service or cloud database to start.
+Read [AGENTS.md](../AGENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md) before editing. The released browser application is a Vue/TypeScript modular monolith. Default development needs no backend. An optional Node.js service provides shared SQLite persistence for self-hosted builds; optimization stays in the browser.
 
 **On this page:** [Environment](#environment) · [Commands](#commands) · [Repository map](#repository-map) · [Contribution workflow](#contribution-workflow)
 
 ## Environment
 
-Use Node.js 24 from [.nvmrc](../.nvmrc); [package.json](../package.json) permits Node 22 or newer. The root [README](../README.md) recommends npm 11+. Use the committed [package-lock.json](../package-lock.json) for reproducible dependencies. IndexedDB and Web Workers are browser requirements; PDF preview additionally uses a locally bundled PDF.js worker.
+Use Node.js 24 from [.nvmrc](../.nvmrc); [package.json](../package.json) permits Node 22 or newer. Use the npm version supplied with your supported Node installation. Use the committed [package-lock.json](../package-lock.json) for reproducible dependencies. IndexedDB and Web Workers are browser requirements; PDF preview additionally uses a locally bundled PDF.js worker.
 
 ```sh
 nvm use
@@ -80,4 +80,4 @@ Local business data is not a backup. Before testing destructive workflows agains
 
 ## Optional self-hosted development
 
-The default commands above remain browser-only. With Node.js 24+, `npm run build:self-hosted` builds the matching frontend/service and `npm run start:self-hosted` runs both at `http://127.0.0.1:3000/opticutlist/`. See [Self-hosting](storage.md#self-hosted-storage) for the persistent database path, configuration, API and trusted-environment security limits.
+The default commands above remain browser-only. With Node.js 24+, `npm run build:self-hosted` builds the matching frontend/service and `npm run start:self-hosted` runs both at `http://127.0.0.1:3000/opticutlist/`. See [Deployment and operations](deployment.md#run-the-service) for service configuration and [Storage internals](storage.md#self-hosted-storage) for API and transaction guarantees.

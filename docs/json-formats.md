@@ -1,6 +1,6 @@
 # JSON formats & compatibility
 
-[Documentation home](README.md) / Import & compatibility
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Import & compatibility
 
 This document specifies implemented exchange boundaries and a separately labeled future compatibility proposal. [Storage](storage.md) describes IndexedDB versions; portable file versions are independent. Existing complete row examples remain in [Parts JSON](parts-json.md) and [Stock JSON](stock-json-format.md).
 

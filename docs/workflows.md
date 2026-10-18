@@ -1,6 +1,6 @@
 # End-to-end workflow traces
 
-[Documentation home](README.md) / Development & reference
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Development & reference
 
 Read this alongside [feature map](features.md), [architecture](architecture.md) and [storage](storage.md). Paths below connect UI entry points to application/domain operations and actual writes. Unless stated otherwise, failure retains the user's draft or presents an actionable error; successful notification follows the underlying completed operation.
 

@@ -1,6 +1,6 @@
 # Stock JSON exchange
 
-[Documentation home](README.md) / Import & compatibility
+[Documentation home](README.md) / [Developer Guide](developer-guide.md) / Import & compatibility
 
 Settings → Stock exports `stock.oclstock.json` as readable UTF-8 JSON. Import accepts this extension or legacy/general `.json` names; contents, not filenames, determine compatibility.
 
